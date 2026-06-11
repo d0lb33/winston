@@ -119,7 +119,17 @@ class GenericRedditEntity<T: GenericRedditEntityDataType, B: Hashable>: Identifi
   
   func fetchItself() {
     Task(priority: .background) {
-      if let data = await RedditAPI.shared.fetchInfo(fullnames: ["\(self.selfPrefix)_\(id)"]) {
+      let fullname = "\(self.selfPrefix)_\(self.id)"
+      // GraphQL path (migration): hydrate posts via RedditPOC. Other entity
+      // types still use the legacy REST fetchInfo until their phase lands.
+      if Defaults[.useGraphQLAPI], T.self == PostData.self {
+        let datas = await RedditWire.shared.postData(forIDs: [fullname])
+        await MainActor.run { withAnimation {
+          if let pd = datas.first as? T { self.data = pd }
+        } }
+        return
+      }
+      if let data = await RedditAPI.shared.fetchInfo(fullnames: [fullname]) {
         await MainActor.run { withAnimation {
           if let data = data as? T { self.data = data }
         } }

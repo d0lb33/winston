@@ -493,6 +493,21 @@ extension Post {
   }
   
   func refreshPost(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> ([Comment]?, String?)? {
+    // GraphQL path (migration): post + comment forest via RedditPOC. The flat
+    // forest is assembled into the reply tree by nestComments. MVP: initial
+    // tree only, default sort.
+    if Defaults[.useGraphQLAPI] {
+      let (newData, children) = await RedditWire.shared.postWithComments(postID: id)
+      if full, let newData {
+        await MainActor.run {
+          self.data = newData
+          setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
+        }
+      }
+      let comments = nestComments(children, parentID: "\(Post.prefix)_\(id)")
+      return (comments, nil)
+    }
+
     if let subreddit = data?.subreddit ?? subreddit, let response = await RedditAPI.shared.fetchPost(subreddit: subreddit, postID: id, commentID: commentID, sort: sort) {
       if response.count >= 2 {
         if let post = response[0] {
@@ -537,7 +552,9 @@ extension Post {
           self.data?.saved = !prev
         }
       }
-      let success = await RedditAPI.shared.save(!prev, id: data.name)
+      let success: Bool? = Defaults[.useGraphQLAPI]
+        ? await RedditWire.shared.save(fullname: data.name, saved: !prev)
+        : await RedditAPI.shared.save(!prev, id: data.name)
       if !(success ?? false) {
         await MainActor.run {
           withAnimation {
@@ -562,7 +579,10 @@ extension Post {
         data?.ups = oldUps + (action.boolVersion() == oldLikes ? oldLikes == nil ? 0 : -(Int(action.rawValue) ?? 0) : (Int(action.rawValue) ?? 1) * (oldLikes == nil ? 1 : 2))
       }
     }
-    let result = await RedditAPI.shared.vote(newAction, id: "\(typePrefix ?? "")\(id)")
+    let fullname = "\(typePrefix ?? "")\(id)"
+    let result: Bool? = Defaults[.useGraphQLAPI]
+      ? await RedditWire.shared.vote(fullname: fullname, action: newAction)
+      : await RedditAPI.shared.vote(newAction, id: fullname)
     if result == nil || !result! {
       await MainActor.run {
         withAnimation(.spring()) {

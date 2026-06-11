@@ -62,4 +62,9 @@ extension Defaults.Keys {
   /* </Heavy Defaults are kept separated, these should be in CoreData or something> */
   
   static let wereOldDefaultsMigrated = Key<Bool>("wereOldDefaultsMigrated", default: false)
+
+  /// Migration spine: route the re-pointed model methods through the RedditPOC
+  /// GraphQL library (RedditWire) instead of the dead REST API. Default on;
+  /// flip off to fall back to the legacy REST bodies per call site.
+  static let useGraphQLAPI = Key<Bool>("useGraphQLAPI", default: true)
 }

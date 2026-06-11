@@ -173,10 +173,20 @@ extension Subreddit {
   }
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
+    // GraphQL path (migration): SDUI feed → PostsByIds hydration. Single page
+    // for MVP, so we return a nil cursor and let the existing end-of-feed logic
+    // engage. searchText/sort are not yet wired (default feed only).
+    if Defaults[.useGraphQLAPI] {
+      let isHome = id == "home"
+      let name = isHome ? "" : (data?.display_name ?? id)
+      let (datas, nextAfter) = await RedditWire.shared.feedPosts(subreddit: name, isHome: isHome)
+      return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nextAfter)
+    }
+
     if let response = await RedditAPI.shared.fetchSubPosts(data?.url ?? (id == "home" ? "" : id), sort: sort, after: after, searchText: searchText), let data = response.0 {
       return (Post.initMultiple(datas: data.compactMap { $0.data }, sub: self, contentWidth: contentWidth), response.1)
     }
-    
+
     return nil
   }
   

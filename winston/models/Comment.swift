@@ -288,7 +288,9 @@ extension Comment {
           self.data?.saved = !prev
         }
       }
-      let success = await RedditAPI.shared.save(!prev, id: fullname)
+      let success: Bool? = Defaults[.useGraphQLAPI]
+        ? await RedditWire.shared.save(fullname: fullname, saved: !prev)
+        : await RedditAPI.shared.save(!prev, id: fullname)
       if !(success ?? false) {
         await MainActor.run {
           withAnimation {
@@ -313,7 +315,9 @@ extension Comment {
         data?.ups = oldUps + (action.boolVersion() == oldLikes ? oldLikes == nil ? 0 : -(Int(action.rawValue) ?? 0) : (Int(action.rawValue) ?? 1) * (oldLikes == nil ? 1 : 2))
       }
     }
-    let result = await RedditAPI.shared.vote(newAction, id: "\(typePrefix ?? "")\(id.dropLast(2))")
+    let result: Bool? = Defaults[.useGraphQLAPI]
+      ? await RedditWire.shared.vote(fullname: data?.name ?? "t1_\(id.dropLast(2))", action: newAction)
+      : await RedditAPI.shared.vote(newAction, id: "\(typePrefix ?? "")\(id.dropLast(2))")
     if result == nil || !result! {
       await MainActor.run { [oldLikes] in
         withAnimation {

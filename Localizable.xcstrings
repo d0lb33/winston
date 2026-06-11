@@ -706,7 +706,25 @@
         }
       }
     },
+    "Capture (Phase 1 — dumps to console: GQLBODY)" : {
+
+    },
+    "Capture getAccount" : {
+
+    },
+    "Capture homeFeedSdui" : {
+
+    },
     "Capture now" : {
+
+    },
+    "Capture postComments" : {
+
+    },
+    "Capture subredditFeedSdui" : {
+
+    },
+    "Capture userSubreddits" : {
 
     },
     "Check out Winston's Source Code" : {
@@ -1159,9 +1177,6 @@
       }
     },
     "Done" : {
-
-    },
-    "Download" : {
 
     },
     "Drag Left" : {
@@ -2131,6 +2146,15 @@
           }
         }
       }
+    },
+    "Load comments (%@)" : {
+
+    },
+    "Load feed (r/%@) — first post" : {
+
+    },
+    "Load me + subscriptions" : {
+
     },
     "LOAD MORE" : {
 
@@ -3554,6 +3578,9 @@
         }
       }
     },
+    "subreddit" : {
+
+    },
     "Subs" : {
       "localizations" : {
         "de" : {
@@ -3712,6 +3739,9 @@
         }
       }
     },
+    "Test vote+save (up→clear, save→unsave)" : {
+
+    },
     "Thank you so much!" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3756,9 +3786,6 @@
           }
         }
       }
-    },
-    "Theme Store" : {
-
     },
     "Theme Store Tint" : {
       "localizations" : {
@@ -3825,9 +3852,6 @@
       }
     },
     "There are two ways for doing that:" : {
-
-    },
-    "There was an error importing this theme" : {
 
     },
     "This is not working yet :(" : {
