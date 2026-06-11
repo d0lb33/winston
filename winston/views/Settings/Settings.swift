@@ -21,6 +21,7 @@ struct Settings: View {
   
   @State var presentingWhatsNew: Bool = false
   @State var presentingAnnouncement: Bool = false
+  @State var presentingGQLDebug: Bool = false
   var body: some View {
     NavigationStack(path: $router.fullPath) {
       
@@ -43,6 +44,10 @@ struct Settings: View {
             
             WSListButton("Announcements", icon: "newspaper") {
               presentingAnnouncement.toggle()
+            }
+
+            WSListButton("GraphQL (experimental)", icon: "flask") {
+              presentingGQLDebug.toggle()
             }
             
             WSListButton("Donate monthly", icon: "heart.fill") {
@@ -69,6 +74,9 @@ struct Settings: View {
         if let isNew = getCurrentChangelog().first {
           WhatsNewView(whatsNew: isNew)
         }
+      }
+      .sheet(isPresented: $presentingGQLDebug) {
+        RedditGQLDebugView()
       }
       .themedListBG(selectedTheme.lists.bg)
       .scrollContentBackground(.hidden)

@@ -444,6 +444,9 @@
         }
       }
     },
+    "Adapted PostData → rendered" : {
+
+    },
     "Add a new credential" : {
 
     },
@@ -703,6 +706,9 @@
         }
       }
     },
+    "Capture now" : {
+
+    },
     "Check out Winston's Source Code" : {
       "localizations" : {
         "de" : {
@@ -845,6 +851,9 @@
           }
         }
       }
+    },
+    "Connect via RedditPOC" : {
+
     },
     "Copied!" : {
       "localizations" : {
@@ -1101,6 +1110,9 @@
         }
       }
     },
+    "Disconnect" : {
+
+    },
     "Do you really wanna delete this credential?" : {
 
     },
@@ -1145,6 +1157,9 @@
           }
         }
       }
+    },
+    "Done" : {
+
     },
     "Download" : {
 
@@ -1384,6 +1399,9 @@
           }
         }
       }
+    },
+    "Fetch & render post (PostsByIds)" : {
+
     },
     "Filtered Subreddits" : {
       "localizations" : {
@@ -2133,6 +2151,9 @@
         }
       }
     },
+    "Log in to Reddit" : {
+
+    },
     "Loggin in..." : {
 
     },
@@ -2480,6 +2501,9 @@
 
     },
     "Normal" : {
+
+    },
+    "Not connected. Log in to reddit.com to mint an Android bearer via RedditPOC." : {
 
     },
     "Now paste it here:" : {
@@ -2989,6 +3013,12 @@
           }
         }
       }
+    },
+    "RedditPOC" : {
+
+    },
+    "RedditPOC (experimental)" : {
+
     },
     "Refresh access token" : {
 
@@ -3606,6 +3636,9 @@
           }
         }
       }
+    },
+    "t3_…" : {
+
     },
     "Take me there!" : {
 
