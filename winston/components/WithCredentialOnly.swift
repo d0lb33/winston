@@ -9,9 +9,13 @@ import SwiftUI
 
 struct WithCredentialOnly<Content: View>: View {
   let credential: RedditCredential?
+  @ObservedObject private var wire = RedditWire.shared
   @ViewBuilder let content: () -> Content
     var body: some View {
-      if !((credential?.validationStatus ?? .invalid) == .authorized) {
+      // Logged in = a connected GraphQL account (migration) OR a legacy
+      // authorized RedditCredential.
+      let authed = wire.connected || (credential?.validationStatus ?? .invalid) == .authorized
+      if !authed {
         VStack(spacing: 20) {
           VStack(spacing: 12) {
             Image(systemName: credential == nil ? "questionmark.key.filled" : "key.slash.fill")

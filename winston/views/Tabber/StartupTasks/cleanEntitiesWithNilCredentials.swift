@@ -7,11 +7,15 @@
 
 import Foundation
 import CoreData
+import Defaults
 
 func cleanCredentialOrphanEntities() {
   func clean(_ e: String) {
     let context = PersistenceController.shared.container.viewContext
-    let predicates = RedditCredentialsManager.shared.credentials.map { NSPredicate(format: "winstonCredentialID != %@", $0.id as CVarArg)  }
+    // Valid owners = legacy RedditCredentials + the connected GraphQL account.
+    var validIDs = RedditCredentialsManager.shared.credentials.map { $0.id }
+    if let acct = Defaults[.graphQLAccount] { validIDs.append(acct.id) }
+    let predicates = validIDs.map { NSPredicate(format: "winstonCredentialID != %@", $0 as CVarArg)  }
     let fetchRequest: NSFetchRequest<NSFetchRequestResult> = NSFetchRequest(entityName: e)
     fetchRequest.predicate = NSCompoundPredicate(andPredicateWithSubpredicates: predicates)
     let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)

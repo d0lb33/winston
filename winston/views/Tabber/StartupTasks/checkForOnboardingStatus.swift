@@ -9,6 +9,8 @@ import Foundation
 import Defaults
 
 func checkForOnboardingStatus() {
+  // A connected GraphQL account counts as onboarded.
+  if Defaults[.graphQLAccount] != nil { return }
   var open = false
   open = switch Defaults[.GeneralDefSettings].onboardingState {
   case .active: true

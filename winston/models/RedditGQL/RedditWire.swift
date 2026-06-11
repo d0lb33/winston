@@ -13,6 +13,7 @@
 
 import Foundation
 import RedditPOC
+import Defaults
 
 @MainActor
 final class RedditWire: ObservableObject {
@@ -22,6 +23,7 @@ final class RedditWire: ObservableObject {
   let client: RedditPOCClient
 
   @Published var connected = false
+  @Published var account: RedditAccount?
   @Published var status = "idle"
 
   private init() {
@@ -30,11 +32,21 @@ final class RedditWire: ObservableObject {
     Task { await refreshConnected() }
   }
 
+  /// Restore connection + account on launch. If a session exists but no account
+  /// is recorded yet (e.g. connected before this code shipped), establish it.
   func refreshConnected() async {
-    connected = (try? await client.currentStoredCredentials()) != nil
+    connected = ((try? await client.currentStoredCredentials()) != nil)
+    guard connected else { return }
+    if let acct = Defaults[.graphQLAccount] {
+      account = acct
+      Defaults[.GeneralDefSettings].redditCredentialSelectedID = acct.id
+    } else {
+      await establishAccount()
+    }
   }
 
-  /// Persist a freshly-captured web session and validate it by minting a bearer.
+  /// Persist a freshly-captured web session, mint a bearer, and set up the
+  /// account so the app's tabs/caches come alive.
   func connect(cookies: [HTTPCookie]) async {
     do {
       let map = Dictionary(cookies.map { ($0.name, $0.value) }, uniquingKeysWith: { a, _ in a })
@@ -42,16 +54,42 @@ final class RedditWire: ObservableObject {
       try await client.saveWebSession(session)
       _ = try await client.getAccount() // forces the session→bearer exchange
       connected = true
-      status = "connected ✅ (bearer minted via RedditPOC)"
+      await establishAccount()
+      status = "connected ✅ u/\(account?.username ?? "?")"
     } catch {
       connected = false
       status = "connect failed: \(describe(error))"
     }
   }
 
+  /// Build/refresh the RedditAccount identity, reuse its id as the app's
+  /// selected-credential id (for CoreData cache tagging), dismiss onboarding,
+  /// and populate me + subscriptions.
+  private func establishAccount() async {
+    let profile = await me()
+    let acct = RedditAccount(
+      id: Defaults[.graphQLAccount]?.id ?? UUID(),
+      username: profile?.name ?? "reddit",
+      avatarURL: profile?.snoovatar_img ?? profile?.icon_img
+    )
+    Defaults[.graphQLAccount] = acct
+    account = acct
+    Defaults[.GeneralDefSettings].redditCredentialSelectedID = acct.id
+
+    if Defaults[.GeneralDefSettings].onboardingState != .dismissed {
+      Defaults[.GeneralDefSettings].onboardingState = .dismissed
+      Nav.shared.presentingSheetsQueue = Nav.shared.presentingSheetsQueue.filter { $0 != .onboarding }
+    }
+
+    _ = await RedditAPI.shared.fetchMe(force: true)
+    _ = await RedditAPI.shared.fetchSubs()
+  }
+
   func disconnect() async {
     try? await store.clearCredentials()
     connected = false
+    account = nil
+    Defaults[.graphQLAccount] = nil
     status = "disconnected"
   }
 

@@ -7,9 +7,18 @@
 
 import Foundation
 import Alamofire
+import Defaults
 
 extension RedditAPI {
   func fetchMe(force: Bool = false, altCredential: RedditCredential? = nil, saveToken: Bool = true) async -> UserData? {
+    if Defaults[.useGraphQLAPI] {
+      if !force, let data = me?.data { return data }
+      if let data = await RedditWire.shared.me() {
+        await MainActor.run { RedditAPI.shared.me = User(data: data) }
+        return data
+      }
+      return nil
+    }
     if !force, let me = me {
       RedditAPI.shared.me = me
     } else {

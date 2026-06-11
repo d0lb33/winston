@@ -28,6 +28,35 @@ extension RedditAPI {
   func fetchSubs(after: String? = nil) async -> [ListingChild<SubredditData>]? {
     guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return [] }
 
+    // GraphQL path (migration): userSubreddits → CachedSub, tagged by the
+    // GraphQL account id (which is redditCredentialSelectedID).
+    if Defaults[.useGraphQLAPI] {
+      let subs = await RedditWire.shared.subscriptions()
+      let finalSubs = subs
+        .map { ListingChild<SubredditData>(kind: "t5", data: $0) }
+        .filter { $0.data?.subreddit_type != "user" }
+      let context = PersistenceController.shared.container.viewContext
+      let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
+      fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)
+      let results = (context.performAndWait { try? context.fetch(fetchRequest) }) ?? []
+      results.forEach { cachedSub in
+        context.performAndWait {
+          if !finalSubs.contains(where: { cachedSub.uuid == $0.data?.name }) { context.delete(cachedSub) }
+        }
+      }
+      await context.perform(schedule: .enqueued) {
+        cleanSubs(finalSubs).compactMap { $0.data }.forEach { x in
+          if let found = results.first(where: { $0.uuid == x.name }) {
+            found.update(data: x, credentialID: currentCredentialID)
+          } else {
+            _ = CachedSub(data: x, context: context, credentialID: currentCredentialID)
+          }
+        }
+      }
+      await context.perform(schedule: .enqueued) { try? context.save() }
+      return nil
+    }
+
     var params = FetchSubsPayload(limit: 100)
     
     if let after = after {

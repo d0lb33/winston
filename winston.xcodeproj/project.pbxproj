@@ -12,6 +12,7 @@
 		0AF2CACD2FDA48E500944869 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */; };
 		0AF2CACF2FDA48F500944869 /* RedditWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACE2FDA48F500944869 /* RedditWire.swift */; };
 		0AF2CAD12FDA4A1900944869 /* RedditLoginWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAD02FDA4A1900944869 /* RedditLoginWebView.swift */; };
+		0AF2CAD32FDA5F2100944869 /* RedditAccount.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAD22FDA5F2100944869 /* RedditAccount.swift */; };
 		65010D032AC70ADD00A8F611 /* getDownloadURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65010D022AC70ADD00A8F611 /* getDownloadURL.swift */; };
 		650ACAFC2A87A36900A7C600 /* calcVotes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650ACAFB2A87A36900A7C600 /* calcVotes.swift */; };
 		6514FFEC2AFD01520051D264 /* WhatsNewKit in Frameworks */ = {isa = PBXBuildFile; productRef = 6514FFEB2AFD01520051D264 /* WhatsNewKit */; };
@@ -587,6 +588,7 @@
 		0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
 		0AF2CACE2FDA48F500944869 /* RedditWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditWire.swift; sourceTree = "<group>"; };
 		0AF2CAD02FDA4A1900944869 /* RedditLoginWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditLoginWebView.swift; sourceTree = "<group>"; };
+		0AF2CAD22FDA5F2100944869 /* RedditAccount.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditAccount.swift; sourceTree = "<group>"; };
 		65010D022AC70ADD00A8F611 /* getDownloadURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = getDownloadURL.swift; sourceTree = "<group>"; };
 		650ACAFB2A87A36900A7C600 /* calcVotes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = calcVotes.swift; sourceTree = "<group>"; };
 		652011F92AC2C46C005DD899 /* themeStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = themeStore.swift; sourceTree = "<group>"; };
@@ -1171,6 +1173,7 @@
 				0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */,
 				0AF2CACE2FDA48F500944869 /* RedditWire.swift */,
 				0AF2CAD02FDA4A1900944869 /* RedditLoginWebView.swift */,
+				0AF2CAD22FDA5F2100944869 /* RedditAccount.swift */,
 			);
 			path = RedditGQL;
 			sourceTree = "<group>";
@@ -2879,6 +2882,7 @@
 				EC63734B2A7906B8000A03A3 /* OnboardingAPIIntro.swift in Sources */,
 				ECFF6B3A2B15A93D00527528 /* AccountSwitcherParticles.swift in Sources */,
 				ECAD0F312A8C1261001C88B5 /* delete.swift in Sources */,
+				0AF2CAD32FDA5F2100944869 /* RedditAccount.swift in Sources */,
 				EC2A39172AC2035F001E5354 /* PostLinkNormal.swift in Sources */,
 				ECA3700D2B47DC3600C73CB0 /* PeakQuestionsScroller.swift in Sources */,
 				EC8F349F2A6FC28400EB8249 /* fetchPosts.swift in Sources */,
