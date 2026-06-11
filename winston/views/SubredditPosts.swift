@@ -15,6 +15,13 @@ enum SubViewType: Hashable {
   case info(Subreddit)
 }
 
+private enum SavedFeedTab: String, CaseIterable, Identifiable {
+  case posts = "Posts"
+  case comments = "Comments"
+
+  var id: String { rawValue }
+}
+
 struct SubredditPosts: View, Equatable {
   static func == (lhs: SubredditPosts, rhs: SubredditPosts) -> Bool {
     lhs.subreddit == rhs.subreddit
@@ -34,8 +41,18 @@ struct SubredditPosts: View, Equatable {
   @State private var filter = "flair:All"
   @State private var customFilter: FilterData?
   
-  @State private var savedMixedMediaLinks: [Either<Post, Comment>]?
+  @State private var savedPosts: [Post]?
+  @State private var savedComments: [Comment]?
+  @State private var savedPostsAfter: String?
+  @State private var savedCommentsAfter: String?
+  @State private var loadedSavedPostIDs: Set<String> = []
+  @State private var loadedSavedCommentIDs: Set<String> = []
+  @State private var savedPostsReachedEnd: Bool = false
+  @State private var savedCommentsReachedEnd: Bool = false
+  @State private var selectedSavedFeed: SavedFeedTab = .posts
   @State private var loadNextSavedData: Bool = false
+  @State private var loadingSavedPosts = false
+  @State private var loadingSavedComments = false
   @State private var isSavedSubreddit: Bool = false
   @State private var hasViewLoaded: Bool = false
   @State private var reachedEndOfFeed: Bool = false
@@ -179,21 +196,78 @@ struct SubredditPosts: View, Equatable {
         }
       }
     } else {
-      if let result = await subreddit.fetchSavedMixedMedia(after: loadMore ? lastPostAfter : nil, searchText: searchText, contentWidth: contentWidth) {
+      await asyncFetchSaved(loadMore: loadMore)
+    }
+  }
+
+  func asyncFetchSaved(loadMore: Bool = false) async {
+    switch selectedSavedFeed {
+    case .posts:
+      guard !loadingSavedPosts else { return }
+      if loadMore && savedPostsReachedEnd {
+        loading = false
+        reachedEndOfFeed = true
+        return
+      }
+
+      loadingSavedPosts = true
+      defer { loadingSavedPosts = false }
+
+      if let result = await subreddit.fetchSavedPosts(after: loadMore ? savedPostsAfter : nil, contentWidth: contentWidth), let newPosts = result.0 {
+        if !loadMore {
+          loadedSavedPostIDs.removeAll()
+        }
+        let uniquePosts = newPosts.filter { loadedSavedPostIDs.insert($0.id).inserted }
+        Task(priority: .background) { await RedditAPI.shared.updatePostsWithAvatar(posts: uniquePosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size) }
         withAnimation {
           if loadMore {
-            savedMixedMediaLinks?.append(contentsOf: result)
+            savedPosts = (savedPosts ?? []) + uniquePosts
           } else {
-            savedMixedMediaLinks = result
+            savedPosts = uniquePosts
           }
-          
+
           loading = false
-          if let lastItem = result.last {
-            lastPostAfter = getItemId(for: lastItem)
-          }
+          savedPostsAfter = result.1
+          savedPostsReachedEnd = result.1 == nil
+          reachedEndOfFeed = savedPostsReachedEnd
         }
-        
-        reachedEndOfFeed = result.count == 0
+      } else {
+        loading = false
+        savedPostsReachedEnd = true
+        reachedEndOfFeed = true
+      }
+    case .comments:
+      guard !loadingSavedComments else { return }
+      if loadMore && savedCommentsReachedEnd {
+        loading = false
+        reachedEndOfFeed = true
+        return
+      }
+
+      loadingSavedComments = true
+      defer { loadingSavedComments = false }
+
+      if let result = await subreddit.fetchSavedComments(after: loadMore ? savedCommentsAfter : nil), let newComments = result.0 {
+        if !loadMore {
+          loadedSavedCommentIDs.removeAll()
+        }
+        let uniqueComments = newComments.filter { loadedSavedCommentIDs.insert($0.id).inserted }
+        withAnimation {
+          if loadMore {
+            savedComments = (savedComments ?? []) + uniqueComments
+          } else {
+            savedComments = uniqueComments
+          }
+
+          loading = false
+          savedCommentsAfter = result.1
+          savedCommentsReachedEnd = result.1 == nil
+          reachedEndOfFeed = savedCommentsReachedEnd
+        }
+      } else {
+        loading = false
+        savedCommentsReachedEnd = true
+        reachedEndOfFeed = true
       }
     }
   }
@@ -215,7 +289,18 @@ struct SubredditPosts: View, Equatable {
       reachedEndOfFeed = false
       
       if isSavedSubreddit {
-        savedMixedMediaLinks?.removeAll()
+        switch selectedSavedFeed {
+        case .posts:
+          savedPosts?.removeAll()
+          savedPostsAfter = nil
+          loadedSavedPostIDs.removeAll()
+          savedPostsReachedEnd = false
+        case .comments:
+          savedComments?.removeAll()
+          savedCommentsAfter = nil
+          loadedSavedCommentIDs.removeAll()
+          savedCommentsReachedEnd = false
+        }
       }
     }
     
@@ -228,6 +313,15 @@ struct SubredditPosts: View, Equatable {
   
   func updatePostsCalcs(_ newTheme: WinstonTheme) {
     Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: subreddit, fetchAvatar: false) } }
+  }
+
+  private var savedMixedMediaLinks: [Either<Post, Comment>]? {
+    switch selectedSavedFeed {
+    case .posts:
+      return savedPosts?.map { Either<Post, Comment>.first($0) }
+    case .comments:
+      return savedComments?.map { Either<Post, Comment>.second($0) }
+    }
   }
   
   var body: some View {
@@ -244,14 +338,38 @@ struct SubredditPosts: View, Equatable {
         }
         .searchable(text: $searchText, prompt: "Search r/\(subreddit.data?.display_name ?? subreddit.id)")
       } else {
-        if let savedMixedMediaLinks = savedMixedMediaLinks, let user = redditAPI.me {
-          MixedContentFeedView(mixedMediaLinks: savedMixedMediaLinks, loadNextData: $loadNextSavedData, user: user, subreddit: subreddit, reachedEndOfFeed: $reachedEndOfFeed)
-            .onChange(of: loadNextSavedData) { shouldLoad in
-              if shouldLoad {
-                fetch(shouldLoad)
-                loadNextSavedData = false
+        VStack(spacing: 0) {
+          SavedFeedTabs(selection: $selectedSavedFeed)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+
+          if let savedMixedMediaLinks = savedMixedMediaLinks {
+            MixedContentFeedView(mixedMediaLinks: savedMixedMediaLinks, loadNextData: $loadNextSavedData, subreddit: selectedSavedFeed == .posts ? nil : subreddit, reachedEndOfFeed: $reachedEndOfFeed)
+              .onChange(of: loadNextSavedData) { shouldLoad in
+                if shouldLoad {
+                  fetch(shouldLoad)
+                  loadNextSavedData = false
+                }
               }
-            }
+          } else if loading {
+            ProgressView()
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
+          } else {
+            SavedEmptyFeedView()
+          }
+        }
+        .onChange(of: selectedSavedFeed) { tab in
+          withAnimation {
+            loadNextSavedData = false
+            loading = tab == .posts ? savedPosts == nil : savedComments == nil
+            reachedEndOfFeed = tab == .posts ? savedPostsReachedEnd : savedCommentsReachedEnd
+          }
+          switch tab {
+          case .posts:
+            if savedPosts == nil { fetch(false) }
+          case .comments:
+            if savedComments == nil { fetch(false) }
+          }
         }
       }
     }
@@ -318,6 +436,38 @@ struct SubredditPosts: View, Equatable {
     }
   }
   
+}
+
+private struct SavedFeedTabs: View {
+  @Binding var selection: SavedFeedTab
+
+  var body: some View {
+    Picker("Saved content", selection: $selection) {
+      ForEach(SavedFeedTab.allCases) { tab in
+        Text(tab.rawValue).tag(tab)
+      }
+    }
+    .pickerStyle(.segmented)
+  }
+}
+
+private struct SavedEmptyFeedView: View {
+  @Environment(\.useTheme) private var selectedTheme
+
+  var body: some View {
+    List {
+      Section {
+        EndOfFeedView()
+      }
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
+      .environment(\.defaultMinListRowHeight, 1)
+    }
+    .themedListBG(selectedTheme.postLinks.bg)
+    .scrollContentBackground(.hidden)
+    .scrollIndicators(.never)
+    .listStyle(.plain)
+  }
 }
 
 

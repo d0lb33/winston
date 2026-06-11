@@ -13,7 +13,6 @@ struct MixedContentFeedView: View {
   var mixedMediaLinks: [Either<Post, Comment>]
   @Binding var loadNextData: Bool
   
-  @StateObject var user: User
   weak var subreddit: Subreddit?
   @State private var loadingOverview = true
   @State private var lastItemId: String? = nil
@@ -48,11 +47,11 @@ struct MixedContentFeedView: View {
     
     List {
       Section {
-        ForEach(Array(mixedMediaLinks.enumerated()), id: \.self.element) { i, item in
+        ForEach(Array(mixedMediaLinks.enumerated()), id: \.element.stableMixedContentID) { i, item in
           MixedContentLink(content: item, theme: postLinksTheme)
           .listRowInsets(EdgeInsets(top: paddingV, leading: paddingH, bottom: paddingV, trailing: paddingH))
           .onAppear {
-            if mixedMediaLinks.count > 0 && (Int(Double(mixedMediaLinks.count) * 0.75) == i) {
+            if !reachedEndOfFeed && mixedMediaLinks.count > 0 && (Int(Double(mixedMediaLinks.count) * 0.75) == i) {
               loadNextData = true
             }
           }
@@ -78,5 +77,11 @@ struct MixedContentFeedView: View {
     .scrollContentBackground(.hidden)
     .scrollIndicators(.never)
     .listStyle(.plain)
+  }
+}
+
+private extension Either where A == Post, B == Comment {
+  var stableMixedContentID: String {
+    getItemId(for: self)
   }
 }

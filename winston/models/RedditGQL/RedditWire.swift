@@ -33,6 +33,23 @@ final class RedditWire: ObservableObject {
   private let store = KeychainTokenStore()
   let client: RedditPOCClient
   private var profileCursorByAfterKey: [String: String] = [:]
+  private let savedPostsFeedVariables: JSONValue = [
+    "feedContextInput": ["layout": "CARD"],
+    "includeGoldInfo": true,
+    "includePostContentPostHint": true,
+    "includePostContentThumbnailEnabled": true,
+    "includeSubredditInPosts": true,
+    "includeAwards": true,
+    "includePostStats": true,
+    "includeCurrentUserAwards": false,
+    "includeStillMediaAltText": false,
+    "includeExtraStillResolutions": false,
+    "includeExtendedVideoAsset": false,
+    "includePlaybackMp4s": false,
+    "includeMuxedMp4s": true,
+    "includeDevvitData": false,
+    "includeCommunityStatus": true,
+  ]
 
   /// All connected accounts (mirrors `Defaults[.graphQLAccounts]`).
   @Published var accounts: [RedditAccount] = []
@@ -262,6 +279,64 @@ final class RedditWire: ObservableObject {
     }
   }
 
+  /// Load one page of saved posts. Reddit exposes saved posts and saved
+  /// comments as separate GraphQL feeds, so the app keeps their pagination
+  /// streams separate instead of synthesizing a mixed listing.
+  func savedPosts(after: String? = nil) async -> ([PostData], String?) {
+    do {
+      let savedPosts = try await client.savedPostsFeedSduiResponse(
+        capturedVariables: savedPostsFeedVariables,
+        after: after
+      )
+      let rawData = savedPosts.data?.rawData
+      let postConnection = rawData?.firstFeedElementConnection()
+      let connectionPostIDs = postConnection?.postIDs ?? []
+      let postIDs = connectionPostIDs.isEmpty ? rawData?.savedPostIDs() ?? [] : connectionPostIDs
+      let nextAfter = normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
+      let posts = await postData(forIDs: postIDs)
+      status = "saved posts → \(posts.count) posts, next \(nextAfter == nil ? "none" : "yes")"
+      print("[RedditWire.savedPosts] after=\(after ?? "nil") ids=\(postIDs.count) hydrated=\(posts.count) next=\(nextAfter ?? "nil") keys=\(rawData?.topLevelKeysDescription ?? "nil")")
+      return (posts, nextAfter)
+    } catch {
+      let message = describe(error)
+      status = "saved posts failed: \(message)"
+      print("[RedditWire.savedPosts] after=\(after ?? "nil") failed: \(message)")
+      return ([], nil)
+    }
+  }
+
+  /// Load one page of saved comments using Reddit's paginated saved-comments
+  /// GraphQL surface.
+  func savedComments(after: String? = nil) async -> ([CommentData], String?) {
+    do {
+      var extra: [String: JSONValue] = [:]
+      if let after, !after.isEmpty {
+        extra["after"] = .string(after)
+      }
+      let savedComments = try await client.legacySavedCommentsResponse(extra: extra)
+      let rawData = savedComments.data?.rawData
+      let comments = rawData?.savedComments().map { comment in
+        CommentData(
+          graphQL: comment,
+          depth: nil,
+          parentID: comment.postInfo?.id,
+          postFullname: comment.postInfo?.id ?? "",
+          authorName: nil
+        )
+      } ?? []
+      let pageInfo = rawData?.firstPageInfo()
+      let nextAfter = normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
+      status = "saved comments → \(comments.count) comments, next \(nextAfter == nil ? "none" : "yes")"
+      print("[RedditWire.savedComments] after=\(after ?? "nil") comments=\(comments.count) next=\(nextAfter ?? "nil") keys=\(rawData?.topLevelKeysDescription ?? "nil")")
+      return (comments, nextAfter)
+    } catch {
+      let message = describe(error)
+      status = "saved comments failed: \(message)"
+      print("[RedditWire.savedComments] after=\(after ?? "nil") failed: \(message)")
+      return ([], nil)
+    }
+  }
+
   private func redditFeedSortAndTime(from sort: SubListingSortOption) -> (sort: RedditFeedSort, time: RedditFeedTime?) {
     switch sort {
     case .best:
@@ -275,6 +350,11 @@ final class RedditWire: ObservableObject {
     case .top(let topSortOption):
       return (.top, redditFeedTime(from: topSortOption))
     }
+  }
+
+  private func normalizedCursor(_ cursor: String?) -> String? {
+    guard let cursor, !cursor.isEmpty else { return nil }
+    return cursor
   }
 
   private func redditFeedTime(from topSortOption: SubListingSortOption.TopListingSortOption) -> RedditFeedTime {
@@ -298,9 +378,9 @@ final class RedditWire: ObservableObject {
   /// PostData and a FLAT list of comment children (each tagged with parent_id)
   /// ready for `nestComments(_, parentID:)`. MVP: initial tree only (no
   /// load-more; "more" nodes are dropped).
-  func postWithComments(postID: String) async -> (PostData?, [ListingChild<CommentData>]) {
+  func postWithComments(postID: String, sort: CommentSortOption = .confidence) async -> (PostData?, [ListingChild<CommentData>]) {
     do {
-      let resp = try await client.postCommentsResponse(postID: postID)
+      let resp = try await client.postCommentsResponse(postID: postID, sort: redditCommentSort(from: sort))
       guard let post = resp.data?.postInfoById else {
         status = "postComments: no post in response"
         return (nil, [])
@@ -317,6 +397,17 @@ final class RedditWire: ObservableObject {
     } catch {
       status = "postComments failed: \(describe(error))"
       return (nil, [])
+    }
+  }
+
+  private func redditCommentSort(from sort: CommentSortOption) -> RedditCommentSortType {
+    switch sort {
+    case .new:
+      return .newest
+    case .qa:
+      return .questionAnswer
+    default:
+      return .confidence
     }
   }
 
@@ -521,6 +612,46 @@ final class RedditWire: ObservableObject {
     }
   }
 
+  /// Load the Android About-page operation cluster and distill the raw GraphQL
+  /// payloads into a UI-safe summary. The response shapes are still being
+  /// mapped in RedditPOC, so this intentionally extracts only stable labels,
+  /// counts, and flags.
+  func subredditAbout(name: String, subredditID: String?) async -> SubredditAboutSummary? {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    do {
+      let responses = try await client.subredditAbout(name: trimmed, subredditID: subredditID)
+      let summary = SubredditAboutSummary(responses: responses)
+      status = "about \(trimmed) -> \(summary.loadedOperationCount) operations"
+      return summary
+    } catch {
+      let message = describe(error)
+      status = "about failed: \(message)"
+      print("[RedditWire.subredditAbout] name=\(trimmed) id=\(subredditID ?? "nil") failed: \(message)")
+      return nil
+    }
+  }
+
+  /// Rules are present in the Android About-page structured-style payload under
+  /// `subredditInfoByName.rules`.
+  func subredditRules(name: String) async -> [SubredditRuleSummary]? {
+    let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return nil }
+
+    do {
+      let response = try await client.subredditStructuredStyle(trimmed)
+      let rules = response.json?.subredditRules() ?? []
+      status = "rules \(trimmed) -> \(rules.count)"
+      return rules
+    } catch {
+      let message = describe(error)
+      status = "rules failed: \(message)"
+      print("[RedditWire.subredditRules] name=\(trimmed) failed: \(message)")
+      return nil
+    }
+  }
+
   // MARK: - Mutations
 
   /// Vote on a post (`t3_`) or comment (`t1_`). Maps winston's VoteAction to the
@@ -633,5 +764,497 @@ final class RedditWire: ObservableObject {
 
   func captureUserSubreddits() async -> String {
     await capture(.userSubreddits, variables: RedditBuilders.userSubredditsVariables())
+  }
+}
+
+struct SubredditAboutSummary: Equatable {
+  struct Tile: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let value: String
+    let systemImage: String
+  }
+
+  struct TextSection: Equatable, Identifiable {
+    let id: String
+    let title: String
+    let body: String
+    let systemImage: String
+  }
+
+  var title: String?
+  var publicDescription: String?
+  var subscribers: Int?
+  var activeUsers: Int?
+  var createdAt: Date?
+  var channelsEnabled: Bool?
+  var muted: Bool?
+  var postingAllowed: Bool?
+  var flairRequired: Bool?
+  var wikiExcerpt: String?
+  var highlights: [TextSection]
+  var widgets: [TextSection]
+  var loadedOperationCount: Int
+
+  init(responses: SubredditAboutResponses) {
+    let info = responses.info.json
+    let composer = responses.postComposerCommunity.json
+    let structuredStyle = responses.structuredStyle.json
+    let wiki = responses.wiki.json
+    let highlightsJSON = responses.communityHighlights?.json
+    let postRequirements = responses.postRequirements?.json
+    let allJSON = responses.allJSON
+
+    title = info?.firstString(keys: ["title", "displayText", "name", "prefixedName"])
+    publicDescription = allJSON.firstNonEmptyString(keys: [
+      "publicDescriptionText",
+      "publicDescription",
+      "descriptionText",
+      "description",
+      "markdown"
+    ])
+    subscribers = info?.firstInt(keys: ["subscribersCount", "subscribers", "membersCount"])
+      ?? allJSON.firstInt(keys: ["subscribersCount", "subscribers", "membersCount"])
+    activeUsers = info?.firstInt(keys: ["activeUserCount", "accountsActive", "accounts_active", "onlineCount"])
+      ?? allJSON.firstInt(keys: ["activeUserCount", "accountsActive", "accounts_active", "onlineCount"])
+    createdAt = info?.firstDate(keys: ["createdAt", "created", "createdUtc", "createdUTC"])
+      ?? allJSON.firstDate(keys: ["createdAt", "created", "createdUtc", "createdUTC"])
+    channelsEnabled = responses.channelsEnabled.json?.firstBool(keys: [
+      "isSubredditChannelsEnabled",
+      "subredditChannelsEnabled",
+      "channelsEnabled",
+      "isChannelsEnabled"
+    ])
+    muted = responses.muted?.json?.firstBool(keys: ["isMuted", "muted"])
+    postingAllowed = composer?.firstBool(keys: [
+      "canSubmit",
+      "canCreatePost",
+      "isPostingAllowed",
+      "isUserAllowedToPost",
+      "isContributorAllowed"
+    ])
+    flairRequired = postRequirements?.firstBool(keys: [
+      "isFlairRequired",
+      "linkFlairRequired",
+      "flairRequired"
+    ])
+    wikiExcerpt = wiki?.firstNonEmptyString(keys: ["markdown", "content", "text", "body"])?.trimmedAboutBody
+    highlights = highlightsJSON?.aboutTextSections(limit: 4, idPrefix: "highlight", fallbackTitle: "Highlight", systemImage: "pin.fill") ?? []
+    widgets = structuredStyle?.aboutTextSections(limit: 6, idPrefix: "widget", fallbackTitle: "Community", systemImage: "rectangle.grid.1x2.fill") ?? []
+
+    loadedOperationCount = responses.allJSON.count
+  }
+
+  var statusTiles: [Tile] {
+    var tiles: [Tile] = []
+    if let channelsEnabled {
+      tiles.append(Tile(
+        id: "channels",
+        title: "Channels",
+        value: channelsEnabled ? "Enabled" : "Disabled",
+        systemImage: "bubble.left.and.bubble.right.fill"
+      ))
+    }
+    if let muted {
+      tiles.append(Tile(
+        id: "muted",
+        title: "Muted",
+        value: muted ? "Yes" : "No",
+        systemImage: muted ? "speaker.slash.fill" : "speaker.wave.2.fill"
+      ))
+    }
+    if let postingAllowed {
+      tiles.append(Tile(
+        id: "posting",
+        title: "Posting",
+        value: postingAllowed ? "Open" : "Limited",
+        systemImage: "square.and.pencil"
+      ))
+    }
+    if let flairRequired {
+      tiles.append(Tile(
+        id: "flair",
+        title: "Post flair",
+        value: flairRequired ? "Required" : "Optional",
+        systemImage: "tag.fill"
+      ))
+    }
+    return tiles
+  }
+
+  var hasExtraContent: Bool {
+    !statusTiles.isEmpty || wikiExcerpt != nil || !highlights.isEmpty || !widgets.isEmpty
+  }
+}
+
+struct SubredditRuleSummary: Equatable, Identifiable {
+  let id: String
+  let name: String
+  let markdown: String
+  let priority: Int
+}
+
+private extension SubredditAboutResponses {
+  var allJSON: [JSONValue] {
+    [
+      info.json,
+      structuredStyle.json,
+      postComposerCommunity.json,
+      wiki.json,
+      translatedStrings?.json,
+      channelsEnabled.json,
+      devvit?.json,
+      settings?.json,
+      communityHighlights?.json,
+      postRequirements?.json,
+      muted?.json,
+      pendingInvitations?.json,
+      userEligibleToApply?.json,
+      eligibleUxExperiences?.json
+    ].compactMap { $0 }
+  }
+}
+
+private extension Array where Element == JSONValue {
+  func firstNonEmptyString(keys: [String]) -> String? {
+    for value in self {
+      if let string = value.firstNonEmptyString(keys: keys) {
+        return string
+      }
+    }
+    return nil
+  }
+
+  func firstInt(keys: [String]) -> Int? {
+    for value in self {
+      if let int = value.firstInt(keys: keys) {
+        return int
+      }
+    }
+    return nil
+  }
+
+  func firstDate(keys: [String]) -> Date? {
+    for value in self {
+      if let date = value.firstDate(keys: keys) {
+        return date
+      }
+    }
+    return nil
+  }
+}
+
+private extension JSONValue {
+  func firstString(keys: [String]) -> String? {
+    if let object = objectValue, let value = object.string(for: keys) {
+      return value
+    }
+
+    for object in objects(containingAny: keys) {
+      if let value = object.string(for: keys) {
+        return value
+      }
+    }
+    return nil
+  }
+
+  func firstNonEmptyString(keys: [String]) -> String? {
+    firstString(keys: keys)?.trimmedAboutBody
+  }
+
+  func firstInt(keys: [String]) -> Int? {
+    if let object = objectValue, let value = object.int(for: keys) {
+      return value
+    }
+
+    for object in objects(containingAny: keys) {
+      if let value = object.int(for: keys) {
+        return value
+      }
+    }
+    return nil
+  }
+
+  func firstBool(keys: [String]) -> Bool? {
+    if let object = objectValue, let value = object.bool(for: keys) {
+      return value
+    }
+
+    for object in objects(containingAny: keys) {
+      if let value = object.bool(for: keys) {
+        return value
+      }
+    }
+    return nil
+  }
+
+  func firstDate(keys: [String]) -> Date? {
+    if let object = objectValue, let value = object.date(for: keys) {
+      return value
+    }
+
+    for object in objects(containingAny: keys) {
+      if let value = object.date(for: keys) {
+        return value
+      }
+    }
+    return nil
+  }
+
+  func aboutTextSections(
+    limit: Int,
+    idPrefix: String,
+    fallbackTitle: String,
+    systemImage: String
+  ) -> [SubredditAboutSummary.TextSection] {
+    var seen = Set<String>()
+    var sections: [SubredditAboutSummary.TextSection] = []
+    let candidates = objects(containingAny: ["title", "shortName", "displayText", "text", "markdown", "content", "description", "postTitle"])
+
+    for object in candidates {
+      let typeName = object["__typename"]?.stringValue?.lowercased() ?? ""
+      let title = object.string(for: ["title", "shortName", "displayText", "label", "postTitle"])?.trimmedAboutBody
+      let body = object.string(for: ["markdown", "text", "content", "description", "body"])?.trimmedAboutBody
+      let hasWidgetShape = typeName.contains("widget") || object["widgetId"] != nil || object["styles"] != nil
+      let hasHighlightShape = typeName.contains("post") || object["post"] != nil || object["postInfo"] != nil || object["postTitle"] != nil
+
+      guard idPrefix != "widget" || hasWidgetShape else { continue }
+      guard idPrefix != "highlight" || hasHighlightShape else { continue }
+      guard let titleOrBody = title ?? body, !titleOrBody.isEmpty else { continue }
+
+      let resolvedTitle = title ?? fallbackTitle
+      let resolvedBody = body ?? titleOrBody
+      guard resolvedTitle != resolvedBody || title == nil else { continue }
+
+      let key = "\(resolvedTitle)|\(resolvedBody)"
+      guard seen.insert(key).inserted else { continue }
+
+      sections.append(SubredditAboutSummary.TextSection(
+        id: "\(idPrefix)-\(sections.count)",
+        title: resolvedTitle,
+        body: resolvedBody,
+        systemImage: systemImage
+      ))
+
+      if sections.count >= limit { break }
+    }
+
+    return sections
+  }
+
+  func subredditRules() -> [SubredditRuleSummary] {
+    let ruleObjects = objects(containing: "rules")
+      .flatMap { object -> [[String: JSONValue]] in
+        guard let rules = object["rules"]?.arrayValue else { return [] }
+        return rules.compactMap(\.objectValue)
+      }
+      .filter { object in
+        object["__typename"]?.stringValue == "SubredditRule" || object["content"] != nil || object["priority"] != nil
+      }
+
+    var seen = Set<String>()
+    return ruleObjects.compactMap { object in
+      let name = object.string(for: ["name", "shortName", "short_name", "title"])?.trimmedAboutBody
+      let markdown = object["content"]?.objectValue?.string(for: ["markdown", "description", "text", "body"])?.trimmedAboutBody
+        ?? object.string(for: ["markdown", "description", "text", "body"])?.trimmedAboutBody
+        ?? ""
+      let priority = object.int(for: ["priority"]) ?? Int.max
+      let id = object.string(for: ["id"]) ?? "\(priority)-\(name ?? "")"
+
+      guard let name, !name.isEmpty, seen.insert(id).inserted else { return nil }
+      return SubredditRuleSummary(id: id, name: name, markdown: markdown, priority: priority)
+    }
+    .sorted { lhs, rhs in
+      if lhs.priority == rhs.priority { return lhs.name < rhs.name }
+      return lhs.priority < rhs.priority
+    }
+  }
+
+  func decodeObject<T: Decodable>(_ type: T.Type) -> T? {
+    guard let data = try? JSONEncoder().encode(self) else { return nil }
+    return try? JSONDecoder().decode(type, from: data)
+  }
+
+  func firstFeedElementConnection() -> FeedElementConnection? {
+    let connections = objects(containing: "edges")
+      .compactMap { JSONValue.object($0).decodeObject(FeedElementConnection.self) }
+    return connections.first { !$0.postIDs.isEmpty } ?? connections.first { $0.pageInfo != nil }
+  }
+
+  func groupIDs(prefix: String) -> [String] {
+    var seen = Set<String>()
+    return objects(containing: "groupId").compactMap { object in
+      guard let groupID = object["groupId"]?.stringValue, groupID.hasPrefix(prefix), seen.insert(groupID).inserted else {
+        return nil
+      }
+      return groupID
+    }
+  }
+
+  func savedPostIDs() -> [String] {
+    var seen = Set<String>()
+    var ids: [String] = []
+
+    func append(_ id: String?) {
+      guard let id, id.hasPrefix("t3_"), seen.insert(id).inserted else { return }
+      ids.append(id)
+    }
+
+    groupIDs(prefix: "t3_").forEach { append($0) }
+    objects(containing: "post").forEach { object in
+      append(object["post"]?.objectValue?["id"]?.stringValue)
+    }
+    objects(containing: "postId").forEach { object in
+      append(object["postId"]?.stringValue)
+    }
+    objects(containing: "id").forEach { object in
+      let typeName = object["__typename"]?.stringValue ?? ""
+      if typeName == "SubredditPost" || typeName == "ProfilePost" || typeName == "Post" {
+        append(object["id"]?.stringValue)
+      }
+    }
+
+    return ids
+  }
+
+  func savedComments() -> [RedditPOC.Comment] {
+    var seen = Set<String>()
+    let candidates = objects(containing: "node") + objects(containing: "comment") + objects(containing: "id")
+    return candidates.compactMap { object in
+      let comment = object["node"]?.decodeObject(RedditPOC.Comment.self)
+        ?? object["comment"]?.decodeObject(RedditPOC.Comment.self)
+        ?? JSONValue.object(object).decodeObject(RedditPOC.Comment.self)
+      guard let comment, let id = comment.id, id.hasPrefix("t1_"), seen.insert(id).inserted else {
+        return nil
+      }
+      return comment
+    }
+  }
+
+  func firstPageInfo() -> PageInfo? {
+    let pageInfoObjects = objects(containing: "pageInfo")
+      .compactMap { $0["pageInfo"]?.decodeObject(PageInfo.self) }
+    if let pageInfo = pageInfoObjects.first(where: { $0.endCursor != nil || $0.hasNextPage != nil }) {
+      return pageInfo
+    }
+
+    return objects(containing: "endCursor")
+      .compactMap { JSONValue.object($0).decodeObject(PageInfo.self) }
+      .first
+  }
+
+  var topLevelKeysDescription: String {
+    guard let object = objectValue else { return "not-object" }
+    return object.keys.sorted().joined(separator: ",")
+  }
+
+  func objects(containing key: String) -> [[String: JSONValue]] {
+    var matches: [[String: JSONValue]] = []
+    collectObjects(containing: key, into: &matches)
+    return matches
+  }
+
+  func objects(containingAny keys: [String]) -> [[String: JSONValue]] {
+    var matches: [[String: JSONValue]] = []
+    collectObjects(containingAny: Set(keys), into: &matches)
+    return matches
+  }
+
+  private func collectObjects(containing key: String, into matches: inout [[String: JSONValue]]) {
+    switch self {
+    case .object(let object):
+      if object[key] != nil {
+        matches.append(object)
+      }
+      object.values.forEach { $0.collectObjects(containing: key, into: &matches) }
+    case .array(let array):
+      array.forEach { $0.collectObjects(containing: key, into: &matches) }
+    case .null, .bool, .number, .string:
+      break
+    }
+  }
+
+  private func collectObjects(containingAny keys: Set<String>, into matches: inout [[String: JSONValue]]) {
+    switch self {
+    case .object(let object):
+      if object.keys.contains(where: keys.contains) {
+        matches.append(object)
+      }
+      object.values.forEach { $0.collectObjects(containingAny: keys, into: &matches) }
+    case .array(let array):
+      array.forEach { $0.collectObjects(containingAny: keys, into: &matches) }
+    case .null, .bool, .number, .string:
+      break
+    }
+  }
+}
+
+private extension Dictionary where Key == String, Value == JSONValue {
+  func string(for keys: [String]) -> String? {
+    for key in keys {
+      if let value = self[key]?.stringValue, !value.isEmpty { return value }
+      if let object = self[key]?.objectValue, let value = object.string(for: keys) { return value }
+      if let array = self[key]?.arrayValue {
+        for item in array {
+          if let object = item.objectValue, let value = object.string(for: keys) {
+            return value
+          }
+        }
+      }
+    }
+    return nil
+  }
+
+  func int(for keys: [String]) -> Int? {
+    for key in keys {
+      if let value = self[key]?.intValue { return value }
+      if let string = self[key]?.stringValue, let value = Int(string) { return value }
+      if let object = self[key]?.objectValue, let value = object.int(for: keys) { return value }
+    }
+    return nil
+  }
+
+  func bool(for keys: [String]) -> Bool? {
+    for key in keys {
+      if let value = self[key]?.boolValue { return value }
+      if let string = self[key]?.stringValue {
+        switch string.lowercased() {
+        case "true", "yes", "1": return true
+        case "false", "no", "0": return false
+        default: break
+        }
+      }
+      if let object = self[key]?.objectValue, let value = object.bool(for: keys) { return value }
+    }
+    return nil
+  }
+
+  func date(for keys: [String]) -> Date? {
+    for key in keys {
+      if let seconds = self[key]?.doubleValue {
+        return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
+      }
+      if let string = self[key]?.stringValue {
+        if let seconds = Double(string) {
+          return Date(timeIntervalSince1970: seconds > 10_000_000_000 ? seconds / 1000 : seconds)
+        }
+        if let date = ISO8601DateFormatter().date(from: string) {
+          return date
+        }
+      }
+      if let object = self[key]?.objectValue, let value = object.date(for: keys) { return value }
+    }
+    return nil
+  }
+}
+
+private extension String {
+  var trimmedAboutBody: String? {
+    let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
+      .replacingOccurrences(of: "&amp;", with: "&")
+      .replacingOccurrences(of: "&lt;", with: "<")
+      .replacingOccurrences(of: "&gt;", with: ">")
+    guard !trimmed.isEmpty else { return nil }
+    return trimmed
   }
 }

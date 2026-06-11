@@ -7,8 +7,6 @@
 
 import SwiftUI
 import SwiftDate
-import Defaults
-import AlertToast
 
 enum SubInfoTabs: String, CaseIterable, Identifiable {
   var id: Self {
@@ -27,11 +25,9 @@ struct SubredditInfo: View {
   
   @StateObject private var myPosts = ObservableArray<Post>()
   @State private var myPostsLoaded = false
-  @State private var addedToFavs = false
-  @Default(.likedButNotSubbed) var likedButNotSubbed
+  @State private var isFavorited = false
   @Environment(\.useTheme) private var theme
   var body: some View {
-    let isliked = likedButNotSubbed.contains(subreddit)
     List {
       Group {
         if let data = subreddit.data {
@@ -49,10 +45,6 @@ struct SubredditInfo: View {
                 
               }
             }
-//            .toast(isPresenting: $addedToFavs){
-//              AlertToast(displayMode: .hud, type: .systemImage("star.fill", Color.blue), title: "Added to Favorites")
-//            }
-            
             Picker("", selection: $selectedTab) {
               ForEach(SubInfoTabs.allCases) { tab in
                 Text(tab.rawValue)
@@ -67,22 +59,23 @@ struct SubredditInfo: View {
           .toolbar{
             ToolbarItem(){
               let remoteFavorited = data.user_has_favorited ?? false
-              let canRemoteFavorite = (data.user_is_subscriber ?? false) || remoteFavorited
               Button{
-                Task{
-                  if canRemoteFavorite {
-                    subreddit.favoriteToggle()
-                  } else {
-                    let liked = subreddit.localFavoriteToggle()
-                    if liked {
-                      addedToFavs.toggle()
-                    }
-                  }
+                withAnimation {
+                  isFavorited.toggle()
                 }
+                subreddit.favoriteToggle()
               } label: {
-                Label("Favorites", systemImage: (isliked || remoteFavorited) ? "star.fill" : "star")
+                Label("Favorites", systemImage: isFavorited ? "star.fill" : "star")
                   .foregroundColor(.blue)
                   .labelStyle(.iconOnly)
+              }
+              .onAppear {
+                isFavorited = remoteFavorited
+              }
+              .onChange(of: remoteFavorited) { favorited in
+                withAnimation {
+                  isFavorited = favorited
+                }
               }
             }
           }

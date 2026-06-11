@@ -32,13 +32,24 @@ struct MixedContentLink: View, Equatable {
     case .second(let comment):
       VStack {
         ShortCommentPostLink(comment: comment)
+          .allowsHitTesting(false)
           .padding()
         if let commentWinstonData = comment.winstonData {
           CommentLink(showReplies: false, comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
+            .allowsHitTesting(false)
         }
       }
       .background(PostLinkBG(theme: theme, stickied: false, secondary: false).equatable())
       .mask(RR(theme.theme.cornerRadius, Color.black).equatable())
+      .contentShape(Rectangle())
+      .onTapGesture {
+        openCommentPost(comment)
+      }
     }
+  }
+
+  private func openCommentPost(_ comment: Comment) {
+    guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
+    Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
   }
 }

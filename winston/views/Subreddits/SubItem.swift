@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import Defaults
 
 struct SubItemButton: View, Equatable {
   static func == (lhs: SubItemButton, rhs: SubItemButton) -> Bool {
@@ -25,30 +24,33 @@ struct SubItemButton: View, Equatable {
   }
 }
 
-struct SubItem: View, Equatable {
-  static func == (lhs: SubItem, rhs: SubItem) -> Bool {
-    lhs.sub == rhs.sub && lhs.isActive == rhs.isActive
-  }
-  
+struct SubItem: View {
   var isActive: Bool
   var selectSub: (Subreddit) -> ()
   @ObservedObject var sub: Subreddit
-  var cachedSub: CachedSub
-//  @Default(.likedButNotSubbed) private var likedButNotSubbed
+  @ObservedObject var cachedSub: CachedSub
+  var onFavoriteChanged: ((Bool) -> ())?
+  @State private var isFavorited: Bool
+
+  init(isActive: Bool, selectSub: @escaping (Subreddit) -> (), sub: Subreddit, cachedSub: CachedSub, onFavoriteChanged: ((Bool) -> ())? = nil) {
+    self.isActive = isActive
+    self.selectSub = selectSub
+    self._sub = ObservedObject(wrappedValue: sub)
+    self._cachedSub = ObservedObject(wrappedValue: cachedSub)
+    self.onFavoriteChanged = onFavoriteChanged
+    self._isFavorited = State(initialValue: cachedSub.user_has_favorited)
+  }
   
   func favoriteToggle() {
-//    guard let sub = sub else { return }
-//    if likedButNotSubbed.contains(sub) {
-//      _ = sub.localFavoriteToggle()
-//    } else {
-      sub.favoriteToggle(entity: cachedSub)
-//    }
+    withAnimation {
+      isFavorited.toggle()
+    }
+    onFavoriteChanged?(isFavorited)
+    sub.favoriteToggle(entity: cachedSub, onStateChange: onFavoriteChanged)
   }
   
   var body: some View {
     if let data = sub.data {
-      let favorite = cachedSub.user_has_favorited
-//      let localFav = likedButNotSubbed.contains(sub)
 //      let isActive = selectedSub == .reddit(.subFeed(sub))
       WListButton(showArrow: !IPAD, active: isActive) {
         selectSub(sub)
@@ -64,8 +66,16 @@ struct SubItem: View, Equatable {
           Spacer()
           
           Image(systemName: "star.fill")
-            .foregroundColor(favorite ? Color.accentColor : .gray.opacity(0.3))
+            .foregroundColor(isFavorited ? Color.accentColor : .gray.opacity(0.3))
             .highPriorityGesture( TapGesture().onEnded(favoriteToggle) )
+        }
+      }
+      .onAppear {
+        isFavorited = cachedSub.user_has_favorited
+      }
+      .onChange(of: cachedSub.user_has_favorited) { favorited in
+        withAnimation {
+          isFavorited = favorited
         }
       }
       

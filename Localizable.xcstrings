@@ -1185,6 +1185,9 @@
     "Done" : {
 
     },
+    "Download" : {
+
+    },
     "Drag Left" : {
       "localizations" : {
         "de" : {
@@ -2165,6 +2168,9 @@
     "LOAD MORE" : {
 
     },
+    "Loading About details..." : {
+
+    },
     "Lock Winston With %@" : {
       "localizations" : {
         "de" : {
@@ -2545,7 +2551,16 @@
     "No credential" : {
 
     },
+    "No description yet." : {
+
+    },
+    "No extra About details found." : {
+
+    },
     "No filtered posts" : {
+
+    },
+    "No rules were returned for r/%@" : {
 
     },
     "Normal" : {
@@ -3165,6 +3180,9 @@
           }
         }
       }
+    },
+    "Saved content" : {
+
     },
     "Search" : {
       "localizations" : {
@@ -3817,6 +3835,9 @@
         }
       }
     },
+    "Theme Store" : {
+
+    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3884,6 +3905,9 @@
     "There are two ways for doing that:" : {
 
     },
+    "There was an error importing this theme" : {
+
+    },
     "This is not working yet :(" : {
       "localizations" : {
         "de" : {
@@ -3901,6 +3925,7 @@
       }
     },
     "This sub doesn't have any rules" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

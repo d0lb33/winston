@@ -354,6 +354,7 @@ extension SubredditData {
     key_color = s.primaryColor
     over18 = s.isNsfw
     user_is_subscriber = s.isSubscribed
+    user_has_favorited = s.isFavorite
     url = s.url ?? s.path ?? "/r/\(s.name ?? bareID)/"
   }
 }

@@ -30,8 +30,17 @@ struct ShortCommentPostLink: View {
       )
       .foregroundColor(.primary)
       .multilineTextAlignment(.leading)
+      .contentShape(Rectangle())
+      .onTapGesture {
+        openCommentPost(data: data)
+      }
     } else {
       Text("Oops")
     }
+  }
+
+  private func openCommentPost(data: CommentData) {
+    guard let linkID = data.link_id, let subID = data.subreddit else { return }
+    Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
   }
 }

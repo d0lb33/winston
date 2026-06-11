@@ -33,24 +33,7 @@ extension Subreddit {
     self.data = SubredditData(entity: entity)
   }
   
-  /// Add a subreddit to the local like list
-  /// This is a seperate list from reddits liked intenden for usage with subreddits a user wants to favorite but not subscribe to
-  /// returns true if added to favorites and false if removed
-  func localFavoriteToggle() -> Bool {
-    var likedButNotSubbed = Defaults[.likedButNotSubbed]
-    // If the user is not subscribed
-    
-    // If its already in liked remove it
-    if likedButNotSubbed.contains(self) {
-      likedButNotSubbed = likedButNotSubbed.filter{ $0.id != self.id }
-      return false
-    } else { // Else add it
-      Defaults[.likedButNotSubbed].append(self)
-      return true
-    }
-  }
-  
-  func favoriteToggle(entity: CachedSub? = nil) {
+  func favoriteToggle(entity: CachedSub? = nil, onStateChange: ((Bool) -> ())? = nil) {
     guard let data else { return }
     let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
     let context = entity?.managedObjectContext ?? PersistenceController.shared.container.viewContext
@@ -81,6 +64,8 @@ extension Subreddit {
         }
         try? context.save()
       }
+
+      onStateChange?(favorited)
     }
 
     applyFavoriteState(targetFavorited)
@@ -137,7 +122,6 @@ extension Subreddit {
       let initiallySubscribed = data.user_is_subscriber ?? (cachedSub(named: data.name) != nil)
       let targetSubscribed = !initiallySubscribed
       
-      //      let likedButNotSubbed = Defaults[.likedButNotSubbed]
       if optimistic {
         applySubscriptionState(targetSubscribed, data: data)
         context.performAndWait {
@@ -214,11 +198,8 @@ extension Subreddit {
     }
   }
   
-  func fetchRules() async -> RedditAPI.FetchSubRulesResponse? {
-    if let data = await RedditAPI.shared.fetchSubRules(data?.display_name ?? id) {
-      return data
-    }
-    return nil
+  func fetchRules() async -> [SubredditRuleSummary]? {
+    await RedditWire.shared.subredditRules(name: data?.display_name ?? id)
   }
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
@@ -238,35 +219,32 @@ extension Subreddit {
     return nil
   }
   
-  func fetchSavedMixedMedia(after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> [Either<Post, Comment>]? {
-    // saved feed is a mix of posts and comments - logic needs to be handled separately
-    if let savedMediaData = await RedditAPI.shared.fetchSavedPosts("saved", after: after, searchText: searchText) {
-      await MainActor.run {
-        self.loading = false
-      }
-      
-      var comments: [Comment] = []
-      
-      let selectedTheme = getEnabledTheme()
-      
-      let returnData: [Either<Post, Comment>]? = savedMediaData.map {
-        switch $0 {
-        case .first(let postData):
-          return .first(Post(data: postData, sub: self))
-        case .second(let commentData):
-          let comment = Comment(data: commentData)
-          comments.append(comment)
-          return .second(comment)
-        }
-      }
-      
-      Task(priority: .background) { [comments] in
-        _ = await RedditAPI.shared.updateCommentsWithAvatar(comments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
-      }
-      
-      return returnData
+  func fetchSavedPosts(after: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
+    guard Defaults[.useGraphQLAPI] else { return nil }
+
+    let (savedPostData, nextAfter) = await RedditWire.shared.savedPosts(after: after)
+    await MainActor.run {
+      self.loading = false
     }
-    return nil
+
+    return (savedPostData.map { Post(data: $0, contentWidth: contentWidth) }, nextAfter)
+  }
+
+  func fetchSavedComments(after: String? = nil) async -> ([Comment]?, String?)? {
+    guard Defaults[.useGraphQLAPI] else { return nil }
+
+    let (savedCommentData, nextAfter) = await RedditWire.shared.savedComments(after: after)
+    await MainActor.run {
+      self.loading = false
+    }
+
+    let comments = savedCommentData.map { Comment(data: $0) }
+    let selectedTheme = getEnabledTheme()
+    Task(priority: .background) { [comments] in
+      _ = await RedditAPI.shared.updateCommentsWithAvatar(comments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
+    }
+
+    return (comments, nextAfter)
   }
   
   func resetFlairs() {

@@ -12,7 +12,6 @@ import WebKit
 import UniformTypeIdentifiers
 
 struct GeneralPanel: View {
-  @Default(.likedButNotSubbed) var likedButNotSubbed
   @Default(.BehaviorDefSettings) var behaviorDefSettings
   @State private var totalCacheSize: String = ""
   @Environment(\.useTheme) private var theme
@@ -84,13 +83,6 @@ struct GeneralPanel: View {
           }
           .onAppear{
             calculateTotalCacheSize()
-          }
-          
-          WListButton {
-            likedButNotSubbed = []
-          } label: {
-            Label("Clear " + String(likedButNotSubbed.count) + " Local Favorites", systemImage: "heart.slash.fill")
-              .foregroundColor(.red)
           }
         }
       }

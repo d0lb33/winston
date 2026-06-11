@@ -90,6 +90,7 @@ extension Post {
       if let sub {
         self.winstonData?.subreddit = sub
       } else {
+        self.winstonData?._weakSubreddit = nil
         self.winstonData?._strongSubreddit = Subreddit(id: data.subreddit)
       }
       
@@ -495,16 +496,17 @@ extension Post {
   func refreshPost(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> ([Comment]?, String?)? {
     // GraphQL path (migration): post + comment forest via RedditPOC. The flat
     // forest is assembled into the reply tree by nestComments. MVP: initial
-    // tree only, default sort.
+    // tree only.
     if Defaults[.useGraphQLAPI] {
-      let (newData, children) = await RedditWire.shared.postWithComments(postID: id)
+      let (newData, children) = await RedditWire.shared.postWithComments(postID: id, sort: sort)
       if full, let newData {
         await MainActor.run {
           self.data = newData
           setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
         }
       }
-      let comments = nestComments(children, parentID: "\(Post.prefix)_\(id)")
+      let postFullname = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
+      let comments = nestComments(children, parentID: postFullname)
       return (comments, nil)
     }
 

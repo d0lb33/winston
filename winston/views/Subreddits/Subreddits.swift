@@ -9,7 +9,6 @@ import SwiftUI
 import Defaults
 import Combine
 import SwiftDate
-import Shiny
 
 let alphabetLetters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ").map { String($0) }
 
@@ -38,8 +37,8 @@ struct Subreddits: View, Equatable {
   //  private var multis: FetchedResults<CachedMulti>
   
   @State private var searchText: String = ""
-  
-  //  @Default(.likedButNotSubbed) private var likedButNotSubbed // subreddits that a user likes but is not subscribed to so they wont be in subsDict
+  @State private var favoriteOverrides: [String: Bool] = [:]
+
   @Default(.AppearanceDefSettings) private var appearanceDefSettings
   @Environment(\.managedObjectContext) private var context
   @Environment(\.useTheme) private var selectedTheme
@@ -49,9 +48,32 @@ struct Subreddits: View, Equatable {
       return String((sub.display_name ?? "a").first!.uppercased())
     }
   }
-  
+
   func selectSub(_ sub: Subreddit) {
     selectedSub = .reddit(.subFeed(sub))
+  }
+
+  func favoriteKey(for cachedSub: CachedSub) -> String {
+    cachedSub.uuid ?? cachedSub.objectID.uriRepresentation().absoluteString
+  }
+
+  func isFavorite(_ cachedSub: CachedSub) -> Bool {
+    favoriteOverrides[favoriteKey(for: cachedSub)] ?? cachedSub.user_has_favorited
+  }
+
+  func setFavoriteOverride(for cachedSub: CachedSub, favorited: Bool) {
+    favoriteOverrides[favoriteKey(for: cachedSub)] = favorited
+  }
+
+  var favoriteStateSnapshot: String {
+    subreddits.map { "\(favoriteKey(for: $0)):\($0.user_has_favorited)" }.joined(separator: "|")
+  }
+
+  func reconcileFavoriteOverrides() {
+    favoriteOverrides = favoriteOverrides.filter { key, favorited in
+      guard let cachedSub = subreddits.first(where: { favoriteKey(for: $0) == key }) else { return false }
+      return cachedSub.user_has_favorited != favorited
+    }
   }
   
   var body: some View {
@@ -127,20 +149,24 @@ struct Subreddits: View, Equatable {
               let foundSubs = Array(Array(subreddits.filter { ($0.display_name ?? "").lowercased().contains(searchText.lowercased()) }).enumerated())
               ForEach(foundSubs, id: \.self.element.uuid) { i, cachedSub in
                 let sub = Subreddit(data: SubredditData(entity: cachedSub))
-                SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub)
+                SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub) { favorited in
+                  setFavoriteOverride(for: cachedSub, favorited: favorited)
+                }
                 //                  .equatable()
               }
             }
             
           } else {
             
-            let favs = subreddits.filter { $0.user_has_favorited && $0.user_is_subscriber }
+            let favs = subreddits.filter { isFavorite($0) && $0.user_is_subscriber }
             if favs.count > 0 {
               Section("Favorites") {
                 let favs = Array(favs.sorted(by: { x, y in (x.display_name?.lowercased() ?? "a") < (y.display_name?.lowercased() ?? "a") }).enumerated())
                 ForEach(favs, id: \.self.element) { i, cachedSub in
                   let sub = Subreddit(data: SubredditData(entity: cachedSub))
-                  SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub)
+                  SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub) { favorited in
+                    setFavoriteOverride(for: cachedSub, favorited: favorited)
+                  }
 //                    .equatable()
                     .id("\(cachedSub.uuid ?? "")-fav")
                     .onAppear{
@@ -153,18 +179,20 @@ struct Subreddits: View, Equatable {
             }
             
             if appearanceDefSettings.disableAlphabetLettersSectionsInSubsList {
-              
+
               Section("Subs") {
                 let subs = Array(subreddits.filter({ $0.user_is_subscriber }).sorted(by: { x, y in (x.display_name?.lowercased() ?? "a") < (y.display_name?.lowercased() ?? "a") }).enumerated())
                 ForEach(subs, id: \.self.element) { i, cachedSub in
                   let sub = Subreddit(data: SubredditData(entity: cachedSub))
-                  SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub)
+                  SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub) { favorited in
+                    setFavoriteOverride(for: cachedSub, favorited: favorited)
+                  }
                   //                                      .equatable()
                 }
               }
               
             } else {
-              
+
               ForEach(sections.keys.sorted(), id: \.self) { letter in
                 Section(header: Text(letter)) {
                   if let arr = sections[letter] {
@@ -173,7 +201,9 @@ struct Subreddits: View, Equatable {
                     }).enumerated())
                     ForEach(subs, id: \.self.element.uuid) { i, cachedSub in
                       let sub = Subreddit(data: SubredditData(entity: cachedSub))
-                      SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub)
+                      SubItem(isActive: Router.NavDest.reddit(.subFeed(sub)) == selectedSub, selectSub: selectSub, sub: sub, cachedSub: cachedSub) { favorited in
+                        setFavoriteOverride(for: cachedSub, favorited: favorited)
+                      }
                       //                        .equatable()
                     }
                     .onDelete(perform: { i in
@@ -199,10 +229,12 @@ struct Subreddits: View, Equatable {
           EditButton()
         }
       }
-      .overlay(
+      .overlay(alignment: .trailing) {
         AlphabetJumper(letters: sections.keys.sorted(), proxy: proxy)
-        , alignment: .trailing
-      )
+      }
+      .onChange(of: favoriteStateSnapshot) { _ in
+        reconcileFavoriteOverrides()
+      }
       .refreshable {
         Task(priority: .background) {
           await updatePostsInBox(RedditAPI.shared, force: true)
@@ -217,9 +249,13 @@ struct Subreddits: View, Equatable {
   }
   
   func deleteFromFavorites(at offsets: IndexSet) {
+    let favorites = subreddits.filter { isFavorite($0) && $0.user_is_subscriber }.sorted(by: { x, y in (x.display_name?.lowercased() ?? "a") < (y.display_name?.lowercased() ?? "a") })
     for i in offsets {
-      Task(priority: .background) {
-        Subreddit(data: SubredditData(entity: subreddits.filter { $0.user_has_favorited && $0.user_is_subscriber }.sorted(by: { x, y in (x.display_name?.lowercased() ?? "a") < (y.display_name?.lowercased() ?? "a") })[i])).subscribeToggle(optimistic: true)
+      guard favorites.indices.contains(i) else { continue }
+      let cachedSub = favorites[i]
+      setFavoriteOverride(for: cachedSub, favorited: false)
+      Subreddit(data: SubredditData(entity: cachedSub)).favoriteToggle(entity: cachedSub) { favorited in
+        setFavoriteOverride(for: cachedSub, favorited: favorited)
       }
     }
   }
