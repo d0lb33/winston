@@ -444,6 +444,9 @@
         }
       }
     },
+    "Accounts" : {
+
+    },
     "Adapted PostData → rendered" : {
 
     },
@@ -705,6 +708,9 @@
           }
         }
       }
+    },
+    "Capture" : {
+
     },
     "Capture (Phase 1 — dumps to console: GQLBODY)" : {
 
@@ -1177,9 +1183,6 @@
       }
     },
     "Done" : {
-
-    },
-    "Download" : {
 
     },
     "Drag Left" : {
@@ -2181,7 +2184,22 @@
     "Log in to Reddit" : {
 
     },
+    "Log in with your Reddit account to get started." : {
+
+    },
+    "Log out" : {
+
+    },
+    "Log out of u/%@?" : {
+
+    },
+    "Logged in!" : {
+
+    },
     "Loggin in..." : {
+
+    },
+    "Login failed" : {
 
     },
     "Long Drag Left" : {
@@ -2503,6 +2521,9 @@
           }
         }
       }
+    },
+    "No accounts yet" : {
+
     },
     "No comments around..." : {
       "extractionState" : "stale",
@@ -3456,6 +3477,9 @@
         }
       }
     },
+    "Signing you in…" : {
+
+    },
     "Small" : {
       "localizations" : {
         "de" : {
@@ -3673,6 +3697,9 @@
     "Take me there!" : {
 
     },
+    "Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar." : {
+
+    },
     "Tap to copy" : {
       "localizations" : {
         "de" : {
@@ -3790,9 +3817,6 @@
         }
       }
     },
-    "Theme Store" : {
-
-    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3858,9 +3882,6 @@
       }
     },
     "There are two ways for doing that:" : {
-
-    },
-    "There was an error importing this theme" : {
 
     },
     "This is not working yet :(" : {
@@ -4027,6 +4048,9 @@
           }
         }
       }
+    },
+    "Try again" : {
+
     },
     "u/%@" : {
       "localizations" : {
@@ -4329,6 +4353,9 @@
       }
     },
     "Yes, delete" : {
+
+    },
+    "Yes, log out" : {
 
     },
     "Yes, reset" : {

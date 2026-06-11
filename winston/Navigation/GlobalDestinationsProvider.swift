@@ -25,7 +25,12 @@ struct GlobalDestinationsProvider<C: View>: View {
             case .announcement(let announcement): AnnouncementSheet(announcement: announcement)
             case .editingCredential(let cred): CredentialEditStack(credential: cred).id("editing-credential-view-\(cred.id)")
             case .tipJar: TipJar()
-            case .onboarding: Onboarding().interactiveDismissDisabled(true)
+            case .onboarding:
+              if Defaults[.useGraphQLAPI] {
+                OnboardingGraphQL()
+              } else {
+                Onboarding().interactiveDismissDisabled(true)
+              }
             case .sharedTheme(let themeData): ThemeStoreDetailsView(themeData: themeData)
             }
           }

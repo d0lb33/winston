@@ -7,9 +7,13 @@
 
 import Foundation
 import Alamofire
+import Defaults
 
 extension RedditAPI {
   func fetchUser(_ userName: String) async -> UserData? {
+    if Defaults[.useGraphQLAPI] {
+      return await RedditWire.shared.userProfile(userName)
+    }
     switch await self.doRequest("\(RedditAPI.redditApiURLBase)/user/\(userName)/about.json", method: .get, decodable: ListingChild<UserData>.self)  {
     case .success(let data):
       return data.data

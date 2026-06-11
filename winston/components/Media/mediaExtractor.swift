@@ -103,9 +103,13 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       3: [0: halfWidth, 1: halfWidth, 2: contentWidth]
     ]
     
-    let galleryArr = Array(galleryData.enumerated()).compactMap { i, item in
+    let galleryArr = Array(galleryData.enumerated()).compactMap { indexedItem -> ImgExtracted? in
+      let (i, item) = indexedItem
       let id = item.media_id
-      if let itemMeta = metadata[String(id)], let extArr = itemMeta?.m?.split(separator: "/"), let size = itemMeta?.s, let imgURL = URL(string: "https://i.redd.it/\(id).\(extArr[extArr.count - 1])") {
+      if let itemMeta = metadata[String(id)], let extArr = itemMeta?.m?.split(separator: "/"), let size = itemMeta?.s {
+        let sourceURL = size.u.flatMap { rootURL($0) }
+        let fallbackURL = URL(string: "https://i.redd.it/\(id).\(extArr[extArr.count - 1])")
+        guard let imgURL = sourceURL ?? fallbackURL else { return nil }
         
         var actualWidth = contentWidth
         if let sizeInstructions = sizes[galleryData.count], let mySize = sizeInstructions[i] { actualWidth = mySize } else { actualWidth = halfWidth }
@@ -123,12 +127,28 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     return .imgs(galleryArr)
   }
   
-  if let videoPreview = data.preview?.reddit_video_preview, let url = videoPreview.hls_url, let videoURL = URL(string: url), let width = videoPreview.width, let height = videoPreview.height  {
-    return .video(SharedVideo.get(url: videoURL, size: CGSize(width: CGFloat(width), height: CGFloat(height))))
+  if let videoPreview = data.preview?.reddit_video_preview, let url = videoPreview.hls_url, let videoURL = URL(string: url) {
+    let downloadURL = videoPreview.fallback_url.flatMap(URL.init(string:))
+    let size = videoSize(from: data, width: cgFloat(videoPreview.width), height: cgFloat(videoPreview.height))
+    let posterURL = videoPosterURL(from: data)
+    let video = SharedVideo.get(url: videoURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+    return .video(video)
   }
   
-  if let redditVideo = data.media?.reddit_video, let url = redditVideo.hls_url, let videoURL = URL(string: url), let width = redditVideo.width, let height = redditVideo.height {
-    return .video(SharedVideo.get(url: videoURL, size: CGSize(width: CGFloat(width), height: CGFloat(height))))
+  if let redditVideo = data.media?.reddit_video, let url = redditVideo.hls_url, let videoURL = URL(string: url) {
+    let downloadURL = redditVideo.fallback_url.flatMap(URL.init(string:))
+    let size = videoSize(from: data, width: cgFloat(redditVideo.width), height: cgFloat(redditVideo.height))
+    let posterURL = videoPosterURL(from: data)
+    let video = SharedVideo.get(url: videoURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+    return .video(video)
+  }
+
+  if let hostedVideo = redditHostedVideoURL(from: data.url) {
+    let source = data.preview?.images?.first?.source
+    let size = CGSize(width: source?.width ?? 0, height: source?.height ?? 0)
+    let posterURL = videoPosterURL(from: data)
+    let video = SharedVideo.get(url: hostedVideo.playbackURL, size: size, downloadURL: hostedVideo.downloadURL, posterURL: posterURL)
+    return .video(video)
   }
   
   if data.media?.type == "youtube.com", let oembed = data.media?.oembed, let html = oembed.html, let ytID = extractYoutubeIdFromOEmbed(html), let width = oembed.width, let height = oembed.height, let author_name = oembed.author_name, let author_url = oembed.author_url, let authorURL = URL(string: author_url), let thumb = oembed.thumbnail_url, let thumbURL = URL(string: thumb) {
@@ -174,7 +194,9 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   }
   
   if VIDEOS_FORMATS.contains(where: { data.url.hasSuffix($0) }), let url = URL(string: data.url) {
-    return .video(SharedVideo.get(url: url, size: CGSize(width: 0, height: 0)))
+    let posterURL = videoPosterURL(from: data)
+    let video = SharedVideo.get(url: url, size: .zero, downloadURL: url, posterURL: posterURL)
+    return .video(video)
   }
   
   if data.url.contains("streamable.com") {
@@ -236,12 +258,75 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   return nil
 }
 
+private func videoPosterURL(from data: PostData) -> URL? {
+  let candidates = [
+    data.preview?.images?.first?.source?.url,
+    data.preview?.images?.first?.resolutions?.last?.url,
+    data.thumbnail
+  ]
+
+  for candidate in candidates {
+    guard let candidate, !candidate.isEmpty else { continue }
+    let escaped = candidate.escape
+    if let url = URL(string: escaped), ["http", "https"].contains(url.scheme?.lowercased()) {
+      return url
+    }
+  }
+
+  return nil
+}
+
+private func videoSize(from data: PostData, width: CGFloat?, height: CGFloat?) -> CGSize {
+  if let width, let height, width > 0, height > 0 {
+    return CGSize(width: width, height: height)
+  }
+
+  if let source = data.preview?.images?.first?.source {
+    return CGSize(width: source.width ?? 0, height: source.height ?? 0)
+  }
+
+  return .zero
+}
+
+private func cgFloat(_ value: Double?) -> CGFloat? {
+  guard let value else { return nil }
+  return CGFloat(value)
+}
+
+private func cgFloat(_ value: Int?) -> CGFloat? {
+  guard let value else { return nil }
+  return CGFloat(value)
+}
+
 private func extractYoutubeIdFromOEmbed(_ text: String) -> String? {
   let pattern = "(?<=www\\.youtube\\.com/embed/)[^?]*"
   let regex = try? NSRegularExpression(pattern: pattern)
   return regex?.firstMatch(in: text, options: [], range: NSRange(location: 0, length: text.count)).map {
     String(text[Range($0.range, in: text)!])
   }
+}
+
+private struct RedditHostedVideoURL {
+  let playbackURL: URL
+  let downloadURL: URL?
+}
+
+private func redditHostedVideoURL(from urlString: String) -> RedditHostedVideoURL? {
+  let normalized = urlString.hasPrefix("//") ? "https:\(urlString)" : urlString
+  guard let url = rootURL(normalized), url.host?.lowercased() == "v.redd.it" else { return nil }
+
+  let ext = url.pathExtension.lowercased()
+  if VIDEOS_FORMATS.contains(where: { ".\(ext)" == $0 }) {
+    return RedditHostedVideoURL(playbackURL: url, downloadURL: url)
+  }
+  if ext == "m3u8" {
+    return RedditHostedVideoURL(playbackURL: url, downloadURL: nil)
+  }
+
+  let pathComponents = url.path.components(separatedBy: "/").filter { !$0.isEmpty }
+  guard let videoID = pathComponents.first else { return nil }
+  guard let hlsURL = URL(string: "https://v.redd.it/\(videoID)/HLSPlaylist.m3u8") else { return nil }
+  return RedditHostedVideoURL(playbackURL: hlsURL, downloadURL: nil)
 }
 
 struct StreamableAPIParams: Codable {}

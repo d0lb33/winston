@@ -9,42 +9,95 @@ import SwiftUI
 import NukeUI
 import Defaults
 
-enum SearchType: String {
-  case subreddit = "Subreddit"
-  case user = "User"
-  case post = "Post"
+enum SearchScope: String, CaseIterable, Identifiable {
+  case all = "All"
+  case posts = "Posts"
+  case subreddits = "Subreddits"
+  case users = "Users"
+
+  var id: String { rawValue }
 }
 
 struct SearchOption: View {
-  var activateSearchType: ()->()
+  var activateScope: ()->()
   var active: Bool
-  var searchType: SearchType
+  var scope: SearchScope
   var body: some View {
-    Text(searchType.rawValue)
-      .padding(.horizontal, 16)
-      .padding(.vertical, 12)
-      .background(Capsule(style: .continuous).fill(active ? Color.accentColor : .secondary.opacity(0.15)))
-      .foregroundColor(active ? .white : .primary)
-      .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke((active ? Color.white : .primary).opacity(0.01), lineWidth: 1))
-      .contentShape(Capsule())
-      .onTapGesture {
-        withAnimation(.interactiveSpring()) {
-          activateSearchType()
-        }
+    Button {
+      withAnimation(.interactiveSpring()) {
+        activateScope()
       }
-      .shrinkOnTap()
+    } label: {
+      Text(scope.rawValue)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Capsule(style: .continuous).fill(active ? Color.accentColor : .secondary.opacity(0.15)))
+        .foregroundColor(active ? .white : .primary)
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke((active ? Color.white : .primary).opacity(0.01), lineWidth: 1))
+        .contentShape(Capsule())
+    }
+    .buttonStyle(.plain)
+    .accessibilityAddTraits(active ? .isSelected : [])
+    .shrinkOnTap()
   }
 }
 
-enum SearchTypeArr {
-  case subreddit([Subreddit])
-  case user([User])
-  case post([Post])
+private struct SearchResultsPayload {
+  let posts: [Post]
+  let subs: [Subreddit]
+  let users: [User]
+}
+
+private extension SearchScope {
+  func graphQLResults(query: String, contentWidth: CGFloat) async -> SearchResultsPayload {
+    switch self {
+    case .all:
+      let result = await RedditWire.shared.searchAll(query, contentWidth: contentWidth)
+      return SearchResultsPayload(posts: result.posts, subs: result.subreddits, users: result.users)
+    case .posts:
+      let posts = await RedditWire.shared.searchPosts(query, contentWidth: contentWidth)
+      return SearchResultsPayload(posts: posts, subs: [], users: [])
+    case .subreddits:
+      let subs = await RedditWire.shared.searchSubreddits(query).map(Subreddit.init(data:))
+      return SearchResultsPayload(posts: [], subs: subs, users: [])
+    case .users:
+      let users = await RedditWire.shared.searchUsers(query).map(User.init(data:))
+      return SearchResultsPayload(posts: [], subs: [], users: users)
+    }
+  }
+
+  func restResults(query: String, contentWidth: CGFloat, dummyAllSub: Subreddit?) async -> SearchResultsPayload {
+    switch self {
+    case .all:
+      let posts = await SearchScope.fetchRESTPosts(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
+      let subs = await RedditAPI.shared.searchSubreddits(query)?.map(Subreddit.init(data:)) ?? []
+      let users = await RedditAPI.shared.searchUsers(query)?.map(User.init(data:)) ?? []
+      return SearchResultsPayload(posts: posts, subs: subs, users: users)
+    case .posts:
+      let posts = await SearchScope.fetchRESTPosts(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
+      return SearchResultsPayload(posts: posts, subs: [], users: [])
+    case .subreddits:
+      let subs = await RedditAPI.shared.searchSubreddits(query)?.map(Subreddit.init(data:)) ?? []
+      return SearchResultsPayload(posts: [], subs: subs, users: [])
+    case .users:
+      let users = await RedditAPI.shared.searchUsers(query)?.map(User.init(data:)) ?? []
+      return SearchResultsPayload(posts: [], subs: [], users: users)
+    }
+  }
+
+  private static func fetchRESTPosts(query: String, contentWidth: CGFloat, dummyAllSub: Subreddit?) async -> [Post] {
+    guard
+      let dummyAllSub,
+      let result = await dummyAllSub.fetchPosts(searchText: query, contentWidth: contentWidth),
+      let posts = result.0
+    else { return [] }
+    return posts
+  }
 }
 
 struct Search: View {
   @ObservedObject var router: Router
-  @State private var searchType: SearchType = .subreddit
+  @State private var searchScope: SearchScope = .all
   @StateObject private var resultsSubs = ObservableArray<Subreddit>()
   @StateObject private var resultsUsers = ObservableArray<User>()
   @StateObject private var resultPosts = ObservableArray<Post>()
@@ -60,51 +113,33 @@ struct Search: View {
   @Environment(\.contentWidth) private var contentWidth
   
   func fetch() {
-    if searchQuery.text == "" { return }
+    let query = searchQuery.text.trimmingCharacters(in: .whitespacesAndNewlines)
+    if query == "" { return }
+    let scope = searchScope
     withAnimation {
       loading = true
+      hideSpinner = false
     }
-    switch searchType {
-    case .subreddit:
-      resultsSubs.data.removeAll()
-      Task(priority: .background) {
-        if let subs = await RedditAPI.shared.searchSubreddits(searchQuery.text)?.map({ Subreddit(data: $0) }) {
-          await MainActor.run {
-            withAnimation {
-              resultsSubs.data = subs
-              loading = false
-              
-              hideSpinner = resultsSubs.data.isEmpty
-            }
-          }
-        }
+
+    resultsSubs.data.removeAll()
+    resultsUsers.data.removeAll()
+    resultPosts.data.removeAll()
+
+    Task(priority: .background) {
+      let searchResults: SearchResultsPayload
+      if Defaults[.useGraphQLAPI] {
+        searchResults = await scope.graphQLResults(query: query, contentWidth: contentWidth)
+      } else {
+        searchResults = await scope.restResults(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
       }
-    case .user:
-      resultsUsers.data.removeAll()
-      Task(priority: .background) {
-        if let users = await RedditAPI.shared.searchUsers(searchQuery.text)?.map({ User(data: $0) }) {
-          await MainActor.run {
-            withAnimation {
-              resultsUsers.data = users
-              loading = false
-              
-              hideSpinner = resultsUsers.data.isEmpty
-            }
-          }
-        }
-      }
-    case .post:
-      resultPosts.data.removeAll()
-      Task(priority: .background) {
-        if let dummyAllSub = dummyAllSub, let result = await dummyAllSub.fetchPosts(searchText: searchQuery.text), let newPosts = result.0 {
-          await MainActor.run {
-            withAnimation {
-              resultPosts.data = newPosts
-              loading = false
-              
-              hideSpinner = resultPosts.data.isEmpty
-            }
-          }
+
+      await MainActor.run {
+        withAnimation {
+          resultPosts.data = searchResults.posts
+          resultsSubs.data = searchResults.subs
+          resultsUsers.data = searchResults.users
+          loading = false
+          hideSpinner = searchResults.posts.isEmpty && searchResults.subs.isEmpty && searchResults.users.isEmpty
         }
       }
     }
@@ -115,32 +150,26 @@ struct Search: View {
       List {
         Group {
           Section {
-            HStack {
-              SearchOption(activateSearchType: { searchType = .subreddit }, active: searchType == SearchType.subreddit, searchType: .subreddit)
-              SearchOption(activateSearchType: { searchType = .user }, active: searchType == SearchType.user, searchType: .user)
-              SearchOption(activateSearchType: { searchType = .post }, active: searchType == SearchType.post, searchType: .post)
+            ScrollView(.horizontal, showsIndicators: false) {
+              HStack(spacing: 8) {
+                ForEach(SearchScope.allCases) { scope in
+                  SearchOption(
+                    activateScope: { searchScope = scope },
+                    active: searchScope == scope,
+                    scope: scope
+                  )
+                }
+              }
+              .padding(.vertical, 2)
             }
-            .id("options")
           }
-          
-          Section {
-            switch searchType {
-            case .subreddit:
-              ForEach(resultsSubs.data) { sub in
-                SubredditLink(sub: sub)
-              }
-            case .user:
-              ForEach(resultsUsers.data) { user in
-                UserLink(user: user)
-              }
-            case .post:
+
+          if shows(.posts) && !resultPosts.data.isEmpty {
+            Section(header: searchHeader("Posts", count: resultPosts.data.count)) {
               if let dummyAllSub = dummyAllSub {
                 ForEach(resultPosts.data) { post in
                   if let winstonData = post.winstonData {
-                    //                      SwipeRevolution(size: winstonData.postDimensions.size, actionsSet: postSwipeActions, entity: post) { controller in
                     PostLink(id: post.id, theme: theme.postLinks, showSub: true, compactPerSubreddit: nil, contentWidth: contentWidth, defSettings: postLinkDefSettings)
-//                    .swipyRev(size: winstonData.postDimensions.size, actionsSet: postSwipeActions, entity: post)
-                    //                      }
                     .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
                     .animation(.default, value: resultPosts.data)
                     .environmentObject(post)
@@ -148,6 +177,22 @@ struct Search: View {
                     .environmentObject(winstonData)
                   }
                 }
+              }
+            }
+          }
+
+          if shows(.subreddits) && !resultsSubs.data.isEmpty {
+            Section(header: searchHeader("Subreddits", count: resultsSubs.data.count)) {
+              ForEach(resultsSubs.data) { sub in
+                SubredditLink(sub: sub)
+              }
+            }
+          }
+
+          if shows(.users) && !resultsUsers.data.isEmpty {
+            Section(header: searchHeader("Users", count: resultsUsers.data.count)) {
+              ForEach(resultsUsers.data) { user in
+                UserLink(user: user)
               }
             }
           }
@@ -167,7 +212,7 @@ struct Search: View {
       .refreshable { fetch() }
       .onSubmit(of: .search) { fetch() }
       .navigationTitle("Search")
-      .onChange(of: searchType) { _ in fetch() }
+      .onChange(of: searchScope) { _ in fetch() }
       .onChange(of: searchQuery.debounced) { val in
         if val == "" {
           resultsSubs.data = []
@@ -184,5 +229,19 @@ struct Search: View {
       }
     }
 //    .swipeAnywhere()
+  }
+
+  private func searchHeader(_ title: String, count: Int) -> some View {
+    HStack(spacing: 8) {
+      Text(title)
+      Text("\(count)")
+        .font(.caption)
+        .foregroundColor(.secondary)
+    }
+    .textCase(nil)
+  }
+
+  private func shows(_ scope: SearchScope) -> Bool {
+    searchScope == .all || searchScope == scope
   }
 }

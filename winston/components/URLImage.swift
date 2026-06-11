@@ -13,7 +13,7 @@ import VisionKit
 
 struct URLImage: View, Equatable {
   static func == (lhs: URLImage, rhs: URLImage) -> Bool {
-    lhs.url == rhs.url
+    lhs.requestIdentity == rhs.requestIdentity
   }
   
   let url: URL
@@ -22,6 +22,17 @@ struct URLImage: View, Equatable {
   var pipeline: ImagePipeline? = nil
   var processors: [ImageProcessing]? = nil
   var size: CGSize?
+  @State private var retryID = UUID()
+  @State private var retryCount = 0
+
+  private var requestIdentity: String {
+    [
+      imgRequest?.description ?? url.absoluteString,
+      processors?.map { $0.identifier }.joined(separator: "|") ?? "",
+      "\(size?.width ?? 0)x\(size?.height ?? 0)",
+      doLiveText ? "livetext" : ""
+    ].joined(separator: "::")
+  }
   
   var body: some View {
     if url.absoluteString.hasSuffix(".gif") {
@@ -66,19 +77,28 @@ struct URLImage: View, Equatable {
 //                .resizable()
 //                .scaledToFit()
             }
-          // } else if state.error != nil {
-          //   Color.red.opacity(0.1)
-          //     .overlay(Image(systemName: "xmark.circle.fill").foregroundColor(.red))
-          // } else {
-          //   Image(.loader)
-          //     .resizable()
-          //     .scaledToFill()
-          //     .mask(Circle())
-          //     .frame(maxWidth: 50, maxHeight: 50)
+          } else if state.error != nil {
+            Color.acceptablePrimary.opacity(0.08)
+              .overlay(URLImageLoader(size: loaderSize).equatable())
+          } else {
+            Color.acceptablePrimary.opacity(0.08)
+              .overlay(URLImageLoader(size: loaderSize).equatable())
           }
         }
-        .onDisappear(.cancel)
-//        .id("\(imgRequest.url?.absoluteString ?? "")-nuke")
+        .onDisappear(.lowerPriority)
+        .onCompletion { result in
+          if case .failure = result, retryCount < 2 {
+            retryCount += 1
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+              retryID = UUID()
+            }
+          }
+        }
+        .id("\(requestIdentity)-\(retryID)")
+        .onChange(of: requestIdentity) { _ in
+          retryCount = 0
+          retryID = UUID()
+        }
       } else {
         LazyImage(url: url) { state in
           if let image = state.image {
@@ -102,6 +122,10 @@ struct URLImage: View, Equatable {
       }
       
     }
+  }
+
+  private var loaderSize: Double {
+    Double(min(max(size?.width ?? 50, 24), 50))
   }
 }
 

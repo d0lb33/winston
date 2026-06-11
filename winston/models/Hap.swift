@@ -124,11 +124,15 @@ class Hap {
   }
   
   func createAndStartHapticEngine() {
+    // Core Haptics isn't available on the Simulator (and some devices), so bail
+    // out gracefully instead of crashing.
+    guard supportsHaptics else { return }
     guard engineNeedsStart else { return }
     do {
       engine = try CHHapticEngine()
     } catch let error {
-      fatalError("Engine Creation Error: \(error)")
+      print("Haptic engine creation error: \(error)")
+      return
     }
     guard let engine = engine else { return }
 

@@ -7,9 +7,14 @@
 
 import Foundation
 import Alamofire
+import Defaults
 
 extension RedditAPI {
   func fetchUserOverview(_ userName: String, _ dataTypeFilter: String? = nil, _ after: String? = nil) async -> [Either<PostData, CommentData>]? {
+      if Defaults[.useGraphQLAPI] {
+        return await RedditWire.shared.userOverviewData(userName, filter: dataTypeFilter, after: after)
+      }
+
       var endpoint: String
 
       if let dataTypeFilter = dataTypeFilter, !dataTypeFilter.isEmpty {

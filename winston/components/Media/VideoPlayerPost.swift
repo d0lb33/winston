@@ -7,15 +7,17 @@ import Combine
 
 struct SharedVideo: Equatable {
   static func == (lhs: SharedVideo, rhs: SharedVideo) -> Bool {
-    lhs.url == rhs.url && lhs.player.currentItem == rhs.player.currentItem
+    lhs.url == rhs.url && lhs.downloadURL == rhs.downloadURL && lhs.posterURL == rhs.posterURL && lhs.player.currentItem == rhs.player.currentItem
   }
   
   var player: AVPlayer
   var url: URL
+  var downloadURL: URL?
+  var posterURL: URL?
   var size: CGSize
   
-  static func get(url: URL, size: CGSize, resetCache: Bool = false) -> SharedVideo {
-    let cacheKey =  SharedVideo.cacheKey(url: url, size: size)
+  static func get(url: URL, size: CGSize, downloadURL: URL? = nil, posterURL: URL? = nil, resetCache: Bool = false) -> SharedVideo {
+    let cacheKey =  SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
     
     if resetCache {
       Caches.videos.cache.removeValue(forKey: cacheKey)
@@ -24,19 +26,21 @@ struct SharedVideo: Equatable {
     if let sharedVideo = Caches.videos.get(key: cacheKey) {
       return sharedVideo
     } else {
-      let sharedVideo = SharedVideo(url: url, size: size)
+      let sharedVideo = SharedVideo(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
       Caches.videos.addKeyValue(key: cacheKey, data: { sharedVideo }, expires: Date().dateByAdding(1, .day).date)
       
       return sharedVideo
     }
   }
 
-  static func cacheKey(url: URL, size: CGSize) -> String {
-    return "\(url.absoluteString):\(size.width)x\(size.height)"
+  static func cacheKey(url: URL, size: CGSize, downloadURL: URL? = nil, posterURL: URL? = nil) -> String {
+    return "\(url.absoluteString):\(downloadURL?.absoluteString ?? ""):\(posterURL?.absoluteString ?? ""):\(size.width)x\(size.height)"
   }
   
-  init(url: URL, size: CGSize) {
+  init(url: URL, size: CGSize, downloadURL: URL? = nil, posterURL: URL? = nil) {
     self.url = url
+    self.downloadURL = downloadURL
+    self.posterURL = posterURL
     self.size = size
     let newPlayer = AVPlayer(url: url)
     newPlayer.volume = 0.0
@@ -60,6 +64,10 @@ struct VideoPlayerPost: View, Equatable {
   var maxMediaHeightScreenPercentage: CGFloat
   @State private var firstFullscreen = false
   @State private var fullscreen = false
+  @State private var preparedInlineVideoKey: String?
+  @State private var observedVideoKey: String?
+  @State private var videoObservers: [NSObjectProtocol] = []
+  @State private var showInlinePoster = true
   @Default(.VideoDefSettings) private var videoDefSettings
   @Environment(\.scenePhase) private var scenePhase
   
@@ -87,23 +95,47 @@ struct VideoPlayerPost: View, Equatable {
     let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * (.screenH)
     let sourceWidth = size.width
     let sourceHeight = size.height
-    let propHeight = (contentWidth * sourceHeight) / sourceWidth
+    let propHeight = sourceWidth > 0 && sourceHeight > 0 && contentWidth > 0 ? (contentWidth * sourceHeight) / sourceWidth : contentWidth * 9 / 16
     let finalHeight = maxMediaHeightScreenPercentage != 110 ? Double(min(maxHeight, propHeight)) : Double(propHeight)
     
     if let sharedVideo = sharedVideo {
-			let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: {$0.assetTrack?.mediaType == AVMediaType.audio})
+      let videoSize = CGSize(width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : CGFloat(finalHeight))
+      let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio })
       if let controller = controller {
-        AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
-          .frame(width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : CGFloat(finalHeight))
-          .mask(RR(12, Color.black))
-          .allowsHitTesting(false)
-          .contentShape(Rectangle())
-          .onTapGesture {
-            if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-            withAnimation {
-              fullscreen = true
-            }
+        ZStack {
+          AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
+            .allowsHitTesting(false)
+          videoPoster(sharedVideo: sharedVideo, size: videoSize)
+          playOverlay()
+        }
+        .frame(width: videoSize.width, height: videoSize.height)
+        .mask(RR(12, Color.black))
+        .contentShape(Rectangle())
+        .onTapGesture {
+          if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
+          withAnimation {
+            fullscreen = true
           }
+        }
+        .onAppear { prepareForInlineDisplay(sharedVideo) }
+        .onChange(of: scenePhase) { newPhase in
+          if newPhase == .active {
+            prepareForInlineDisplay(sharedVideo)
+          }
+        }
+        .onDisappear() {
+          removeObserver()
+          Task(priority: .background) {
+            sharedVideo.player.seek(to: .zero)
+            sharedVideo.player.pause()
+          }
+        }
+        .onChange(of: fullscreen) { val in
+          handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
+        }
+        .fullScreenCover(isPresented: $fullscreen) {
+          FullScreenVP(sharedVideo: sharedVideo)
+        }
       } else {
         ZStack {
           
@@ -115,7 +147,7 @@ struct VideoPlayerPost: View, Equatable {
               Color.clear
             }
           }
-          .frame(width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : CGFloat(finalHeight))
+          .frame(width: videoSize.width, height: videoSize.height)
           .clipped()
           .fixedSize()
           .mask(RR(12, Color.black))
@@ -140,30 +172,13 @@ struct VideoPlayerPost: View, Equatable {
               }
           )
           
-          Image(systemName: "play.fill").foregroundColor(.white.opacity(0.75)).fontSize(32).shadow(color: .black.opacity(0.45), radius: 12, y: 8).opacity(autoPlayVideos ? 0 : 1).allowsHitTesting(false)
+          videoPoster(sharedVideo: sharedVideo, size: videoSize)
+          playOverlay()
         }
-        .onAppear {
-          if loopVideos {
-            addObserver()
-          }
-          
-          if (sharedVideo.player.status == .failed) {
-            resetVideo?(sharedVideo)
-          }
-          
-          if autoPlayVideos {
-            sharedVideo.player.play()
-          }
-        }
+        .onAppear { prepareForInlineDisplay(sharedVideo) }
         .onChange(of: scenePhase) { newPhase in
           if newPhase == .active {
-            if (sharedVideo.player.status == .failed) {
-              resetVideo?(sharedVideo)
-            }
-            
-            if autoPlayVideos {
-              sharedVideo.player.play()
-            }
+            prepareForInlineDisplay(sharedVideo)
           }
         }
         .onDisappear() {
@@ -174,24 +189,7 @@ struct VideoPlayerPost: View, Equatable {
           }
         }
         .onChange(of: fullscreen) { val in
-          if !firstFullscreen {
-            firstFullscreen = true
-						sharedVideo.player.isMuted = muteVideos
-            sharedVideo.player.play()
-          } 
-					if !val && !autoPlayVideos {
-						sharedVideo.player.seek(to: .zero)
-						sharedVideo.player.pause()
-						firstFullscreen = false
-					 }
-          
-          if pauseBackgroundAudioOnFullscreen && sharedVideo.player.isMuted == false && hasAudio == true {
-            Task(priority: .background) {
-              setAudioToMixWithOthers(val)
-            }
-          }
-          
-          sharedVideo.player.volume = val ? 1.0 : 0.0
+          handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
         }
         .fullScreenCover(isPresented: $fullscreen) {
           FullScreenVP(sharedVideo: sharedVideo)
@@ -199,10 +197,79 @@ struct VideoPlayerPost: View, Equatable {
       }
     }
   }
+
+  @ViewBuilder
+  func videoPoster(sharedVideo: SharedVideo, size: CGSize) -> some View {
+    if let posterURL = sharedVideo.posterURL {
+      URLImage(url: posterURL, size: size)
+        .scaledToFill()
+        .frame(width: size.width, height: size.height)
+        .clipped()
+        .opacity(showInlinePoster ? 1 : 0)
+        .allowsHitTesting(false)
+    }
+  }
+
+  func playOverlay() -> some View {
+    Image(systemName: "play.fill")
+      .foregroundColor(.white.opacity(0.85))
+      .fontSize(32)
+      .shadow(color: .black.opacity(0.45), radius: 12, y: 8)
+      .opacity(autoPlayVideos ? 0 : 1)
+      .allowsHitTesting(false)
+  }
+
+  func prepareForInlineDisplay(_ sharedVideo: SharedVideo) {
+    if loopVideos {
+      addObserver()
+    }
+
+    if (sharedVideo.player.status == .failed) {
+      resetVideo?(sharedVideo)
+    }
+
+    showInlinePoster = true
+    if autoPlayVideos {
+      sharedVideo.player.play()
+      doThisAfter(0.6) {
+        withAnimation(.easeOut(duration: 0.2)) {
+          showInlinePoster = false
+        }
+      }
+    } else {
+      prepareInlinePlayback(sharedVideo)
+    }
+  }
+
+  func handleFullscreenChange(_ val: Bool, sharedVideo: SharedVideo, hasAudio: Bool?) {
+    if !firstFullscreen {
+      firstFullscreen = true
+      sharedVideo.player.isMuted = muteVideos
+      sharedVideo.player.play()
+    }
+    if !val && !autoPlayVideos {
+      sharedVideo.player.seek(to: .zero)
+      sharedVideo.player.pause()
+      firstFullscreen = false
+      showInlinePoster = true
+    }
+
+    if pauseBackgroundAudioOnFullscreen && sharedVideo.player.isMuted == false && hasAudio == true {
+      Task(priority: .background) {
+        setAudioToMixWithOthers(val)
+      }
+    }
+
+    sharedVideo.player.volume = val ? 1.0 : 0.0
+  }
   
   func addObserver() {
     if let sharedVideo = sharedVideo {
-      NotificationCenter.default.addObserver(
+      let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
+      guard observedVideoKey != cacheKey else { return }
+      observedVideoKey = cacheKey
+
+      let endObserver = NotificationCenter.default.addObserver(
         forName: .AVPlayerItemDidPlayToEndTime,
         object: sharedVideo.player.currentItem,
         queue: nil) { notif in
@@ -212,7 +279,7 @@ struct VideoPlayerPost: View, Equatable {
           }
         }
       
-      NotificationCenter.default.addObserver(
+      let failedObserver = NotificationCenter.default.addObserver(
         forName: .AVPlayerItemFailedToPlayToEndTime,
         object: sharedVideo.player.currentItem,
         queue: nil) { notif in
@@ -221,7 +288,7 @@ struct VideoPlayerPost: View, Equatable {
           }
         }
       
-      NotificationCenter.default.addObserver(
+      let stalledObserver = NotificationCenter.default.addObserver(
         forName: .AVPlayerItemPlaybackStalled,
         object: sharedVideo.player.currentItem,
         queue: nil) { notif in
@@ -229,26 +296,29 @@ struct VideoPlayerPost: View, Equatable {
             resetVideo?(sharedVideo)
           }
         }
+      videoObservers = [endObserver, failedObserver, stalledObserver]
     }
   }
   
-  func removeObserver() {
-    if let sharedVideo = sharedVideo {
-      NotificationCenter.default.removeObserver(
-        self,
-        name: .AVPlayerItemDidPlayToEndTime,
-        object: sharedVideo.player.currentItem)
-      
-      NotificationCenter.default.removeObserver(
-        self,
-        name: .AVPlayerItemFailedToPlayToEndTime,
-        object: sharedVideo.player.currentItem)
-      
-      NotificationCenter.default.removeObserver(
-        self,
-        name: .AVPlayerItemPlaybackStalled,
-        object: sharedVideo.player.currentItem)
+  func prepareInlinePlayback(_ sharedVideo: SharedVideo) {
+    let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
+    guard preparedInlineVideoKey != cacheKey else { return }
+    preparedInlineVideoKey = cacheKey
+    sharedVideo.player.isMuted = true
+    sharedVideo.player.automaticallyWaitsToMinimizeStalling = true
+    sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
+    let shouldPauseAfterPreroll = !autoPlayVideos && !fullscreen
+    sharedVideo.player.preroll(atRate: 1.0) { finished in
+      if finished && shouldPauseAfterPreroll {
+        sharedVideo.player.pause()
+      }
     }
+  }
+
+  func removeObserver() {
+    videoObservers.forEach { NotificationCenter.default.removeObserver($0) }
+    videoObservers = []
+    observedVideoKey = nil
   }
 }
 

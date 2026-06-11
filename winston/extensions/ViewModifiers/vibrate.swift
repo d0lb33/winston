@@ -61,6 +61,7 @@ struct VibrateModifier<T: Equatable>: ViewModifier {
     private var continuousHapticTimer: Timer? = nil
     private var engineNeedsStart = true
     private var continuousPlayer: CHHapticAdvancedPatternPlayer? = nil
+    private var hapticsDisabled = false
     private lazy var supportsHaptics: Bool = {
       return AppDelegate.instance?.supportsHaptics ?? false
     }()
@@ -158,10 +159,14 @@ struct VibrateModifier<T: Equatable>: ViewModifier {
     }
     
     func createAndStartHapticEngine() {
+      guard supportsHaptics, !hapticsDisabled else { return }
+      guard engineNeedsStart else { return }
       do {
         engine = try CHHapticEngine()
       } catch let error {
-        fatalError("Engine Creation Error: \(error)")
+        hapticsDisabled = true
+        print("Haptic engine creation error: \(error)")
+        return
       }
       guard let engine = engine else { return }
       

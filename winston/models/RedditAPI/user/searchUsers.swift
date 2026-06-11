@@ -7,9 +7,13 @@
 
 import Foundation
 import Alamofire
+import Defaults
 
 extension RedditAPI {
   func searchUsers(_ query: String) async -> [UserData]? {
+    if Defaults[.useGraphQLAPI] {
+      return await RedditWire.shared.searchUsers(query)
+    }
     let params = SearchUserPayload(q: query)
     switch await self.doRequest("\(RedditAPI.redditApiURLBase)/users/search", method: .get, params: params, paramsLocation: .queryString, decodable: Listing<Either<UserData, BannedUser>>.self)  {
     case .success(let data):

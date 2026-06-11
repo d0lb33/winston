@@ -101,7 +101,7 @@ struct Tabber: View, Equatable {
       autoSelectCredentialIfNil()
       removeDefaultThemeFromThemes()
       checkForOnboardingStatus()
-      if RedditCredentialsManager.shared.selectedCredential != nil || Defaults[.graphQLAccount] != nil {
+      if RedditCredentialsManager.shared.selectedCredential != nil || !Defaults[.graphQLAccounts].isEmpty {
         RedditCredentialsManager.shared.updateMe()
         Task(priority: .background) { await updatePostsInBox(RedditAPI.shared) }
       }

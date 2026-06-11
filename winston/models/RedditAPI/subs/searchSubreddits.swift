@@ -7,9 +7,13 @@
 
 import Foundation
 import Alamofire
+import Defaults
 
 extension RedditAPI {
   func searchSubreddits(_ query: String) async -> [SubredditData]? {
+    if Defaults[.useGraphQLAPI] {
+      return await RedditWire.shared.searchSubreddits(query)
+    }
     let params = SearchSubredditPayload(q: query)
     switch await self.doRequest("\(RedditAPI.redditApiURLBase)/subreddits/search", method: .get, params: params, paramsLocation: .queryString, decodable: Listing<SubredditData>.self)  {
     case .success(let data):
@@ -31,4 +35,3 @@ extension RedditAPI {
     var sort = "relevance"
   }
 }
-

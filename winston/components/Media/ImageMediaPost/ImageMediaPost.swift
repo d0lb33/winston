@@ -28,7 +28,7 @@ struct ImageMediaPostCompactMoreImagesOverlay: View, Equatable {
 struct ImageMediaPost: View, Equatable {
   static let gallerySpacing: CGFloat = 8
   static func == (lhs: ImageMediaPost, rhs: ImageMediaPost) -> Bool {
-    return lhs.postTitle == rhs.postTitle && lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius
+    return lhs.postTitle == rhs.postTitle && lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.images == rhs.images
   }
     
   @Binding var postDimensions: PostDimensions

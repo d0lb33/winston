@@ -84,3 +84,88 @@ struct RedditLoginWebView: UIViewRepresentable {
     }
   }
 }
+
+// MARK: - Onboarding (GraphQL)
+
+/// Fresh-install / add-account login. Presents the reddit.com webview, captures
+/// the session on successful login, and hands it to `RedditWire.addAccount`,
+/// which mints the Android bearer and registers the account. Replaces the dead
+/// REST API-key onboarding when `Defaults[.useGraphQLAPI]` is on.
+struct OnboardingGraphQL: View {
+  @StateObject private var loginController = WebLoginController()
+  @ObservedObject private var wire = RedditWire.shared
+  @State private var phase: Phase = .login
+
+  enum Phase: Equatable { case login, connecting, done, failed(String) }
+
+  /// Only allow cancelling once at least one account exists — the very first
+  /// login is mandatory (the whole app is gated behind it).
+  private var canCancel: Bool { !wire.accounts.isEmpty }
+
+  var body: some View {
+    NavigationStack {
+      ZStack {
+        RedditLoginWebView(controller: loginController) { cookies in
+          guard phase == .login else { return }
+          phase = .connecting
+          Task {
+            await wire.addAccount(cookies: cookies)
+            if wire.connected {
+              phase = .done
+              Nav.present(nil)
+            } else {
+              phase = .failed(wire.status)
+            }
+          }
+        }
+        .opacity(phase == .login ? 1 : 0.15)
+        .disabled(phase != .login)
+
+        overlayContent
+      }
+      .navigationTitle("Log in to Reddit")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarLeading) {
+          if canCancel { Button("Cancel") { Nav.present(nil) } }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Capture") { loginController.captureNow?() }
+            .disabled(phase != .login)
+        }
+      }
+    }
+    .interactiveDismissDisabled(!canCancel)
+  }
+
+  @ViewBuilder private var overlayContent: some View {
+    switch phase {
+    case .login:
+      EmptyView()
+    case .connecting:
+      statusCard {
+        ProgressView().controlSize(.large)
+        Text("Signing you in…").font(.headline)
+      }
+    case .done:
+      statusCard {
+        Image(systemName: "checkmark.circle.fill").font(.largeTitle).foregroundStyle(.green)
+        Text("Logged in!").font(.headline)
+      }
+    case .failed(let msg):
+      statusCard {
+        Image(systemName: "exclamationmark.triangle.fill").font(.largeTitle).foregroundStyle(.orange)
+        Text("Login failed").font(.headline)
+        Text(msg).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+        Button("Try again") { phase = .login }.buttonStyle(.borderedProminent)
+      }
+    }
+  }
+
+  @ViewBuilder private func statusCard<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+    VStack(spacing: 12) { content() }
+      .padding(28)
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(.ultraThinMaterial)
+  }
+}

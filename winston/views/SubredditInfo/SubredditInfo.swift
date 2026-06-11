@@ -66,19 +66,21 @@ struct SubredditInfo: View {
           .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
           .toolbar{
             ToolbarItem(){
+              let remoteFavorited = data.user_has_favorited ?? false
+              let canRemoteFavorite = (data.user_is_subscriber ?? false) || remoteFavorited
               Button{
                 Task{
-                  if !data.user_has_favorited! {
+                  if canRemoteFavorite {
+                    subreddit.favoriteToggle()
+                  } else {
                     let liked = subreddit.localFavoriteToggle()
                     if liked {
                       addedToFavs.toggle()
                     }
-                  } else {
-                    subreddit.favoriteToggle()
                   }
                 }
               } label: {
-                Label("Favorites", systemImage: (isliked || data.user_has_favorited!) ? "star.fill" : "star")
+                Label("Favorites", systemImage: (isliked || remoteFavorited) ? "star.fill" : "star")
                   .foregroundColor(.blue)
                   .labelStyle(.iconOnly)
               }

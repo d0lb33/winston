@@ -51,56 +51,95 @@ extension Subreddit {
   }
   
   func favoriteToggle(entity: CachedSub? = nil) {
-    if let entity = entity, let name = data?.display_name {
-      let favoritedStatus = entity.user_has_favorited
-      if let context = entity.managedObjectContext {
-        entity.user_has_favorited = !favoritedStatus
-        withAnimation {
-          self.data?.user_has_favorited = !favoritedStatus
-          try? context.save()
+    guard let data else { return }
+    let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
+    let context = entity?.managedObjectContext ?? PersistenceController.shared.container.viewContext
+
+    func cachedSub(named name: String) -> CachedSub? {
+      guard let currentCredentialID else { return nil }
+      let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
+      fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@ AND name == %@", currentCredentialID as CVarArg, name)
+      return context.performAndWait { (try? context.fetch(fetchRequest))?.first }
+    }
+
+    var cachedSub = entity ?? cachedSub(named: data.name)
+    let initiallyFavorited = cachedSub?.user_has_favorited ?? data.user_has_favorited ?? false
+    let targetFavorited = !initiallyFavorited
+
+    func applyFavoriteState(_ favorited: Bool) {
+      var cacheData = data
+      cacheData.user_has_favorited = favorited
+      withAnimation {
+        self.data = cacheData
+      }
+
+      context.performAndWait {
+        if let cachedSub {
+          cachedSub.user_has_favorited = favorited
+        } else if favorited, let currentCredentialID, cacheData.user_is_subscriber == true {
+          cachedSub = CachedSub(data: cacheData, context: context, credentialID: currentCredentialID)
         }
-        
-        Task {
-          let result = await RedditAPI.shared.favorite(!favoritedStatus, subName: name)
-          if !result {
-            entity.user_has_favorited = favoritedStatus
-            withAnimation {
-              self.data?.user_has_favorited = favoritedStatus
-              try? context.save()
-            }
-          }
+        try? context.save()
+      }
+    }
+
+    applyFavoriteState(targetFavorited)
+
+    Task(priority: .background) {
+      let result = Defaults[.useGraphQLAPI]
+        ? await RedditWire.shared.favoriteSubreddit(subredditID: data.name, favorited: targetFavorited)
+        : await RedditAPI.shared.favorite(targetFavorited, subName: data.display_name ?? data.id)
+
+      if !result {
+        await MainActor.run {
+          applyFavoriteState(initiallyFavorited)
         }
       }
     }
   }
   
   func subscribeToggle(optimistic: Bool = false, _ cb: (()->())? = nil) {
-    guard let currentCredentialID = RedditCredentialsManager.shared.selectedCredential?.id else { return }
+    guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return }
 
     let context = PersistenceController.shared.container.viewContext
     
     if let data = data {
-      @Sendable func doToggle() {
+      @Sendable func cachedSub(named name: String) -> CachedSub? {
         let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
-        fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)
-        guard let results = (context.performAndWait { return try? context.fetch(fetchRequest) }) else { return }
-        let foundSub = context.performAndWait { results.first(where: { $0.name == self.data?.name }) }
+        fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@ AND name == %@", currentCredentialID as CVarArg, name)
+        return context.performAndWait { (try? context.fetch(fetchRequest))?.first }
+      }
+
+      @Sendable func applySubscriptionState(_ subscribed: Bool, data stateData: SubredditData) {
+        var cacheData = stateData
+        cacheData.user_is_subscriber = subscribed
+        let foundSub = cachedSub(named: stateData.name)
         
         withAnimation {
-          self.data?.user_is_subscriber?.toggle()
+          self.data = cacheData
         }
-        if let foundSub = foundSub { // when unsubscribe
-          context.delete(foundSub)
-        } else if let newData = self.data {
+
+        if subscribed {
           context.performAndWait {
-            _ = CachedSub(data: newData, context: context, credentialID: currentCredentialID)
+            if let foundSub {
+              foundSub.update(data: cacheData, credentialID: currentCredentialID)
+            } else {
+              _ = CachedSub(data: cacheData, context: context, credentialID: currentCredentialID)
+            }
+          }
+        } else if let foundSub {
+          context.performAndWait {
+            context.delete(foundSub)
           }
         }
       }
+
+      let initiallySubscribed = data.user_is_subscriber ?? (cachedSub(named: data.name) != nil)
+      let targetSubscribed = !initiallySubscribed
       
       //      let likedButNotSubbed = Defaults[.likedButNotSubbed]
       if optimistic {
-        doToggle()
+        applySubscriptionState(targetSubscribed, data: data)
         context.performAndWait {
           withAnimation {
             try? context.save()
@@ -108,16 +147,26 @@ extension Subreddit {
         }
       }
       Task(priority: .background) {
-        let result = await RedditAPI.shared.subscribe((self.data?.user_is_subscriber ?? false) ? (optimistic ? .sub : .unsub) : (optimistic ? .unsub : .sub), subFullname: data.name)
+        let result = Defaults[.useGraphQLAPI]
+          ? await RedditWire.shared.subscribe(subredditIDs: [data.name], subscribe: targetSubscribed)
+          : await RedditAPI.shared.subscribe(targetSubscribed ? .sub : .unsub, subFullname: data.name)
+
+        if result && !optimistic {
+          await MainActor.run {
+            applySubscriptionState(targetSubscribed, data: data)
+          }
+        } else if !result && optimistic {
+          await MainActor.run {
+            applySubscriptionState(initiallySubscribed, data: data)
+          }
+        }
+
         context.performAndWait {
-          if (result && !optimistic) || (!result && optimistic) {
-            doToggle()
+          withAnimation {
+            try? context.save()
           }
-          context.performAndWait {
-            withAnimation {
-              try? context.save()
-            }
-          }
+        }
+        await MainActor.run {
           cb?()
         }
       }
@@ -173,13 +222,12 @@ extension Subreddit {
   }
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
-    // GraphQL path (migration): SDUI feed → PostsByIds hydration. Single page
-    // for MVP, so we return a nil cursor and let the existing end-of-feed logic
-    // engage. searchText/sort are not yet wired (default feed only).
+    // GraphQL path (migration): SDUI feed → PostsByIds hydration. The existing
+    // view pagination passes `after` back in from the previous response cursor.
     if Defaults[.useGraphQLAPI] {
       let isHome = id == "home"
       let name = isHome ? "" : (data?.display_name ?? id)
-      let (datas, nextAfter) = await RedditWire.shared.feedPosts(subreddit: name, isHome: isHome)
+      let (datas, nextAfter) = await RedditWire.shared.feedPosts(subreddit: name, isHome: isHome, sort: sort, after: after)
       return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nextAfter)
     }
 

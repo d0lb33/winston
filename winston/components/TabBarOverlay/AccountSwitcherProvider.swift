@@ -64,30 +64,42 @@ struct AccountSwitcherProvider<Content: View>: View {
   var content: () -> Content
   
   func selectCredential() {
-    if let cred = transmitter.selectedCred {
-      if let nextCredIndex = RedditCredentialsManager.shared.credentials.firstIndex(of: cred) {
-        let curr = RedditCredentialsManager.shared.selectedCredential
-        var currCredIndex = -1
-        if let curr { currCredIndex = RedditCredentialsManager.shared.credentials.firstIndex(of: curr) ?? -1 }
-        accTransKit.willLensHeadLeft = Int(currCredIndex - nextCredIndex) <= 0
-        transmitter.selectedCred = nil
-        withAnimation(.snappy(extraBounce: 0.1)) { accTransKit.focusCloser = true } completion: {
-          withAnimation(.linear(duration: 0.001)) { accTransKit.blurMain = true; Defaults[.GeneralDefSettings].redditCredentialSelectedID = cred.id } completion: {
-            withAnimation(.spring) { accTransKit.passLens = true } completion: {
-              withAnimation(.spring) { transmitter.positionInfo = nil; accTransKit.blurMain = false; transmitter.screenshot = nil; accTransKit.focusCloser = false;  } completion: {
-                accTransKit.passLens = false
-              }
+    guard let cred = transmitter.selectedCred else {
+      transmitter.scheduleReset(0.5)
+      return
+    }
+    // In GraphQL mode the switcher works against RedditWire accounts (as shells);
+    // selecting one switches the active token-store account, and the "+" button
+    // (a sample cred not in the list) opens the reddit.com login onboarding.
+    let gql = Defaults[.useGraphQLAPI]
+    let switcherCreds: [RedditCredential] = gql
+      ? RedditWire.shared.accounts.map { $0.asCredentialShell }
+      : RedditCredentialsManager.shared.credentials
+
+    if let nextCredIndex = switcherCreds.firstIndex(of: cred) {
+      let selID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
+      let currCredIndex = switcherCreds.firstIndex { $0.id == selID } ?? -1
+      accTransKit.willLensHeadLeft = Int(currCredIndex - nextCredIndex) <= 0
+      transmitter.selectedCred = nil
+      withAnimation(.snappy(extraBounce: 0.1)) { accTransKit.focusCloser = true } completion: {
+        withAnimation(.linear(duration: 0.001)) {
+          accTransKit.blurMain = true
+          Defaults[.GeneralDefSettings].redditCredentialSelectedID = cred.id
+          if gql { Task { await RedditWire.shared.selectAccount(cred.id) } }
+        } completion: {
+          withAnimation(.spring) { accTransKit.passLens = true } completion: {
+            withAnimation(.spring) { transmitter.positionInfo = nil; accTransKit.blurMain = false; transmitter.screenshot = nil; accTransKit.focusCloser = false;  } completion: {
+              accTransKit.passLens = false
             }
           }
         }
-      } else {
-        doThisAfter(0) {
-          transmitter.reset()
-          Nav.present(.editingCredential(cred))
-        }
       }
     } else {
-      transmitter.scheduleReset(0.5)
+      doThisAfter(0) {
+        transmitter.reset()
+        if gql { Nav.present(.onboarding) }
+        else { Nav.present(.editingCredential(cred)) }
+      }
     }
   }
   

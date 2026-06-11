@@ -59,7 +59,7 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   
   func resetVideo(video: SharedVideo) {
     DispatchQueue.main.async {
-      let newVideo: MediaExtractedType = .video(SharedVideo.get(url: video.url, size: video.size, resetCache: true))
+      let newVideo: MediaExtractedType = .video(SharedVideo.get(url: video.url, size: video.size, downloadURL: video.downloadURL, posterURL: video.posterURL, resetCache: true))
       post.winstonData?.extractedMedia = newVideo
       post.winstonData?.extractedMediaForcedNormal = newVideo
       

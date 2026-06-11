@@ -53,7 +53,7 @@ extension Post {
       switch extractedMedia {
       case .streamable(let streamable):
         if let streamableCached = Caches.streamable.get(key: streamable.shortCode) {
-          let sharedVideo = SharedVideo.get(url: streamableCached.url, size: streamableCached.size)
+          let sharedVideo = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
           
           extractedMedia = .video(sharedVideo)
           extractedMediaForcedNormal = .video(sharedVideo)
@@ -244,7 +244,7 @@ extension Post {
       if let mp4 = data.files?.mp4Mobile ?? data.files?.mp4 {
         if let videoURL = URL(string: mp4.url) {
           let size =  CGSize(width: mp4.width, height: mp4.height)
-          return SharedVideo.get(url: videoURL, size: size)
+          return SharedVideo.get(url: videoURL, size: size, downloadURL: videoURL)
         }
       }
     case .failure:

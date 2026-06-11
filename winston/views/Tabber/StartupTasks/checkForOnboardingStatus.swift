@@ -9,8 +9,12 @@ import Foundation
 import Defaults
 
 func checkForOnboardingStatus() {
-  // A connected GraphQL account counts as onboarded.
-  if Defaults[.graphQLAccount] != nil { return }
+  // GraphQL mode: onboarding is just the reddit.com login — present it whenever
+  // there's no connected account (fresh install or after a full logout).
+  if Defaults[.useGraphQLAPI] {
+    if Defaults[.graphQLAccounts].isEmpty { Nav.present(.onboarding) }
+    return
+  }
   var open = false
   open = switch Defaults[.GeneralDefSettings].onboardingState {
   case .active: true

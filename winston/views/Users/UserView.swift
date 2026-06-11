@@ -63,6 +63,14 @@ struct UserView: View {
   func loadNextData() {
     Task {
       if let lastId = lastItemId, let overviewData = await user.refetchOverview(dataTypeFilter, lastId) {
+        guard !overviewData.isEmpty else {
+          await MainActor.run {
+            withAnimation {
+              lastItemId = nil
+            }
+          }
+          return
+        }
         await MainActor.run {
           withAnimation {
             lastActivities?.append(contentsOf: overviewData)
