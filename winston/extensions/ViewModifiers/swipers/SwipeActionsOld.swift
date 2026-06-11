@@ -16,8 +16,8 @@ struct SwipeActionsModifier: ViewModifier {
   @Binding var pressing: Bool
   @State private var offsetX: CGFloat = 0
   var parentOffsetX: Binding<CGFloat>?
-  @State private var firstAction = false
-  @State private var secondAction = false
+  @State private var firstAction: Bool
+  @State private var secondAction: Bool
   @State private var dragging = false
   var parentDragging: Binding<Bool>?
   

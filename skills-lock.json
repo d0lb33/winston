@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "swiftui-specialist": {
+      "source": "wisdom-in-a-nutshell/agents",
+      "sourceType": "github",
+      "skillPath": "skills-source/external/swiftui-specialist/SKILL.md",
+      "computedHash": "d782def1502a421d9d969220c6ab25c0e306a3ea9c7fc23882d71f6ecee4c1c6"
+    },
+    "swiftui-whats-new-27": {
+      "source": "wisdom-in-a-nutshell/agents",
+      "sourceType": "github",
+      "skillPath": "skills-source/external/swiftui-whats-new-27/SKILL.md",
+      "computedHash": "70bb7e0d8f7f584e6fbfc8b4d1389bd1df3fe3febc0221994902bb754d04261f"
+    },
+    "uikit-app-modernization": {
+      "source": "wisdom-in-a-nutshell/agents",
+      "sourceType": "github",
+      "skillPath": "skills-source/external/uikit-app-modernization/SKILL.md",
+      "computedHash": "c1ff8d90c154bb1376114407a8a2b3ab10138863c7dc3e941c5165142195c5c5"
+    }
+  }
+}
