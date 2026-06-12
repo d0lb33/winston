@@ -17,6 +17,8 @@ struct MixedContentFeedView: View {
   @State private var loadingOverview = true
   @State private var lastItemId: String? = nil
   @Environment(\.useTheme) private var selectedTheme
+  @Default(.PostLinkDefSettings) private var postLinkDefSettings
+  @Default(.SubredditFeedDefSettings) private var subredditFeedDefSettings
 
   
   @State private var dataTypeFilter: String = "" // Handles filtering for only posts or only comments.
@@ -30,7 +32,7 @@ struct MixedContentFeedView: View {
       mixedMediaLinks.forEach {
         switch $0 {
         case .first(let post):
-          post.setupWinstonData(data: post.data, winstonData: post.winstonData, theme: newTheme, sub: subreddit, fetchAvatar: false)
+          post.setupWinstonData(data: post.data, winstonData: post.winstonData, theme: newTheme, sub: subreddit, styleKey: subreddit?.id, fetchAvatar: false)
         case .second(let comment):
           comment.setupWinstonData()
           break
@@ -72,6 +74,8 @@ struct MixedContentFeedView: View {
       .environment(\.defaultMinListRowHeight, 1)
     }
 //    .onChange(of: cs) { _ in updateContentsCalcs(selectedTheme) }
+    .onChange(of: postLinkDefSettings) { _ in updateContentsCalcs(selectedTheme) }
+    .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { _ in updateContentsCalcs(selectedTheme) }
     .onChange(of: selectedTheme, perform: updateContentsCalcs)
     .themedListBG(selectedTheme.postLinks.bg)
     .scrollContentBackground(.hidden)

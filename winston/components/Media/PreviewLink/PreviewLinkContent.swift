@@ -44,7 +44,7 @@ struct PreviewLinkContentRaw: View, Equatable {
   var openURL: OpenURLAction
     
   var body: some View {
-    let imageSize = compact ? scaledCompactModeThumbSize() : 76
+    let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
     HStack(spacing: 16) {
       
       if !compact {

@@ -15,7 +15,16 @@ struct AppearancePanel: View {
 
   @Environment(\.useTheme) private var theme
   @State private var appIconManager = AppIconManger()
-  
+
+  private var postStyleBinding: Binding<PostLinkDisplayStyle> {
+    Binding(get: {
+      postLinkDefSettings.effectivePostStyle
+    }, set: { style in
+      postLinkDefSettings.postStyle = style
+      postLinkDefSettings.compactMode.enabled = style == .compact
+    })
+  }
+
   var body: some View {
     List {
       Group {
@@ -30,7 +39,7 @@ struct AppearancePanel: View {
           Text("Current Theme")
         }
         .listRowSeparator(.hidden)
-        
+
         Section {
           WNavigationLink(value: .setting(.appIcon)) {
             HStack{
@@ -40,7 +49,7 @@ struct AppearancePanel: View {
           }
         }
         .listSectionSpacing(15)
-        
+
         Section {
           HStack(spacing: 12){
             ListBigBtn(icon: "paintbrush.fill", iconColor: Color.blue, label: "My Themes") { Nav.to(.setting(.themes)) }
@@ -57,12 +66,12 @@ struct AppearancePanel: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-        
+
         Section("General") {
           Toggle("Show Username in Tab Bar", isOn: $appearanceDefSettings.showUsernameInTabBar)
           Toggle("Disable subs list letter sections", isOn: $appearanceDefSettings.disableAlphabetLettersSectionsInSubsList)
         }
-        
+
         //      Section("Theming") {
         //        Group {
         //          WNavigationLink(value: SettingsPages.themes) {
@@ -77,7 +86,20 @@ struct AppearancePanel: View {
         //        }
         //        .themedListSection()
         //      }
-//        
+//
+        Section("Post Look") {
+          Picker("Style", selection: postStyleBinding) {
+            ForEach(PostLinkDisplayStyle.allCases) { style in
+              Text(style.title).tag(style)
+            }
+          }
+          .pickerStyle(.inline)
+
+          Text(postLinkDefSettings.effectivePostStyle.detail)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+
         Section("Posts") {
           Toggle("Show Upvote Ratio", isOn: $postLinkDefSettings.showUpVoteRatio)
           Toggle("Show Voting Buttons", isOn: $postLinkDefSettings.showVotesCluster)
@@ -91,9 +113,8 @@ struct AppearancePanel: View {
           )
           Toggle("Show Author", isOn: $postLinkDefSettings.showAuthor)
         }
-        
+
         Section("Compact Posts") {
-          Toggle("Compact Mode", isOn: $postLinkDefSettings.compactMode.enabled)
           Toggle("Show Thumbnail Placeholder", isOn: $postLinkDefSettings.compactMode.showPlaceholderThumbnail)
             Picker("Thumbnail Position", selection: Binding(
               get: { postLinkDefSettings.compactMode.thumbnailSide == .trailing ? "Right" : "Left" },
@@ -102,7 +123,7 @@ struct AppearancePanel: View {
               Text("Left").tag("Left")
               Text("Right").tag("Right")
             }
-            
+
             Picker("Thumbnail Size", selection: Binding(get: {
               postLinkDefSettings.compactMode.thumbnailSize
             }, set: { val, _ in
@@ -113,7 +134,7 @@ struct AppearancePanel: View {
               Text("Medium").tag(ThumbnailSizeModifier.medium)
               Text("Large").tag(ThumbnailSizeModifier.large)
             }
-            
+
             Picker("Voting Buttons Position", selection: Binding(get: {
               postLinkDefSettings.compactMode.voteButtonsSide == .trailing ? "Right" : "Left"
             }, set: {val, _ in
@@ -123,16 +144,16 @@ struct AppearancePanel: View {
               Text("Right").tag("Right")
             }
         }
-        
+
         Section("Comments") {
           Toggle("Colored Usernames", isOn: $commentLinkDefSettings.coloredNames)
         }
-        
+
         Section("Accessibility"){
           Toggle("Theme Store Tint", isOn: $appearanceDefSettings.themeStoreTint)
           Toggle("\"Shiny\" Text and Buttons", isOn: $appearanceDefSettings.shinyTextAndButtons)
         }
-        
+
       }
       .themedListSection()
     }
@@ -154,12 +175,12 @@ enum ThumbnailSizeModifier:  Codable, CaseIterable, Identifiable, Defaults.Seria
   var id: CGFloat {
     self.rawVal
   }
-  
+
   case hidden
   case small
   case medium
   case large
-  
+
   var rawVal: CGFloat {
     switch self{
     case .hidden:

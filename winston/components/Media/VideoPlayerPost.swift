@@ -141,7 +141,7 @@ struct VideoPlayerPost: View, Equatable {
     let finalHeight = maxMediaHeightScreenPercentage != 110 ? Double(min(maxHeight, propHeight)) : Double(propHeight)
     
     if let sharedVideo = sharedVideo {
-      let videoSize = CGSize(width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : CGFloat(finalHeight))
+      let videoSize = CGSize(width: compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth, height: compact ? scaledCompactModeThumbSize(compact: compact) : CGFloat(finalHeight))
       let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio })
       if let controller = controller {
         ZStack {

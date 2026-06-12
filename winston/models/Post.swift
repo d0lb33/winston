@@ -51,9 +51,13 @@ extension Post {
     self.winstonData = newWinstonData
   }
   
-  func setupWinstonData(data: PostData? = nil, winstonData: PostWinstonData? = nil, contentWidth: Double = .screenW, secondary: Bool = false, theme: WinstonTheme, sub: Subreddit? = nil, fetchAvatar: Bool = true) {
+  func setupWinstonData(data: PostData? = nil, winstonData: PostWinstonData? = nil, contentWidth: Double = .screenW, secondary: Bool = false, theme: WinstonTheme, sub: Subreddit? = nil, styleKey: String? = nil, fetchAvatar: Bool = true) {
     if let data = data ?? self.data {
-      let compact = Defaults[.SubredditFeedDefSettings].compactPerSubreddit[sub?.id ?? data.subreddit_id ?? ""] ?? Defaults[.PostLinkDefSettings].compactMode.enabled
+      let feedStyleKey = styleKey ?? sub?.id ?? data.subreddit
+      let feedDefSettings = Defaults[.SubredditFeedDefSettings]
+      let compactOverride = feedDefSettings.compactPerSubreddit[feedStyleKey]
+      let styleOverride = feedDefSettings.postStylePerSubreddit[feedStyleKey]
+      let compact = Defaults[.PostLinkDefSettings].resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact
       if self.winstonData == nil { self.winstonData = .init() }
       
       self.winstonData?.permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
@@ -95,7 +99,7 @@ extension Post {
                   self.winstonData?.extractedMedia = .video(video)
                   self.winstonData?.extractedMediaForcedNormal = .video(video)
                   
-                  self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: sub?.id)
+                  self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
                   self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
                 }
               }
@@ -110,7 +114,7 @@ extension Post {
       self.winstonData?.extractedMediaForcedNormal = extractedMediaForcedNormal
       
       
-      self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: sub?.id)
+      self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
       self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
       
       self.winstonData?.titleAttr = createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())

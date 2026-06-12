@@ -125,11 +125,11 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
         var actualWidth = contentWidth
         if let sizeInstructions = sizes[galleryData.count], let mySize = sizeInstructions[i] { actualWidth = mySize } else { actualWidth = halfWidth }
         
-        let sizeSimple = compact ? scaledCompactModeThumbSize() : actualWidth
+        let sizeSimple = compact ? scaledCompactModeThumbSize(compact: compact) : actualWidth
         let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: .init(width: sizeSimple, height: sizeSimple), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
         var thumbnail: ImageRequest.ThumbnailOptions?
         if compact && !imgURL.absoluteString.hasSuffix(".gif") {
-          thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+          thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
         }
         return ImgExtracted(url: imgURL, size: CGSize(width: size.x, height: size.y), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
       }
@@ -203,11 +203,11 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       actualHeight = height
     }
     
-    let size = compact ? scaledCompactModeThumbSize() : contentWidth
+    let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
     let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
     var thumbnail: ImageRequest.ThumbnailOptions?
     if compact && !url.absoluteString.hasSuffix(".gif") {
-      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
     }
     let imgExtracted = ImgExtracted(url: url, size: CGSize(width: actualWidth, height: actualHeight), request: winstonImageRequest(url: url, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
     recordMediaExtraction(data: data, kind: "direct_image", compact: compact, contentWidth: contentWidth, playbackURL: url, size: CGSize(width: actualWidth, height: actualHeight), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])
@@ -216,11 +216,11 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   
   if let images = data.preview?.images, images.count > 0, let image = images[0].source, let src = image.url?.replacing("/preview.", with: "/i."), !src.contains("external-preview"), let imgURL = rootURL(src.escape), let width = image.width, let height = image.height {
     
-    let size = compact ? scaledCompactModeThumbSize() : contentWidth
+    let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
     let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
     var thumbnail: ImageRequest.ThumbnailOptions?
     if compact {
-      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
     }
     let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: width, height: height), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
     recordMediaExtraction(data: data, kind: "preview_image", compact: compact, contentWidth: contentWidth, playbackURL: imgURL, size: CGSize(width: width, height: height), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])

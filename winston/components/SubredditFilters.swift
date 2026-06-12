@@ -24,7 +24,7 @@ struct SubredditFilters: View, Equatable {
   var searchCallback: ((String?) -> ())
   var editCustomFilter: ((FilterData) -> ())
   
-  @State var compactOn: String = "Normal"
+  @State private var selectedPostStyle: PostLinkDisplayStyle = .clean
   
   var theme: WinstonTheme
 
@@ -39,11 +39,12 @@ struct SubredditFilters: View, Equatable {
     self.editCustomFilter = editCustomFilter
     self.theme = theme
     
-    _compactOn = State(initialValue: (subredditFeedDefSettings.compactPerSubreddit[subId] ?? postLinkDefSettings.compactMode.enabled) ? "Compact": "Normal")
+    _selectedPostStyle = State(initialValue: postLinkDefSettings.resolvedPostStyle(styleOverride: subredditFeedDefSettings.postStylePerSubreddit[subId], compactOverride: subredditFeedDefSettings.compactPerSubreddit[subId]))
   }
-  
-  func toggleCompactMode(compact: Bool) {
-    subredditFeedDefSettings.compactPerSubreddit[self.subId] = compact
+
+  func setPostStyle(_ style: PostLinkDisplayStyle) {
+    subredditFeedDefSettings.postStylePerSubreddit[self.subId] = style
+    subredditFeedDefSettings.compactPerSubreddit[self.subId] = style == .compact
   }
   
   func getBackgroundColor() -> Color {
@@ -69,9 +70,10 @@ struct SubredditFilters: View, Equatable {
               Label("New filter", systemImage: "plus")
             }
             
-            Picker("", selection: $compactOn) {
-              Text("Normal").tag("Normal")
-              Text("Compact").tag("Compact")
+            Picker("Post Style", selection: $selectedPostStyle) {
+              ForEach(PostLinkDisplayStyle.allCases) { style in
+                Text(style.title).tag(style)
+              }
             }
             
           
@@ -82,8 +84,8 @@ struct SubredditFilters: View, Equatable {
               .frame(width: theme.postLinks.filterText.size - 2, height: theme.postLinks.filterText.size - 2)
               .opacity(0.8)
           }
-          .onChange(of: compactOn, perform: { value in
-            toggleCompactMode(compact: value == "Compact")
+          .onChange(of: selectedPostStyle, perform: { value in
+            setPostStyle(value)
           })
           
           FlairFilter(filter: FilterData(text: "All", text_color: "000000", background_color: "D5D7D9"), filterFont: theme.postLinks.filterText, opacity: opacity, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter)

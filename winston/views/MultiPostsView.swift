@@ -33,6 +33,7 @@ struct MultiPostsView: View {
 //  @Environment(\.colorScheme) private var cs
 	@Environment(\.horizontalSizeClass) private var hSizeClass
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
+  @Default(.PostLinkDefSettings) var postLinkDefSettings
   
   func searchCallback(str: String?) {
     searchText = str ?? ""
@@ -145,7 +146,7 @@ struct MultiPostsView: View {
   }
   
   func updatePostsCalcs(_ newTheme: WinstonTheme) {
-    Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: $0.winstonData?.subreddit, fetchAvatar: false) } }
+    Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: $0.winstonData?.subreddit, styleKey: multi.id, fetchAvatar: false) } }
   }
   
   var body: some View {
@@ -153,9 +154,9 @@ struct MultiPostsView: View {
       let filteredPosts = visiblePosts(posts.data)
 
       if IPAD && hSizeClass == .regular {
-        SubredditPostsIPAD(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+        SubredditPostsIPAD(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
       } else {
-        SubredditPostsIOS(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+        SubredditPostsIOS(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
       }
     }
     //.themedListBG(selectedTheme.postLinks.bg)
@@ -211,6 +212,8 @@ struct MultiPostsView: View {
 //    .searchable(text: $searchText, prompt: "Search r/\(subreddit.data?.display_name ?? subreddit.id)")
 //    .onChange(of: cs) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: subredditFeedDefSettings.compactPerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
+    .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
+    .onChange(of: postLinkDefSettings) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: selectedTheme, perform: updatePostsCalcs)
     .refreshable { await asyncFetch(force: true) }
     .navigationTitle(multi.data?.name ?? "MultiZ")

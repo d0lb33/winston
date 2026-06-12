@@ -40,7 +40,7 @@ struct YTMediaPostPlayer: View, Equatable {
         YouTubePlayerView(player)
       }
     }
-    .frame(width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : actualHeight)
+    .frame(width: compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth, height: compact ? scaledCompactModeThumbSize(compact: compact) : actualHeight)
     .mask(RR(12, Color.black))
     .allowsHitTesting(!openYoutubeApp)
     .contentShape(Rectangle())
@@ -56,4 +56,3 @@ struct YTMediaPostPlayer: View, Equatable {
     }
   }
 }
-

@@ -69,6 +69,7 @@ struct SubredditPosts: View, Equatable {
   @Environment(\.horizontalSizeClass) private var hSizeClass
 	
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
+  @Default(.PostLinkDefSettings) var postLinkDefSettings
   
   let context = PersistenceController.shared.container.newBackgroundContext()
   
@@ -457,7 +458,7 @@ struct SubredditPosts: View, Equatable {
   }
   
   func updatePostsCalcs(_ newTheme: WinstonTheme) {
-    Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: subreddit, fetchAvatar: false) } }
+    Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: subreddit, styleKey: subreddit.id, fetchAvatar: false) } }
   }
 
   private var savedMixedMediaLinks: [Either<Post, Comment>]? {
@@ -476,9 +477,9 @@ struct SubredditPosts: View, Equatable {
           let filteredPosts = getFilteredPosts(posts: posts.data)
           
           if IPAD && hSizeClass == .regular {
-            SubredditPostsIPAD(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+            SubredditPostsIPAD(showSub: isFeedsAndSuch, feedStyleKey: subreddit.id, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
           } else {
-            SubredditPostsIOS(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+            SubredditPostsIOS(showSub: isFeedsAndSuch, feedStyleKey: subreddit.id, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
           }
         }
         .searchable(text: $searchText, prompt: "Search r/\(subreddit.data?.display_name ?? subreddit.id)")
@@ -574,6 +575,8 @@ struct SubredditPosts: View, Equatable {
     }
 //    .onChange(of: cs) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: subredditFeedDefSettings.compactPerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
+    .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
+    .onChange(of: postLinkDefSettings) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: selectedTheme, perform: updatePostsCalcs)
     .onChange(of: searchText) { val in if searchText.isEmpty { clearAndLoadData() } }
     .sheet(item: $customFilter, onDismiss: {

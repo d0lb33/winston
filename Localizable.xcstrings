@@ -738,6 +738,12 @@
         }
       }
     },
+    "Classic" : {
+
+    },
+    "Clean" : {
+
+    },
     "Clear Diagnostic Logs" : {
 
     },
@@ -846,6 +852,7 @@
 
     },
     "Compact Mode" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1031,6 +1038,9 @@
       }
     },
     "Delete" : {
+
+    },
+    "Dense rows with side thumbnails." : {
 
     },
     "Depressive load full :(" : {
@@ -2389,6 +2399,9 @@
         }
       }
     },
+    "Metadata first, tighter spacing, full media." : {
+
+    },
     "Metadatas" : {
       "localizations" : {
         "de" : {
@@ -2528,9 +2541,6 @@
 
     },
     "No rules were returned for r/%@" : {
-
-    },
-    "Normal" : {
 
     },
     "Not connected. Log in to reddit.com to mint an Android bearer via RedditPOC." : {
@@ -2722,6 +2732,9 @@
         }
       }
     },
+    "Original Winston post layout." : {
+
+    },
     "Paste here the app ID" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2841,6 +2854,9 @@
         }
       }
     },
+    "Post Look" : {
+
+    },
     "Post page" : {
       "localizations" : {
         "de" : {
@@ -2890,6 +2906,9 @@
           }
         }
       }
+    },
+    "Post Style" : {
+
     },
     "Post title" : {
       "extractionState" : "stale",
@@ -4080,12 +4099,6 @@
           }
         }
       }
-    },
-    "Use compact post layout" : {
-
-    },
-    "Use full post layout" : {
-
     },
     "View full conversation" : {
       "localizations" : {

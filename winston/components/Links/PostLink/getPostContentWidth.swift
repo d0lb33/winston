@@ -48,7 +48,7 @@ struct PostDimensions: Hashable, Equatable {
   
   init(contentWidth: Double, compact: Bool? = nil, theme: PostLinkTheme? = nil, titleSize: CGSize, bodySize: CGSize? = nil, urlTagHeight: Double? = nil, mediaSize: CGSize? = nil, dividerSize: CGSize? = nil, badgeSize: CGSize, spacingHeight: Double) {
     self.contentWidth = contentWidth
-    self.compact = compact ?? Defaults[.PostLinkDefSettings].compactMode.enabled
+    self.compact = compact ?? (Defaults[.PostLinkDefSettings].effectivePostStyle == .compact)
     self.theme = theme ?? getEnabledTheme().postLinks.theme
     self.titleSize = titleSize
     self.bodySize = bodySize
@@ -63,13 +63,18 @@ struct PostDimensions: Hashable, Equatable {
 func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWidth: Double = .screenW, secondary: Bool = false, rawTheme: WinstonTheme? = nil, compact: Bool? = nil, subId: String? = nil) -> PostDimensions {
   if let data = post.data {
     let selectedTheme = rawTheme ?? getEnabledTheme()
-    let showSelfPostThumbnails = Defaults[.PostLinkDefSettings].compactMode.showPlaceholderThumbnail
-    let compact = compact ?? Defaults[.SubredditFeedDefSettings].compactPerSubreddit[subId ?? data.subreddit_id ?? ""] ?? Defaults[.PostLinkDefSettings].compactMode.enabled
-    let showAuthorOnPostLinks = Defaults[.PostLinkDefSettings].showAuthor
-    let maxDefaultHeight: CGFloat = Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage
+    let postLinkDefSettings = Defaults[.PostLinkDefSettings]
+    let showSelfPostThumbnails = postLinkDefSettings.compactMode.showPlaceholderThumbnail
+    let feedStyleKey = subId ?? data.subreddit
+    let feedDefSettings = Defaults[.SubredditFeedDefSettings]
+    let compactOverride = feedDefSettings.compactPerSubreddit[feedStyleKey]
+    let styleOverride = feedDefSettings.postStylePerSubreddit[feedStyleKey]
+    let compact = compact ?? (postLinkDefSettings.resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact)
+    let showAuthorOnPostLinks = postLinkDefSettings.showAuthor
+    let maxDefaultHeight: CGFloat = postLinkDefSettings.maxMediaHeightScreenPercentage
     let maxHeight: CGFloat = (maxDefaultHeight / 100) * (.screenH)
     let extractedMedia = compact ? winstonData?.extractedMedia : winstonData?.extractedMediaForcedNormal
-    let compactImgSize = scaledCompactModeThumbSize()
+    let compactImgSize = scaledCompactModeThumbSize(compact: compact)
     let theme = selectedTheme.postLinks.theme
     let postGeneralSpacing = theme.verticalElementsSpacing + theme.linespacing
     let title = data.title

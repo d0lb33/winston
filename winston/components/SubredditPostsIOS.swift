@@ -12,10 +12,11 @@ import NukeUI
 
 struct SubredditPostsIOS: View, Equatable {
   static func == (lhs: SubredditPostsIOS, rhs: SubredditPostsIOS) -> Bool {
-    lhs.posts.count == rhs.posts.count && lhs.subreddit?.id == rhs.subreddit?.id && lhs.searchText == rhs.searchText && lhs.selectedTheme == rhs.selectedTheme && lhs.lastPostAfter == rhs.lastPostAfter && lhs.filter == rhs.filter && lhs.loading == rhs.loading && lhs.filters == rhs.filters
+    lhs.posts.count == rhs.posts.count && lhs.feedStyleKey == rhs.feedStyleKey && lhs.subreddit?.id == rhs.subreddit?.id && lhs.searchText == rhs.searchText && lhs.selectedTheme == rhs.selectedTheme && lhs.lastPostAfter == rhs.lastPostAfter && lhs.filter == rhs.filter && lhs.loading == rhs.loading && lhs.filters == rhs.filters
   }
   
   var showSub = false
+  var feedStyleKey: String?
   var lastPostAfter: String?
   weak var subreddit: Subreddit?
   var filters: [FilterData]
@@ -60,6 +61,7 @@ struct SubredditPostsIOS: View, Equatable {
     let isFiltered = filter != "flair:All"
     let paddingH = selectedTheme.postLinks.theme.outerHPadding
     let paddingV = selectedTheme .postLinks.spacing / (isThereDivider ? 4 : 2)
+    let styleKey = feedStyleKey ?? subreddit?.id ?? ""
     
     List {
       
@@ -81,7 +83,7 @@ struct SubredditPostsIOS: View, Equatable {
       Section {
         ForEach(Array(posts.enumerated()), id: \.self.element.id) { i, post in
           if let sub = subreddit ?? post.winstonData?.subreddit, let winstonData = post.winstonData {
-            PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[sub.id], contentWidth: contentWidth, defSettings: postLinkDefSettings)
+            PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[styleKey], postStyleOverride: feedDefSettings.postStylePerSubreddit[styleKey], contentWidth: contentWidth, defSettings: postLinkDefSettings)
             .environmentObject(sub)
             .environmentObject(post)
             .environmentObject(winstonData)
@@ -149,6 +151,6 @@ struct SubredditPostsIOS: View, Equatable {
     .listStyle(.plain)
     .listRowSeparator(.hidden)
     .listSectionSeparator(.hidden)
-    .floatingMenu(subId: subreddit?._id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
+    .floatingMenu(subId: styleKey, filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
   }
 }

@@ -98,11 +98,11 @@ private struct ImageMediaSinglePreview: View {
   let open: () -> Void
 
   private var width: CGFloat {
-    compact ? scaledCompactModeThumbSize() : max(contentWidth, 1)
+    compact ? scaledCompactModeThumbSize(compact: compact) : max(contentWidth, 1)
   }
 
   private var height: CGFloat? {
-    if compact { return scaledCompactModeThumbSize() }
+    if compact { return scaledCompactModeThumbSize(compact: compact) }
     guard image.size.width > 0, image.size.height > 0 else { return nil }
     let proportionalHeight = (max(contentWidth, 1) * image.size.height) / image.size.width
     guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
@@ -208,7 +208,7 @@ private struct ImageMediaUnavailablePreview: View {
           .fontSize(22, .semibold)
           .foregroundStyle(.secondary)
       }
-      .frame(width: compact ? scaledCompactModeThumbSize() : nil, height: compact ? scaledCompactModeThumbSize() : 120)
+      .frame(width: compact ? scaledCompactModeThumbSize(compact: compact) : nil, height: compact ? scaledCompactModeThumbSize(compact: compact) : 120)
       .mask(RR(cornerRadius, Color.black).equatable())
   }
 }

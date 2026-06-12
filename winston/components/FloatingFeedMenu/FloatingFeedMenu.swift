@@ -25,7 +25,6 @@ struct FloatingFeedMenu: View, Equatable {
   
   @State private var menuOpen = false
   @State private var showingFilters = false
-  @State var compact: Bool = false
   
   @Namespace private var ns
   
@@ -48,8 +47,24 @@ struct FloatingFeedMenu: View, Equatable {
     self.searchCallback = searchCallback
     self.customFilterCallback = customFilterCallback
     self.hideReadPosts = hideReadPosts
-    
-    _compact = State(initialValue: subredditFeedDefSettings.compactPerSubreddit[subId] ?? postLinkDefSettings.compactMode.enabled)
+  }
+
+  private var currentPostStyle: PostLinkDisplayStyle {
+    guard !subId.isEmpty else { return postLinkDefSettings.effectivePostStyle }
+    return postLinkDefSettings.resolvedPostStyle(
+      styleOverride: subredditFeedDefSettings.postStylePerSubreddit[subId],
+      compactOverride: subredditFeedDefSettings.compactPerSubreddit[subId]
+    )
+  }
+
+  private func setPostStyle(_ style: PostLinkDisplayStyle) {
+    if subId.isEmpty {
+      postLinkDefSettings.postStyle = style
+      postLinkDefSettings.compactMode.enabled = style == .compact
+    } else {
+      subredditFeedDefSettings.postStylePerSubreddit[subId] = style
+      subredditFeedDefSettings.compactPerSubreddit[subId] = style == .compact
+    }
   }
 
   private func actionButton(systemName: String, label: LocalizedStringKey, transitionIndex: Int, action: @escaping () -> Void) -> some View {
@@ -67,6 +82,34 @@ struct FloatingFeedMenu: View, Equatable {
     .buttonStyle(.plain)
     .accessibilityLabel(Text(label))
     .transition(.comeFrom(.bottom, index: transitionIndex, total: 3))
+    .increaseHitboxOf(actionsSize, by: 1.125, shape: Circle(), disable: menuOpen)
+    .shrinkOnTap()
+  }
+
+  private func styleButton(_ style: PostLinkDisplayStyle, transitionIndex: Int) -> some View {
+    let active = currentPostStyle == style
+
+    return Button {
+      Hap.shared.play(intensity: 0.75, sharpness: 0.9)
+      setPostStyle(style)
+      dismiss()
+    } label: {
+      Image(systemName: style.systemImage)
+        .fontSize(21, .bold)
+        .frame(width: actionsSize, height: actionsSize)
+        .foregroundColor(active ? .white : Color.accentColor)
+        .background(Circle().fill(Color.accentColor.opacity(active ? 1 : 0)))
+        .floating()
+        .overlay {
+          Circle()
+            .stroke(Color.accentColor.opacity(active ? 0.45 : 0), lineWidth: 2)
+            .padding(1)
+        }
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(Text(style.title))
+    .transition(.comeFrom(.bottom, index: transitionIndex, total: 5))
     .increaseHitboxOf(actionsSize, by: 1.125, shape: Circle(), disable: menuOpen)
     .shrinkOnTap()
   }
@@ -163,10 +206,12 @@ struct FloatingFeedMenu: View, Equatable {
                 }
               }
               
-              actionButton(systemName: compact ? "doc.text.image" : "doc.plaintext", label: compact ? "Use full post layout" : "Use compact post layout", transitionIndex: 1) {
-                compact = !compact
-                subredditFeedDefSettings.compactPerSubreddit[self.subId] = compact
+              HStack(spacing: 10) {
+                ForEach(Array(PostLinkDisplayStyle.allCases.enumerated()), id: \.element) { index, style in
+                  styleButton(style, transitionIndex: index + 1)
+                }
               }
+              .transition(.comeFrom(.bottom, index: 1, total: 5))
               
               actionButton(systemName: "plus", label: "Create custom filter", transitionIndex: 0) {
                 customFilterCallback(FilterData())
@@ -187,7 +232,7 @@ struct FloatingFeedMenu: View, Equatable {
 extension View {
   func floatingMenu(subId: String, filters: [FilterData], selected: String, filterCallback: @escaping ((String) -> ()), searchText: String, searchCallback: @escaping ((String?) -> ()), customFilterCallback: @escaping ((FilterData) -> ()), hideReadPosts: @escaping (() -> ())) -> some View {
     self
-      .overlay(FloatingFeedMenu(subId: subId, filters: filters, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: customFilterCallback, hideReadPosts: hideReadPosts).equatable(), alignment: .bottomTrailing)
+      .overlay(FloatingFeedMenu(subId: subId, filters: filters, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: customFilterCallback, hideReadPosts: hideReadPosts), alignment: .bottomTrailing)
   }
 }
 

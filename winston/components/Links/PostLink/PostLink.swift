@@ -15,7 +15,7 @@ let POSTLINK_INNER_H_PAD: CGFloat = 16
 
 struct PostLink: View, Equatable, Identifiable {
   static func == (lhs: PostLink, rhs: PostLink) -> Bool {
-    return lhs.id == rhs.id && lhs.repostAvatarRequest?.url == rhs.repostAvatarRequest?.url && lhs.theme == rhs.theme && lhs.defSettings == rhs.defSettings && lhs.compactPerSubreddit == rhs.compactPerSubreddit
+    return lhs.id == rhs.id && lhs.repostAvatarRequest?.url == rhs.repostAvatarRequest?.url && lhs.theme == rhs.theme && lhs.defSettings == rhs.defSettings && lhs.compactPerSubreddit == rhs.compactPerSubreddit && lhs.postStyleOverride == rhs.postStyleOverride
   }
   
   //  var disableOuterVSpacing = false
@@ -26,13 +26,28 @@ struct PostLink: View, Equatable, Identifiable {
   var showSub = false
   var secondary = false
   let compactPerSubreddit: Bool?
+  let postStyleOverride: PostLinkDisplayStyle?
   let contentWidth: CGFloat
   var defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings]
-    
+
+  init(id: String, controller: UIViewController? = nil, repostAvatarRequest: ImageRequest? = nil, theme: SubPostsListTheme, showSub: Bool = false, secondary: Bool = false, compactPerSubreddit: Bool?, postStyleOverride: PostLinkDisplayStyle? = nil, contentWidth: CGFloat, defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings]) {
+    self.id = id
+    self.controller = controller
+    self.repostAvatarRequest = repostAvatarRequest
+    self.theme = theme
+    self.showSub = showSub
+    self.secondary = secondary
+    self.compactPerSubreddit = compactPerSubreddit
+    self.postStyleOverride = postStyleOverride
+    self.contentWidth = contentWidth
+    self.defSettings = defSettings
+  }
+
   var body: some View {
-    
+    let style = defSettings.resolvedPostStyle(styleOverride: postStyleOverride, compactOverride: compactPerSubreddit)
     Group {
-      if compactPerSubreddit ?? defSettings.compactMode.enabled {
+      switch style {
+      case .compact:
         PostLinkCompact(
           id: id,
           controller: controller,
@@ -43,8 +58,19 @@ struct PostLink: View, Equatable, Identifiable {
           defSettings: defSettings
         )
         .equatable()
-      } else {
+      case .classic:
         PostLinkNormal(
+          id: id,
+          controller: controller,
+          theme: theme,
+          showSub: showSub,
+          secondary: secondary,
+          contentWidth: contentWidth,
+          defSettings: defSettings
+        )
+        .equatable()
+      case .clean:
+        PostLinkClean(
           id: id,
           controller: controller,
           theme: theme,
@@ -60,19 +86,16 @@ struct PostLink: View, Equatable, Identifiable {
 }
 
 extension View {
-  func postLinkStyle(showSubBottom: Bool = false, post: Post, sub: Subreddit, theme: SubPostsListTheme, size: CGSize, secondary: Bool, openPost: @escaping () -> (), readPostOnScroll: Bool) -> some View {
+  func postLinkStyle(showSubBottom: Bool = false, post: Post, sub: Subreddit, theme: SubPostsListTheme, size: CGSize, secondary: Bool, openPost: @escaping () -> (), readPostOnScroll: Bool, innerPadding: EdgeInsets? = nil) -> some View {
     let seen = (post.data?.winstonSeen ?? false)
-    let fadeReadPosts = theme.theme.unseenType == .fade
-    let readOpacity = fadeReadPosts ? theme.theme.unseenFadeOpacity : 0.68
+    let padding = innerPadding ?? EdgeInsets(top: theme.theme.innerPadding.vertical, leading: theme.theme.innerPadding.horizontal, bottom: theme.theme.innerPadding.vertical, trailing: theme.theme.innerPadding.horizontal)
     return self
-      .padding(EdgeInsets(top: theme.theme.innerPadding.vertical, leading: theme.theme.innerPadding.horizontal, bottom: theme.theme.innerPadding.vertical, trailing: theme.theme.innerPadding.horizontal))
+      .padding(padding)
       .background(PostLinkBG(theme: theme, stickied: post.data?.stickied, secondary: secondary).equatable())
       .overlay(PostLinkGlowDot(unseenType: theme.theme.unseenType, seen: seen, badge: false).equatable(), alignment: .topTrailing)
       .contentShape(Rectangle())
       .compositingGroup()
 //      .brightness(isOpen.wrappedValue ? 0.075 : 0)
-      .saturation(seen ? 0.45 : 1)
-      .opacity(seen ? readOpacity : 1)
       .contextMenu(menuItems: { PostLinkContext(post: post) }, preview: { PostLinkContextPreview(post: post, sub: sub) })
       .foregroundStyle(.primary)
       .multilineTextAlignment(.leading)
@@ -83,6 +106,15 @@ extension View {
           }
         }
       }
+  }
+
+  func postReadDimmed(post: Post, theme: SubPostsListTheme) -> some View {
+    let seen = post.data?.winstonSeen ?? false
+    let fadeReadPosts = theme.theme.unseenType == .fade
+    let readOpacity = fadeReadPosts ? theme.theme.unseenFadeOpacity : 0.68
+    return self
+      .saturation(seen ? 0.45 : 1)
+      .opacity(seen ? readOpacity : 1)
   }
 }
 
@@ -153,5 +185,3 @@ struct PostLinkBG: View, Equatable {
     .mask(RR(theme.theme.cornerRadius, Color.black).equatable())
   }
 }
-
-

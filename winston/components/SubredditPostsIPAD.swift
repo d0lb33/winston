@@ -12,10 +12,11 @@ import NukeUI
 
 struct SubredditPostsIPAD: View, Equatable {
   static func == (lhs: SubredditPostsIPAD, rhs: SubredditPostsIPAD) -> Bool {
-    lhs.posts.count == rhs.posts.count && lhs.subreddit?.id == rhs.subreddit?.id && lhs.searchText == rhs.searchText && lhs.selectedTheme == rhs.selectedTheme && lhs.lastPostAfter == rhs.lastPostAfter && lhs.filter == rhs.filter && lhs.loading == rhs.loading && lhs.filters == rhs.filters
+    lhs.posts.count == rhs.posts.count && lhs.feedStyleKey == rhs.feedStyleKey && lhs.subreddit?.id == rhs.subreddit?.id && lhs.searchText == rhs.searchText && lhs.selectedTheme == rhs.selectedTheme && lhs.lastPostAfter == rhs.lastPostAfter && lhs.filter == rhs.filter && lhs.loading == rhs.loading && lhs.filters == rhs.filters
   }
   
   var showSub = false
+  var feedStyleKey: String?
 	var lastPostAfter: String?
   var subreddit: Subreddit?
 	var filters: [FilterData]
@@ -58,6 +59,7 @@ struct SubredditPostsIPAD: View, Equatable {
     
   var body: some View {
 		let isFiltered = filter != "flair:All"
+    let styleKey = feedStyleKey ?? subreddit?.id ?? ""
     VStack(spacing: 8) {
       
 //      if let sub = subreddit {
@@ -96,7 +98,7 @@ struct SubredditPostsIPAD: View, Equatable {
         contentForData: { post, i in
           Group {
             if let sub = subreddit ?? post.winstonData?.subreddit, let winstonData = post.winstonData {
-              PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[sub.id], contentWidth: contentWidth, defSettings: postLinkDefSettings)
+              PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[styleKey], postStyleOverride: feedDefSettings.postStylePerSubreddit[styleKey], contentWidth: contentWidth, defSettings: postLinkDefSettings)
 //              .swipyRev(size: winstonData.postDimensions.size, actionsSet: postLinkDefSettings.swipeActions, entity: post)
               .environmentObject(post)
               .environmentObject(sub)
@@ -144,7 +146,7 @@ struct SubredditPostsIPAD: View, Equatable {
 						.id(UUID())
 				}
     }
-    .floatingMenu(subId: subreddit?.id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
+    .floatingMenu(subId: styleKey, filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
 		.navigationBarTitleDisplayMode(.inline)
   }
 }

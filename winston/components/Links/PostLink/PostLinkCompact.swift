@@ -14,7 +14,7 @@ struct PostLinkCompactThumbPlaceholder: View, Equatable {
   var theme: PostLinkTheme.CompactSelftextPostLinkPlaceholderImg
 
   var body: some View {
-    let scaledCompactModeThumbSize = scaledCompactModeThumbSize()
+    let scaledCompactModeThumbSize = scaledCompactModeThumbSize(compact: true)
     Group {
       if theme.type == .winston {
         Image(.winstonFlat)
@@ -123,7 +123,10 @@ struct PostLinkCompact: View, Equatable, Identifiable {
       VStack(alignment: .leading, spacing: theme.theme.verticalElementsSpacing) {
         HStack(alignment: .top, spacing: theme.theme.verticalElementsSpacing) {
           
-          if defSettings.compactMode.voteButtonsSide == .leading { votesPiece() }
+          if defSettings.compactMode.voteButtonsSide == .leading {
+            votesPiece()
+              .postReadDimmed(post: post, theme: theme)
+          }
           
           if defSettings.compactMode.thumbnailSide == .leading { mediaPiece() }
           
@@ -153,10 +156,14 @@ struct PostLinkCompact: View, Equatable, Identifiable {
                       
           }
           .frame(maxWidth: .infinity, alignment: .topLeading)
+          .postReadDimmed(post: post, theme: theme)
           
           if defSettings.compactMode.thumbnailSide == .trailing { mediaPiece() }
           
-          if defSettings.compactMode.voteButtonsSide == .trailing { votesPiece() }
+          if defSettings.compactMode.voteButtonsSide == .trailing {
+            votesPiece()
+              .postReadDimmed(post: post, theme: theme)
+          }
         }
         .zIndex(1)
         .frame(maxWidth: .infinity, alignment: .topLeading)

@@ -51,7 +51,7 @@ final class PreviewModel: ObservableObject, Equatable {
       headers["charset"] = "UTF-8"
       if let og = try? await OpenGraph.fetch(url: previewURL, headers: headers) {
         if let imgURL = URL(string: og[.image] ?? "") {
-          let imageSize = compact ? scaledCompactModeThumbSize() : 76
+          let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
           Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: CGSize(width: imageSize, height: imageSize))], priority: .veryLow)])
         }
         await MainActor.run {
