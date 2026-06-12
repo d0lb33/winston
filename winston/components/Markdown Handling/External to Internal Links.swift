@@ -16,16 +16,18 @@ class MarkdownUtil {
   static func formatForMarkdown(_ text: String, showSpoiler: Bool = false) -> String {
     var processedText = text
     
-    // Replace http:// or https:// in existing markdown links
+    // Replace http:// or https:// in existing markdown links, but leave markdown
+    // images alone so remote image URLs remain loadable.
     processedText = processedText.replacingOccurrences(
-      of: "\\[([^\\]]+)\\]\\((https?://)(\\S+)(?:\\))",
+      of: "(?<!!)\\[([^\\]]+)\\]\\((https?://)(\\S+)(?:\\))",
       with: "[$1](winstonapp://$3)",
       options: .regularExpression
     )
 
-    // Replace URLs with http:// or https:// (if not already in markdown format)
+    // Replace URLs with http:// or https:// (if not already in markdown format
+    // or inside a markdown image/link destination).
     processedText = processedText.replacingOccurrences(
-      of: "\\b(?<!\\[)(https?://)(\\S+)(?!\\])\\b",
+      of: "(?<!\\]\\()\\b(?<!\\[)(https?://)(\\S+)(?!\\])\\b",
       with: "[$0](winstonapp://$2)",
       options: .regularExpression
     )

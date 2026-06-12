@@ -581,6 +581,9 @@
         }
       }
     },
+    "Back to login" : {
+
+    },
     "Backup" : {
       "localizations" : {
         "de" : {
@@ -875,6 +878,9 @@
           }
         }
       }
+    },
+    "Complete Reddit Check" : {
+
     },
     "Connect via RedditPOC" : {
 
@@ -1821,6 +1827,9 @@
           }
         }
       }
+    },
+    "I’m done" : {
+
     },
     "I'm lost!" : {
 

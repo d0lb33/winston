@@ -35,7 +35,7 @@ struct URLImage: View, Equatable {
   }
   
   var body: some View {
-    if url.absoluteString.hasSuffix(".gif") {
+    if url.pathExtension.lowercased() == "gif" {
       LazyImage(url: url) { state in
         if let imageData = state.imageContainer?.data {
           GIFImage(data: imageData, size: size)

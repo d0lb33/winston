@@ -378,8 +378,25 @@ final class RedditWire: ObservableObject {
   /// PostData and a FLAT list of comment children (each tagged with parent_id)
   /// ready for `nestComments(_, parentID:)`. MVP: initial tree only (no
   /// load-more; "more" nodes are dropped).
-  func postWithComments(postID: String, sort: CommentSortOption = .confidence) async -> (PostData?, [ListingChild<CommentData>]) {
+  func postWithComments(postID: String, commentID: String? = nil, sort: CommentSortOption = .confidence) async -> (PostData?, [ListingChild<CommentData>]) {
     do {
+      if let commentID, !commentID.isEmpty {
+        let resp = try await client.commentByIdWithChildrenResponse(commentID: commentID, sort: redditCommentSort(from: sort))
+        guard let commentById = resp.data?.commentById else {
+          status = "commentByIdWithChildren: no comment in response"
+          return (nil, [])
+        }
+        let postFullname = commentById.postInfo?.id ?? (postID.hasPrefix("t3_") ? postID : "t3_\(postID)")
+        let trees = commentById.children?.trees ?? []
+        status = "commentByIdWithChildren \(commentID) → \(trees.count) comment nodes"
+        let children: [ListingChild<CommentData>] = trees.compactMap { tree in
+          guard let node = tree.node else { return nil }
+          let cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
+          return ListingChild<CommentData>(kind: "t1", data: cd)
+        }
+        return (commentById.postInfo.map(PostData.init(graphQL:)), children)
+      }
+
       let resp = try await client.postCommentsResponse(postID: postID, sort: redditCommentSort(from: sort))
       guard let post = resp.data?.postInfoById else {
         status = "postComments: no post in response"
@@ -722,7 +739,10 @@ final class RedditWire: ObservableObject {
   }
 
   private func describe(_ error: Error) -> String {
-    (error as? RedditPOCError).map { "\($0)" } ?? error.localizedDescription
+    if case .cloudflareChallenge(let operation, _) = error as? RedditPOCError {
+      return "Reddit is asking for a browser challenge before \(operation). Open Reddit login again and complete the challenge."
+    }
+    return (error as? RedditPOCError).map { "\($0)" } ?? error.localizedDescription
   }
 
   // MARK: - Capture (Phase 1: learn uncaptured response shapes)

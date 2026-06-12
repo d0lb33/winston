@@ -231,7 +231,7 @@ extension CommentData {
     parent_id = parentID ?? postFullname
     link_id = postFullname
     self.depth = depth
-    body = node.content?.markdown ?? node.content?.preview
+    body = CommentData.markdownBody(from: node.content)
     body_html = node.content?.html
     author = node.authorInfo?.name ?? authorName
     author_fullname = node.authorInfo?.id
@@ -250,6 +250,35 @@ extension CommentData {
       subreddit = post.subreddit?.name ?? post.subreddit?.prefixedName?.replacingOccurrences(of: "r/", with: "")
       subreddit_name_prefixed = post.subreddit?.prefixedName
     }
+  }
+
+  private static func markdownBody(from content: RedditContent?) -> String? {
+    guard let content else { return nil }
+    let media = content.richtextMedia ?? []
+    var markdown = content.markdown ?? content.preview
+
+    if var markdown, !media.isEmpty {
+      for item in media {
+        guard let id = item.id, let url = commentMediaURL(from: item) else { continue }
+        markdown = markdown.replacingOccurrences(of: "](\(id))", with: "](\(url))")
+      }
+      return markdown
+    }
+
+    if markdown?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+      return markdown
+    }
+
+    let fallback = media.compactMap { item -> String? in
+      guard let url = commentMediaURL(from: item) else { return nil }
+      let alt = item.mimeType?.contains("gif") == true ? "gif" : "img"
+      return "![\(alt)](\(url))"
+    }
+    return fallback.isEmpty ? markdown : fallback.joined(separator: "\n\n")
+  }
+
+  private static func commentMediaURL(from item: RedditGalleryMedia) -> String? {
+    item.source?.absoluteURLString ?? item.large?.absoluteURLString ?? item.medium?.absoluteURLString ?? item.small?.absoluteURLString
   }
 }
 

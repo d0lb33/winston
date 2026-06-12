@@ -498,7 +498,7 @@ extension Post {
     // forest is assembled into the reply tree by nestComments. MVP: initial
     // tree only.
     if Defaults[.useGraphQLAPI] {
-      let (newData, children) = await RedditWire.shared.postWithComments(postID: id, sort: sort)
+      let (newData, children) = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
       if full, let newData {
         await MainActor.run {
           self.data = newData

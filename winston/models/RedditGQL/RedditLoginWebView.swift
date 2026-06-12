@@ -33,6 +33,7 @@ struct RedditLoginWebView: UIViewRepresentable {
     config.applicationNameForUserAgent = "Version/16.0 Mobile/15E148 Safari/604.1"
 
     let webView = WKWebView(frame: .zero, configuration: config)
+    webView.customUserAgent = RedditConstants.androidUserAgent
     webView.navigationDelegate = context.coordinator
     config.websiteDataStore.httpCookieStore.add(context.coordinator)
     context.coordinator.webView = webView
@@ -85,6 +86,61 @@ struct RedditLoginWebView: UIViewRepresentable {
   }
 }
 
+/// WKWebView used when Reddit/Cloudflare challenges the GraphQL host. It loads
+/// `gql-fed.reddit.com`, lets the user complete the challenge, then returns any
+/// cookies issued by that host so they can be attached to future GraphQL calls.
+struct RedditChallengeWebView: UIViewRepresentable {
+  var controller: WebLoginController
+  var seedCookies: [HTTPCookie]
+  var onCaptured: ([HTTPCookie]) -> Void
+
+  func makeCoordinator() -> Coordinator { Coordinator(onCaptured: onCaptured) }
+
+  func makeUIView(context: Context) -> WKWebView {
+    let config = WKWebViewConfiguration()
+    config.websiteDataStore = .nonPersistent()
+    config.applicationNameForUserAgent = "Version/16.0 Mobile/15E148 Safari/604.1"
+
+    let webView = WKWebView(frame: .zero, configuration: config)
+    webView.navigationDelegate = context.coordinator
+    context.coordinator.webView = webView
+    controller.captureNow = { [weak coordinator = context.coordinator] in coordinator?.captureNow() }
+
+    let store = config.websiteDataStore.httpCookieStore
+    let group = DispatchGroup()
+    seedCookies.forEach { cookie in
+      group.enter()
+      store.setCookie(cookie) { group.leave() }
+    }
+    group.notify(queue: .main) {
+      webView.load(URLRequest(url: RedditConstants.gqlFedURL))
+    }
+    return webView
+  }
+
+  func updateUIView(_ uiView: WKWebView, context: Context) {}
+
+  final class Coordinator: NSObject, WKNavigationDelegate {
+    let onCaptured: ([HTTPCookie]) -> Void
+    weak var webView: WKWebView?
+
+    init(onCaptured: @escaping ([HTTPCookie]) -> Void) { self.onCaptured = onCaptured }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+      webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+        guard cookies.contains(where: { $0.name == "cf_clearance" || $0.name.hasPrefix("__cf") || $0.name.hasPrefix("cf_") }) else { return }
+        DispatchQueue.main.async { self?.onCaptured(cookies) }
+      }
+    }
+
+    func captureNow() {
+      webView?.configuration.websiteDataStore.httpCookieStore.getAllCookies { [weak self] cookies in
+        DispatchQueue.main.async { self?.onCaptured(cookies) }
+      }
+    }
+  }
+}
+
 // MARK: - Onboarding (GraphQL)
 
 /// Fresh-install / add-account login. Presents the reddit.com webview, captures
@@ -93,10 +149,12 @@ struct RedditLoginWebView: UIViewRepresentable {
 /// REST API-key onboarding when `Defaults[.useGraphQLAPI]` is on.
 struct OnboardingGraphQL: View {
   @StateObject private var loginController = WebLoginController()
+  @StateObject private var challengeController = WebLoginController()
   @ObservedObject private var wire = RedditWire.shared
   @State private var phase: Phase = .login
+  @State private var loginCookies: [HTTPCookie] = []
 
-  enum Phase: Equatable { case login, connecting, done, failed(String) }
+  enum Phase: Equatable { case login, connecting, challenge(String), done, failed(String) }
 
   /// Only allow cancelling once at least one account exists — the very first
   /// login is mandatory (the whole app is gated behind it).
@@ -105,21 +163,23 @@ struct OnboardingGraphQL: View {
   var body: some View {
     NavigationStack {
       ZStack {
-        RedditLoginWebView(controller: loginController) { cookies in
-          guard phase == .login else { return }
-          phase = .connecting
-          Task {
-            await wire.addAccount(cookies: cookies)
-            if wire.connected {
-              phase = .done
-              Nav.present(nil)
-            } else {
-              phase = .failed(wire.status)
+        Group {
+          switch phase {
+          case .login, .connecting, .done, .failed(_):
+            RedditLoginWebView(controller: loginController) { cookies in
+              guard phase == .login else { return }
+              loginCookies = cookies
+              connect(cookies: cookies)
+            }
+          case .challenge(_):
+            RedditChallengeWebView(controller: challengeController, seedCookies: loginCookies) { cookies in
+              guard case .challenge = phase else { return }
+              connect(cookies: mergedCookies(loginCookies, cookies))
             }
           }
         }
-        .opacity(phase == .login ? 1 : 0.15)
-        .disabled(phase != .login)
+        .opacity(phase == .login || isChallengePhase ? 1 : 0.15)
+        .disabled(!(phase == .login || isChallengePhase))
 
         overlayContent
       }
@@ -130,12 +190,43 @@ struct OnboardingGraphQL: View {
           if canCancel { Button("Cancel") { Nav.present(nil) } }
         }
         ToolbarItem(placement: .topBarTrailing) {
-          Button("Capture") { loginController.captureNow?() }
-            .disabled(phase != .login)
+          Button("Capture") {
+            if isChallengePhase {
+              challengeController.captureNow?()
+            } else {
+              loginController.captureNow?()
+            }
+          }
+            .disabled(!(phase == .login || isChallengePhase))
         }
       }
     }
     .interactiveDismissDisabled(!canCancel)
+  }
+
+  private var isChallengePhase: Bool {
+    if case .challenge = phase { return true }
+    return false
+  }
+
+  private func connect(cookies: [HTTPCookie]) {
+    phase = .connecting
+    Task {
+      await wire.addAccount(cookies: cookies)
+      if wire.connected {
+        phase = .done
+        Nav.present(nil)
+      } else if wire.status.localizedCaseInsensitiveContains("browser challenge") {
+        phase = .challenge(wire.status)
+      } else {
+        phase = .failed(wire.status)
+      }
+    }
+  }
+
+  private func mergedCookies(_ lhs: [HTTPCookie], _ rhs: [HTTPCookie]) -> [HTTPCookie] {
+    let pairs = (lhs + rhs).map { ("\($0.domain)|\($0.path)|\($0.name)", $0) }
+    return Array(Dictionary(pairs, uniquingKeysWith: { _, new in new }).values)
   }
 
   @ViewBuilder private var overlayContent: some View {
@@ -146,6 +237,20 @@ struct OnboardingGraphQL: View {
       statusCard {
         ProgressView().controlSize(.large)
         Text("Signing you in…").font(.headline)
+      }
+    case .challenge(let msg):
+      VStack {
+        Spacer()
+        VStack(spacing: 12) {
+          Image(systemName: "shield.lefthalf.filled").font(.largeTitle).foregroundStyle(.orange)
+          Text("Complete Reddit Check").font(.headline)
+          Text(msg).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
+          Button("I’m done") { challengeController.captureNow?() }.buttonStyle(.borderedProminent)
+          Button("Back to login") { phase = .login }.buttonStyle(.bordered)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(.ultraThinMaterial)
       }
     case .done:
       statusCard {

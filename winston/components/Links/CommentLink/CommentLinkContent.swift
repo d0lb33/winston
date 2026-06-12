@@ -10,6 +10,36 @@ import Defaults
 import SwiftUIIntrospect
 import MarkdownUI
 
+private struct CommentBodyView: View {
+  let markdown: String
+  let showSpoiler: Bool
+  let selectable: Bool
+  let fontSize: CGFloat
+  let lineSpacing: CGFloat
+
+  var bodyViewURL: URL? {
+    let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard trimmed.hasPrefix("![") else { return nil }
+    guard let openParen = trimmed.firstIndex(of: "("), let closeParen = trimmed.lastIndex(of: ")"), openParen < closeParen else { return nil }
+    let urlString = String(trimmed[trimmed.index(after: openParen)..<closeParen])
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    guard urlString.hasPrefix("http://") || urlString.hasPrefix("https://") else { return nil }
+    return URL(string: urlString)
+  }
+
+  var body: some View {
+    if let url = bodyViewURL {
+      URLImage(url: url)
+        .scaledToFit()
+        .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 320, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    } else {
+      Markdown(MarkdownUtil.formatForMarkdown(markdown, showSpoiler: showSpoiler))
+        .markdownTheme(.winstonMarkdown(fontSize: fontSize, lineSpacing: lineSpacing, textSelection: selectable))
+    }
+  }
+}
+
 class Sizer: ObservableObject {
   @Published var size: CGSize = .zero
 }
@@ -226,8 +256,13 @@ struct CommentLinkContent: View {
                       .lineLimit(lineLimit)
                   } else {
                     HStack {
-                      Markdown(MarkdownUtil.formatForMarkdown(body, showSpoiler: showSpoiler))
-                        .markdownTheme(.winstonMarkdown(fontSize: theme.theme.bodyText.size, lineSpacing: theme.theme.linespacing, textSelection: selectable))
+                      CommentBodyView(
+                        markdown: body,
+                        showSpoiler: showSpoiler,
+                        selectable: selectable,
+                        fontSize: theme.theme.bodyText.size,
+                        lineSpacing: theme.theme.linespacing
+                      )
                       
                       if MarkdownUtil.containsSpoiler(body) {
                         Spacer()
