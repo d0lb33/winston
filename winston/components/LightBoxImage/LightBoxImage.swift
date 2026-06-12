@@ -47,21 +47,28 @@ struct LightBoxImage: View {
   
   var body: some View {
     let interpolate = interpolatorBuilder([0, 100], value: abs(drag.height))
-    HStack(spacing: SPACING) {
-      ForEach(Array(imagesArr.enumerated()), id: \.element.id) { index, img in
-        let selected = index == activeIndex
-        LightBoxElementView(el: img, onTap: toggleOverlay, doLiveText: doLiveText, isPinching: $isPinching, isZoomed: $isZoomed)
-          .allowsHitTesting(selected)
-          .scaleEffect(!selected ? 1 : interpolate([1, 0.9], true))
-          .blur(radius: selected && loading ? 24 : 0)
-          .offset(x: !selected ? 0 : dragAxis == .vertical ? drag.width : 0, y: i != activeIndex ? 0 : dragAxis == .vertical ? drag.height : 0)
+    Group {
+      if imagesArr.isEmpty {
+        Color.black
+          .onAppear { dismiss() }
+      } else {
+        HStack(spacing: SPACING) {
+          ForEach(Array(imagesArr.enumerated()), id: \.element.id) { index, img in
+            let selected = index == activeIndex
+            LightBoxElementView(el: img, onTap: toggleOverlay, doLiveText: doLiveText, isPinching: $isPinching, isZoomed: $isZoomed, zoomScale: $scale)
+              .allowsHitTesting(selected)
+              .scaleEffect(!selected ? 1 : interpolate([1, 0.9], true))
+              .blur(radius: selected && loading ? 24 : 0)
+              .offset(x: !selected ? 0 : dragAxis == .vertical ? drag.width : 0, y: !selected ? 0 : dragAxis == .vertical ? drag.height : 0)
+          }
+        }
+        .fixedSize(horizontal: true, vertical: false)
       }
     }
-    .fixedSize(horizontal: true, vertical: false)
     .offset(x: xPos + (dragAxis == .horizontal ? drag.width : 0))
     .frame(maxWidth: .screenW, maxHeight: .screenH, alignment: .leading)
     .highPriorityGesture(
-      scale > 1
+      isZoomed || scale > 1.01
       ? nil
       : DragGesture(minimumDistance: 20)
         .onChanged { val in
@@ -99,7 +106,9 @@ struct LightBoxImage: View {
             let finalXPos = -(CGFloat(newActiveIndex) * (.screenW + (SPACING)))
             let distance = abs(finalXPos - xPos)
             activeIndex = newActiveIndex
-            var initialVel = abs(predictedEnd / distance)
+            isZoomed = false
+            scale = 1
+            var initialVel = distance > 1 ? abs(predictedEnd / distance) : 0
             initialVel = initialVel < 3.75 ? 0 : initialVel * 2
             withAnimation(.interpolatingSpring(stiffness: 150, damping: 17, initialVelocity: initialVel)) {
               xPos = finalXPos
@@ -172,8 +181,9 @@ struct LightBoxImage: View {
     }
     .onAppear {
       if let markAsSeen { Task(priority: .background) { await markAsSeen() } }
-      xPos = -CGFloat(i) * (.screenW + SPACING)
-      activeIndex = i
+      let safeIndex = min(max(i, 0), max(imagesArr.count - 1, 0))
+      xPos = -CGFloat(safeIndex) * (.screenW + SPACING)
+      activeIndex = safeIndex
       doThisAfter(0.0) {
         withAnimation(.easeOut) {
           appearContent = true
@@ -184,5 +194,3 @@ struct LightBoxImage: View {
     .transition(.opacity)
   }
 }
-
-

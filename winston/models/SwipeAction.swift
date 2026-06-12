@@ -337,7 +337,7 @@ struct EditCommentAction: SwipeAction {
   var bgColor = SwipeActionItem(normal: "353439")
   func action(_ entity: Comment) async { ReplyModalInstance.shared.enable(.commentEdit(entity)) }
   func active(_ entity: Comment) -> Bool { false }
-  func enabled(_ entity: Comment) -> Bool { entity.data?.author == entity.redditAPI.me?.data?.name }
+  func enabled(_ entity: Comment) -> Bool { entity.data?.author == RedditWire.currentUserName }
 }
 
 struct DeleteCommentAction: SwipeAction {
@@ -348,7 +348,7 @@ struct DeleteCommentAction: SwipeAction {
   var bgColor = SwipeActionItem(normal: "FF463B")
   func action(_ entity: Comment) async { _ = await entity.del() }
   func active(_ entity: Comment) -> Bool { false }
-  func enabled(_ entity: Comment) -> Bool { entity.data?.author == entity.redditAPI.me?.data?.name }
+  func enabled(_ entity: Comment) -> Bool { entity.data?.author == RedditWire.currentUserName }
 }
 
 struct CollapseCommentAction: SwipeAction {

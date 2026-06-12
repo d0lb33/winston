@@ -26,7 +26,7 @@ struct VotesCluster: View, Equatable {
   //  var likeRatio: CGFloat? //if the upvote ratio is nil it will be hidden
   var votesKit: VotesKit
   //  @ObservedObject var post: Post
-  var voteAction: (RedditAPI.VoteAction) async -> Bool?
+  var voteAction: (VoteAction) async -> Bool?
   var vertical = false
   var showUpVoteRatio: Bool
   

@@ -13,8 +13,7 @@ struct MessageLink: View {
   @ObservedObject var message: Message
   
   var body: some View {
-    if let data = message.data, let author = data.author, let subreddit = data.subreddit, let parentID = data.parent_id, let name = data.name {
-      let actualParentID = parentID.hasPrefix("t3_") ? name : parentID
+    if let data = message.data, let author = data.author, let subreddit = data.subreddit {
       HStack(alignment: .top) {
         Image(systemName: data.type == "post_reply" ? "message.circle.fill" : "arrowshape.turn.up.left.circle.fill")
           .fontSize(24, .bold)
@@ -34,8 +33,13 @@ struct MessageLink: View {
       .compositingGroup()
       .opacity(!(data.new ?? false) ? 0.65 : 1)
       .swipyActions(pressing: $pressed, onTap: {
-        if data.context != nil {
-          Nav.to(.reddit(.postHighlighted(Post(id: getPostId(from: data.context!) ?? "lol", subID: subreddit), actualParentID)))
+        if let context = data.context, let postID = getPostId(from: context) {
+          let post = Post(id: postID, subID: subreddit)
+          if let highlightID = data.highlightID {
+            Nav.to(.reddit(.postHighlighted(post, highlightID)))
+          } else {
+            Nav.to(.reddit(.post(post)))
+          }
         }
       }, rightActionIcon: !(data.new ?? false) ? "eye.slash.fill" : "eye.fill", rightActionHandler: {
         Task(priority: .background) {
@@ -43,6 +47,14 @@ struct MessageLink: View {
         }
       })
     }
+  }
+}
+
+private extension MessageData {
+  var highlightID: String? {
+    if let parent_id, parent_id.hasPrefix("t1_") { return parent_id }
+    if let name, name.hasPrefix("t1_") { return name }
+    return nil
   }
 }
 

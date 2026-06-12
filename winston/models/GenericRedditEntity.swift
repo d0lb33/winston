@@ -77,7 +77,6 @@ class GenericRedditEntity<T: GenericRedditEntityDataType, B: Hashable>: Identifi
     try container.encode(data, forKey: .data)
   }
   
-  let redditAPI: RedditAPI = .shared
   var anyCancellables: [AnyCancellable]? = nil
   @Published var childrenWinston: ObservableArray<GenericRedditEntity<T, B>> = ObservableArray<GenericRedditEntity<T, B>>(array: [])
   var parentWinston: ObservableArray<GenericRedditEntity<T, B>>?
@@ -120,18 +119,14 @@ class GenericRedditEntity<T: GenericRedditEntityDataType, B: Hashable>: Identifi
   func fetchItself() {
     Task(priority: .background) {
       let fullname = "\(self.selfPrefix)_\(self.id)"
-      // GraphQL path (migration): hydrate posts via RedditPOC. Other entity
-      // types still use the legacy REST fetchInfo until their phase lands.
-      if Defaults[.useGraphQLAPI], T.self == PostData.self {
+      // Posts hydrate over GraphQL (PostsByIds). Other entity kinds override
+      // fetchItself (User) or never relied on this path — the old REST
+      // fallback's decode-and-cast could never produce a T and was a silent
+      // no-op for them.
+      if T.self == PostData.self {
         let datas = await RedditWire.shared.postData(forIDs: [fullname])
         await MainActor.run { withAnimation {
           if let pd = datas.first as? T { self.data = pd }
-        } }
-        return
-      }
-      if let data = await RedditAPI.shared.fetchInfo(fullnames: [fullname]) {
-        await MainActor.run { withAnimation {
-          if let data = data as? T { self.data = data }
         } }
       }
     }

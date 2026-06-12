@@ -1,41 +1,33 @@
 //
-//  CredentialsPanel.swift
+//  AccountsPanel.swift
 //  winston
 //
-//  Created by Igor Marcossi on 05/07/23.
+//  Settings panel for the connected Reddit accounts (logged in via the
+//  reddit.com webview; sessions managed by RedditWire).
 //
 
 import SwiftUI
 import Defaults
 import Nuke
 
-struct CredentialsPanel: View {
-  @ObservedObject private var credentialsManager = RedditCredentialsManager.shared
+struct AccountsPanel: View {
   @ObservedObject private var wire = RedditWire.shared
-  @Default(.useGraphQLAPI) private var useGraphQL
   @Environment(\.useTheme) private var theme
 
   var body: some View {
     Group {
-      if useGraphQL {
-        if wire.accounts.isEmpty {
-          GraphQLAccountsEmptyView()
-        } else {
-          GraphQLAccountsList(accounts: wire.accounts, selectedID: wire.account?.id)
-        }
-      } else if credentialsManager.credentials.isEmpty {
-        CredentialsPanelEmptyView()
+      if wire.accounts.isEmpty {
+        AccountsEmptyView()
       } else {
-        CredentialsPanelList(credentials: credentialsManager.credentials, selectedCredentialID: credentialsManager.selectedCredential?.id)
+        AccountsList(accounts: wire.accounts, selectedID: wire.account?.id)
       }
     }
-    .navigationTitle(useGraphQL ? "Accounts" : "Credentials")
+    .navigationTitle("Accounts")
     .toolbar {
       ToolbarItem {
         Button {
-          // GraphQL: adding an account = logging in via the reddit.com webview.
-          if useGraphQL { Nav.present(.onboarding) }
-          else { Nav.present(.editingCredential(.init())) }
+          // Adding an account = logging in via the reddit.com webview.
+          Nav.present(.onboarding)
         } label: {
           Image(systemName: "plus")
         }
@@ -45,30 +37,7 @@ struct CredentialsPanel: View {
   }
 }
 
-struct CredentialsPanelList: View {
-  var credentials: [RedditCredential]
-  var selectedCredentialID: UUID?
-
-  var body: some View {
-    List {
-      Group {
-        Section {
-          ForEach(credentials) { cred in
-            CredentialPanelItem(cred: cred, deleteCred: RedditCredentialsManager.shared.deleteCred, inUse: cred.id == selectedCredentialID)
-          }
-        } footer: {
-          Text("To switch accounts, hold the \"me\" (or your username) tab pressed in the bottom bar.")
-        }
-      }
-      .themedListSection()
-    }
-    .navigationBarTitleDisplayMode(.large)
-  }
-}
-
-// MARK: - GraphQL accounts (logged in via reddit.com webview)
-
-struct GraphQLAccountsList: View {
+struct AccountsList: View {
   var accounts: [RedditAccount]
   var selectedID: UUID?
 
@@ -77,7 +46,7 @@ struct GraphQLAccountsList: View {
       Group {
         Section {
           ForEach(accounts) { account in
-            GraphQLAccountItem(account: account, inUse: account.id == selectedID)
+            AccountItem(account: account, inUse: account.id == selectedID)
           }
         } footer: {
           Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
@@ -89,7 +58,7 @@ struct GraphQLAccountsList: View {
   }
 }
 
-struct GraphQLAccountItem: View {
+struct AccountItem: View {
   var account: RedditAccount
   var inUse: Bool
   @State private var logoutAlertOpened = false
@@ -142,7 +111,7 @@ struct GraphQLAccountItem: View {
   }
 }
 
-struct GraphQLAccountsEmptyView: View {
+struct AccountsEmptyView: View {
   var body: some View {
     VStack(spacing: 20) {
       VStack(spacing: 16) {
@@ -169,4 +138,3 @@ struct GraphQLAccountsEmptyView: View {
     .padding()
   }
 }
-

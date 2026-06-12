@@ -21,8 +21,9 @@ struct LightBoxElementView: View {
   @Binding var isPinching: Bool
   @State private var altSize: CGSize = .zero
   @Binding var isZoomed: Bool
+  @Binding var zoomScale: CGFloat
   var body: some View {
-    ZoomableScrollView(onTap: onTap, isZoomed: $isZoomed){
+    ZoomableScrollView(onTap: onTap, isZoomed: $isZoomed, zoomScale: $zoomScale){
       URLImage(url: el.url, doLiveText: doLiveText)
       .scaledToFit()
     }

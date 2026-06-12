@@ -23,7 +23,6 @@ struct GeneralPanel: View {
       
       Group {
         Section("General"){
-          Toggle("Sync API Key", isOn: $behaviorDefSettings.iCloudSyncCredentials)
         }
         
         Section("Backup"){

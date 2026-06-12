@@ -18,8 +18,6 @@ import SwiftUI
  * of being avoided because _ looks ugly and hacky anywhere. */
 extension Defaults.Keys {
   static let _redditCredentialSelectedID = Key<UUID?>("redditCredentialSelectedID", default: nil)
-  static let _redditAPILastTokenRefreshDate = Key<Date?>("redditAPILastTokenRefreshDate", default: nil)
-  static let _redditAPITokenExpiration = Key<Int?>("redditAPITokenExpiration", default: nil)
 //  static let filteredSubreddits = Key<[String]>("filteredSubreddits", default: [])
 //  static let postsInBox = Key<[PostInBox]>("postsInBox-v2", default: [])
 //  static let likedButNotSubbed = Key<[Subreddit]>("likedButNotSubbed", default: [])
@@ -68,7 +66,6 @@ extension Defaults.Keys {
   static let _showSubsAtTop = Key<Bool>("showSubsAtTop", default: false)
   static let _showTitleAtTop = Key<Bool>("showTitleAtTop", default: true)
   
-  static let _redditAPIUserAgent = Key<String>("redditAPIUserAgent", default: "ios:lo.cafe.winston:v0.1.0 (by /u/Kinark)")
   
   static let _openLinksInSafari = Key<Bool>("openLinksInSafari", default: true)
   static let _showTestersCelebrationModal = Key<Bool>("showTestersCelebrationModal", default: true)

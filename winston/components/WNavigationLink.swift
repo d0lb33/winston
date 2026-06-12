@@ -101,6 +101,7 @@ struct WNavigationLink<Content: View>: View {
   
   var body: some View {
     WListButton(showArrow: true, active: active) {
+      AppDiagnostics.asyncBreadcrumb("WNavigationLink tapped", metadata: ["destination": value.diagnosticsName])
       Nav.to(value)
     } label: {
       label()
@@ -122,6 +123,7 @@ struct WSNavigationLink: View {
   }
   var body: some View {
     WListButton(showArrow: true, active: active) {
+      AppDiagnostics.asyncBreadcrumb("WSNavigationLink tapped", metadata: ["label": label, "destination": value.diagnosticsName])
       Nav.to(value)
     } label: {
       if let icon = icon {

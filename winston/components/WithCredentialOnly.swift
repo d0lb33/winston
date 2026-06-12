@@ -1,35 +1,31 @@
 //
-//  CredentialOnly.swift
+//  WithAccountOnly.swift
 //  winston
 //
-//  Created by Igor Marcossi on 06/12/23.
+//  Gates a tab behind having a connected Reddit account (GraphQL session).
 //
 
 import SwiftUI
 
-struct WithCredentialOnly<Content: View>: View {
-  let credential: RedditCredential?
+struct WithAccountOnly<Content: View>: View {
   @ObservedObject private var wire = RedditWire.shared
   @ViewBuilder let content: () -> Content
     var body: some View {
-      // Logged in = a connected GraphQL account (migration) OR a legacy
-      // authorized RedditCredential.
-      let authed = wire.connected || (credential?.validationStatus ?? .invalid) == .authorized
-      if !authed {
+      if !wire.connected {
         VStack(spacing: 20) {
           VStack(spacing: 12) {
-            Image(systemName: credential == nil ? "questionmark.key.filled" : "key.slash.fill")
+            Image(systemName: "person.crop.circle.badge.questionmark")
               .fontSize(64, .bold)
               .opacity(0.5)
             VStack(spacing: 4) {
-              Text(credential == nil ? "No credential" : "Credential invalid")
+              Text("No account connected")
                 .fontSize(24, .bold)
                 .opacity(0.5)
               Text("We can't load this page 😔").fontSize(16, .medium).opacity(0.35)
             }
           }
-          Button("Go to credentials settings", systemImage: "gear") {
-            Nav.fullTo(.settings, .setting(.credentials))
+          Button("Log in to Reddit", systemImage: "person.fill.badge.plus") {
+            Nav.present(.onboarding)
           }
           .buttonStyle(.actionOutlined)
           .opacity(0.5)
@@ -42,4 +38,3 @@ struct WithCredentialOnly<Content: View>: View {
       }
     }
 }
-

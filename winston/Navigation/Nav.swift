@@ -16,10 +16,22 @@ class Nav: ObservableObject, Identifiable, Equatable {
   
   /* <Util static functions for ease of use> */
   static func back() { Nav.shared.activeRouter.goBack() }
-  static func to(_ dest: Router.NavDest, _ reset: Bool = false) { Nav.shared.activeRouter.navigateTo(dest, reset) }
-  static func fullTo(_ tab: TabIdentifier, _ dest: Router.NavDest, _ reset: Bool = false) { Nav.shared.navigateTo(tab, dest, reset) }
-  static func present(_ content: PresentingSheet?) { Nav.shared.presentingSheet = content }
-  static func resetStack() { Nav.shared.activeRouter.resetNavPath() }
+  static func to(_ dest: Router.NavDest, _ reset: Bool = false) {
+    AppDiagnostics.asyncBreadcrumb("Nav.to", metadata: ["destination": dest.diagnosticsName, "reset": "\(reset)"])
+    Nav.shared.activeRouter.navigateTo(dest, reset)
+  }
+  static func fullTo(_ tab: TabIdentifier, _ dest: Router.NavDest, _ reset: Bool = false) {
+    AppDiagnostics.asyncBreadcrumb("Nav.fullTo", metadata: ["tab": tab.rawValue, "destination": dest.diagnosticsName, "reset": "\(reset)"])
+    Nav.shared.navigateTo(tab, dest, reset)
+  }
+  static func present(_ content: PresentingSheet?) {
+    AppDiagnostics.asyncBreadcrumb("Nav.present", metadata: ["sheet": content?.diagnosticsName ?? "nil"])
+    Nav.shared.presentingSheet = content
+  }
+  static func resetStack() {
+    AppDiagnostics.asyncBreadcrumb("Nav.resetStack", metadata: ["tab": Nav.shared.activeTab.rawValue])
+    Nav.shared.activeRouter.resetNavPath()
+  }
   /* </Util static functions for ease of use> */
   
   static let swipeAnywhereGestureName = "swipe-anywhere-winston"
@@ -33,7 +45,6 @@ class Nav: ObservableObject, Identifiable, Equatable {
   enum PresentingSheet: Codable, Hashable, Identifiable, Equatable {
     case tipJar
     case onboarding
-    case editingCredential(RedditCredential)
     case announcement(Announcement)
     case editingTheme(WinstonTheme)
     case sharedTheme(ThemeData)
@@ -42,7 +53,6 @@ class Nav: ObservableObject, Identifiable, Equatable {
       var newID: String = ""
       switch self {
       case .announcement(let ann): newID = ann.id
-      case .editingCredential(let cred): newID = cred.id.uuidString
       case .tipJar: newID = "tipJar"
       case .onboarding: newID = "onboarding"
       case .editingTheme(let theme): newID = theme.id
@@ -56,6 +66,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   @Published var activeTab: TabIdentifier {
     willSet {
       if activeTab == newValue { self.activeRouter.resetNavPath() }
+      AppDiagnostics.asyncBreadcrumb("Tab changed", metadata: ["from": activeTab.rawValue, "to": newValue.rawValue])
     }
   }
   private var routers: [TabIdentifier:Router]
@@ -98,11 +109,15 @@ class Nav: ObservableObject, Identifiable, Equatable {
   }
   
   func navigateTo(_ tab: TabIdentifier, _ dest: Router.NavDest, _ reset: Bool = true) {
+    AppDiagnostics.asyncBreadcrumb("Nav.navigateTo tab", metadata: ["tab": tab.rawValue, "destination": dest.diagnosticsName, "reset": "\(reset)"])
     routers[tab]?.navigateTo(dest, reset)
     if tab != activeTab {	activeTab = tab }
   }
   
-  func resetStack() { activeRouter.resetNavPath() }
+  func resetStack() {
+    AppDiagnostics.asyncBreadcrumb("Nav.resetStack instance", metadata: ["tab": activeTab.rawValue])
+    activeRouter.resetNavPath()
+  }
   
   subscript(tab: TabIdentifier) -> Router {
     let router = self.routers[tab] ?? Self.newRouterForTab(tab, id)
@@ -127,6 +142,18 @@ class Nav: ObservableObject, Identifiable, Equatable {
   static func openURL(_ urlStr: String) {
     if let url = URL(string: urlStr)  {
       openURL(url)
+    }
+  }
+}
+
+extension Nav.PresentingSheet {
+  var diagnosticsName: String {
+    switch self {
+    case .tipJar: return "sheet.tipJar"
+    case .onboarding: return "sheet.onboarding"
+    case .announcement(let announcement): return "sheet.announcement.\(announcement.id)"
+    case .editingTheme(let theme): return "sheet.editingTheme.\(theme.id)"
+    case .sharedTheme(let theme): return "sheet.sharedTheme.\(theme.id)"
     }
   }
 }

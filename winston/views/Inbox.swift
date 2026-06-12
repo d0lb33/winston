@@ -23,10 +23,11 @@ struct Inbox: View {
         loading = true
       }
     }
-    if let newItems = await RedditAPI.shared.fetchInbox() {
-      await MainActor.run {
-        withAnimation {
-          loading = false
+    let (newItems, _) = await RedditWire.shared.inbox()
+    await MainActor.run {
+      withAnimation {
+        loading = false
+        if !newItems.isEmpty {
           messages.data = newItems.map { Message(data: $0) }
         }
       }

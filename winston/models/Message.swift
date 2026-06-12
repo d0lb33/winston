@@ -19,24 +19,22 @@ extension Message {
   }
   
   func toggleRead() async -> Bool {
-    if let fullname = data?.name {
-      let old = data?.new ?? false
-      await MainActor.run {
-        withAnimation {
-          data?.new = !old
-        }
+    // TODO(graphql): the GraphQL inbox only supports marking the whole feed
+    // seen up to a timestamp (UpdateInboxActivitySeenStateV2); there is no
+    // per-message read/unread mutation. Flip locally and best-effort mark the
+    // feed seen when marking as read.
+    guard data != nil else { return false }
+    let old = data?.new ?? false
+    await MainActor.run {
+      withAnimation {
+        data?.new = !old
       }
-      let result = old ? ((await RedditAPI.shared.readMessage(fullname)) ?? false) : ((await RedditAPI.shared.unreadMessage(fullname)) ?? false)
-      if !result {
-        await MainActor.run {
-          withAnimation {
-            data?.new = old
-          }
-        }
-      }
-      return result
     }
-    return false
+    if old, let created = data?.created_utc ?? data?.created {
+      let iso = ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: created))
+      await RedditWire.shared.markInboxSeen(lastSentAt: iso)
+    }
+    return true
   }
 }
 
@@ -71,8 +69,7 @@ struct MessageData: GenericRedditEntityDataType {
 }
 
 func getPostId(from urlString: String) -> String? {
-    let pathComponents = urlString.components(separatedBy: "/")
-    guard pathComponents.count > 2 else { return nil }
-    return pathComponents[4]
+  let pathComponents = urlString.split(separator: "/").map(String.init)
+  guard let commentsIndex = pathComponents.firstIndex(of: "comments"), pathComponents.indices.contains(commentsIndex + 1) else { return nil }
+  return pathComponents[commentsIndex + 1]
 }
-

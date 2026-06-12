@@ -39,6 +39,7 @@ struct AppContent: View {
     .environment(\.useTheme, selectedTheme)
     .onAppear { themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" } }
     .onChange(of: scenePhase) { newPhase in
+      AppDiagnostics.shared.breadcrumb("Scene phase changed", metadata: ["phase": "\(newPhase)"])
       // No auth on MacOS
       var runningOnMac = false
       #if os(macOS)
@@ -69,6 +70,7 @@ struct AppContent: View {
       
       switch newPhase {
       case .active :
+        AppDiagnostics.shared.markSessionDirty("active")
         guard let name = shortcutItemToProcess?.userInfo?["name"] as? String else {
           return
         }
@@ -84,14 +86,19 @@ struct AppContent: View {
         }
       case .inactive:
         // inactive
+        AppDiagnostics.shared.markSessionClean("inactive")
         break
       case .background:
+        AppDiagnostics.shared.markSessionClean("background")
         addQuickActions()
       @unknown default:
         print("default")
       }
     }
     .blur(radius: CGFloat(lockBlur)) // Set lockscreen blur
+    .overlay {
+      DiagnosticsHUD()
+    }
   }
   
   func addQuickActions() {

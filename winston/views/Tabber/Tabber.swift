@@ -12,7 +12,6 @@ import SpriteKit
 struct Tabber: View, Equatable {
   static func == (lhs: Tabber, rhs: Tabber) -> Bool { true }
   
-  @ObservedObject private var redditCredentialsManager = RedditCredentialsManager.shared
   @ObservedObject private var nav = Nav.shared
   
   @State var tabBarHeight: Double? = nil
@@ -54,28 +53,28 @@ struct Tabber: View, Equatable {
   var body: some View {
     TabView(selection: $nav.activeTab.onUpdate { newTab in if nav.activeTab == newTab { nav.resetStack() } }) {
       
-      WithCredentialOnly(credential: redditCredentialsManager.selectedCredential) {
+      WithAccountOnly {
         SubredditsStack(router: nav[.posts])
       }
       .measureTabBar(setTabBarHeight)
       .tag(Nav.TabIdentifier.posts)
       .tabItem { Label("Posts", systemImage: "doc.text.image") }
       
-      WithCredentialOnly(credential: redditCredentialsManager.selectedCredential) {
+      WithAccountOnly {
         Inbox(router: nav[.inbox])
       }
       .measureTabBar(setTabBarHeight)
       .tag(Nav.TabIdentifier.inbox)
       .tabItem { Label("Inbox", systemImage: "bell.fill") }
       
-      WithCredentialOnly(credential: redditCredentialsManager.selectedCredential) {
+      WithAccountOnly {
         Me(router: nav[.me])
       }
       .measureTabBar(setTabBarHeight)
       .tag(Nav.TabIdentifier.me)
-      .tabItem { Label(appearanceDefSettings.showUsernameInTabBar ? RedditAPI.shared.me?.data?.name ?? "Me" : "Me", systemImage: "person.fill") }
+      .tabItem { Label(appearanceDefSettings.showUsernameInTabBar ? RedditWire.shared.me?.data?.name ?? "Me" : "Me", systemImage: "person.fill") }
 //      
-      WithCredentialOnly(credential: redditCredentialsManager.selectedCredential) {
+      WithAccountOnly {
         Search(router: nav[.search])
       }
       .measureTabBar(setTabBarHeight)
@@ -91,19 +90,15 @@ struct Tabber: View, Equatable {
     .overlay(TabBarOverlay(meTabTap: meTabTap), alignment: .bottom)
     .openFromWebListener()
     .themeFetchingListener() // From WinstonAPI
-    .newCredentialListener()
     .themeImportingListener() // From local file
     .globalLoaderProvider()
-    .refetchMeListener()
     .task(priority: .background) {
       migrateOldDefaults()
       cleanCredentialOrphanEntities()
-      autoSelectCredentialIfNil()
       removeDefaultThemeFromThemes()
       checkForOnboardingStatus()
-      if RedditCredentialsManager.shared.selectedCredential != nil || !Defaults[.graphQLAccounts].isEmpty {
-        RedditCredentialsManager.shared.updateMe()
-        Task(priority: .background) { await updatePostsInBox(RedditAPI.shared) }
+      if !Defaults[.graphQLAccounts].isEmpty {
+        Task(priority: .background) { await updatePostsInBox() }
       }
     }
     .accentColor(currentTheme.general.accentColor())

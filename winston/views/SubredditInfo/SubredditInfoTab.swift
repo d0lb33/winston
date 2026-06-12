@@ -13,7 +13,6 @@ struct SubredditInfoTab: View {
   @State private var loading = true
   @State private var aboutLoading = false
   @State private var aboutSummary: SubredditAboutSummary?
-  @Default(.useGraphQLAPI) private var useGraphQLAPI
 
   var body: some View {
     if let data = subreddit.data {
@@ -38,12 +37,10 @@ struct SubredditInfoTab: View {
         description: bestDescription(data: data, aboutSummary: aboutSummary)
       )
 
-      if useGraphQLAPI {
-        SubredditAboutBundleSection(summary: aboutSummary, loading: aboutLoading)
-          .task(priority: .background) {
-            await loadAbout(data: data)
-          }
-      }
+      SubredditAboutBundleSection(summary: aboutSummary, loading: aboutLoading)
+        .task(priority: .background) {
+          await loadAbout(data: data)
+        }
     }
   }
 

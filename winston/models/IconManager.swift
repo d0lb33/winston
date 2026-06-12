@@ -59,7 +59,34 @@ enum WinstonAppIcon: String, CaseIterable, Identifiable {
     }
   }
   
-  var preview: UIImage { UIImage(named: self.name ?? "iconStandard")! }
+  var preview: UIImage? { UIImage(named: self.name ?? "iconStandard") }
+}
+
+struct AppIconPreview: View {
+  let icon: WinstonAppIcon
+  let size: CGFloat
+  let radius: CGFloat
+
+  var body: some View {
+    Group {
+      if let preview = icon.preview {
+        Image(uiImage: preview)
+          .resizable()
+          .scaledToFill()
+      } else {
+        Image(systemName: "app.fill")
+          .resizable()
+          .scaledToFit()
+          .symbolRenderingMode(.hierarchical)
+          .foregroundStyle(.secondary)
+          .padding(size * 0.18)
+          .background(.secondary.opacity(0.12))
+      }
+    }
+    .frame(width: size, height: size)
+    .fixedSize()
+    .mask(RR(radius, Color.black))
+  }
 }
 
 class AppIconManger {
@@ -77,7 +104,7 @@ class AppIconManger {
       if let error = error {
         print("Error setting alternate icon \(appIcon.name ?? ""): \(error.localizedDescription)")
       }
-      completion?(error != nil)
+      completion?(error == nil)
     }
   }
 }

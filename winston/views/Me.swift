@@ -9,13 +9,13 @@ import SwiftUI
 
 struct Me: View {
   @ObservedObject var router: Router
-  @ObservedObject var redditAPI = RedditAPI.shared
+  @ObservedObject var wire = RedditWire.shared
   
   @State private var loading = true
   var body: some View {
     NavigationStack(path: $router.fullPath) {
       Group {
-        if let user = redditAPI.me {
+        if let user = wire.me {
           UserView(user: user)
             .id("me-user-view-\(user.id)")
           
@@ -25,7 +25,7 @@ struct Me: View {
             .frame(maxWidth: .infinity, minHeight: .screenH - 200 )
             .onAppear {
               Task(priority: .background) {
-                await RedditAPI.shared.fetchMe(force: true)
+                await RedditWire.shared.fetchMe(force: true)
               }
             }
         }

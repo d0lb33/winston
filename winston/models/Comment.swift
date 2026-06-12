@@ -166,65 +166,51 @@ extension Comment {
   }
   
   func loadChildren(parent: CommentParentElement, postFullname: String, avatarSize: Double, post: Post?) async {
-    if let kind = kind, kind == "more", let data = data, let count = data.count, let parent_id = data.parent_id, let childrenIDS = data.children {
-      let actualID = id
-      //      if actualID.hasSuffix("-more") {
-      //        actualID.removeLast(5)
-      //      }
-      
-      let childrensLimit = 25
-      
-      if let children = await RedditAPI.shared.fetchMoreReplies(comments: count > 0 ? Array(childrenIDS.prefix(childrensLimit)) : [String(parent_id.dropFirst(3))], moreID: actualID, postFullname: postFullname, dropFirst: count == 0) {
-        
-        let parentID = data.parent_id ?? ""
-        //        switch parent {
-        //        case .comment(let comment):
-        //          if let name = comment.data?.parent_id ?? comment.data?.name {
-        //              parentID = name
-        //          }
-        //        case .post(_):
-        //          if let postID = children[0].data?.link_id {
-        //            parentID = postID
-        //          }
-        //        }
-        
-        let loadedComments: [Comment] = nestComments(children, parentID: parentID)
-        
-        Task(priority: .background) { [loadedComments] in
-          await RedditAPI.shared.updateCommentsWithAvatar(comments: loadedComments, avatarSize: avatarSize)
-          await post?.saveMoreComments(comments: loadedComments)
-        }
-        
-        await MainActor.run { [loadedComments] in
+    guard kind == "more", let data = data else { return }
+    // GraphQL continuation: re-fetch the subtree under this stub's parent and
+    // splice in whatever isn't already shown (the GraphQL forest exposes a
+    // cursor, not child-id lists like REST morechildren did).
+    let existingIDs: Set<String> = {
+      switch parent {
+      case .comment(let comment): return Set(comment.childrenWinston.data.compactMap { $0.data?.id })
+      case .post(let postArr): return Set(postArr.data.compactMap { $0.data?.id })
+      }
+    }()
+    guard let children = await RedditWire.shared.moreReplies(stub: data, postID: postFullname, excluding: existingIDs), !children.isEmpty else {
+      // Nothing new came back: drop the stub so it stops advertising replies.
+      await MainActor.run {
+        withAnimation {
           switch parent {
-          case .comment(let comment):
-            if let index = comment.childrenWinston.data.firstIndex(where: { $0.id == id }) {
-              withAnimation {
-                if (self.data?.children?.count ?? 0) <= 25 {
-                  comment.childrenWinston.data.remove(at: index)
-                } else {
-                  self.data?.children?.removeFirst(childrensLimit)
-                  if let _ = self.data?.count {
-                    self.data?.count! -= children.count
-                  }
-                }
-                comment.childrenWinston.data.insert(contentsOf: loadedComments, at: index)
-              }
-            }
-          case .post(let postArr):
-            if let index = postArr.data.firstIndex(where: { $0.id == id }) {
-              withAnimation {
-                if (self.data?.children?.count ?? 0) <= 25 {
-                  postArr.data.remove(at: index)
-                } else {
-                  self.data?.children?.removeFirst(childrensLimit)
-                  if let _ = self.data?.count {
-                    self.data?.count! -= children.count
-                  }
-                }
-                postArr.data.insert(contentsOf: loadedComments, at: index)
-              }
-            }
+          case .comment(let comment): comment.childrenWinston.data.removeAll { $0.id == self.id }
+          case .post(let postArr): postArr.data.removeAll { $0.id == self.id }
+          }
+        }
+      }
+      return
+    }
+
+    let parentID = data.parent_id ?? postFullname
+    let loadedComments: [Comment] = nestComments(children, parentID: parentID)
+
+    Task(priority: .background) { [loadedComments] in
+      await RedditWire.shared.updateCommentsWithAvatar(comments: loadedComments, avatarSize: avatarSize)
+      await post?.saveMoreComments(comments: loadedComments)
+    }
+
+    await MainActor.run { [loadedComments] in
+      switch parent {
+      case .comment(let comment):
+        if let index = comment.childrenWinston.data.firstIndex(where: { $0.id == id }) {
+          withAnimation {
+            comment.childrenWinston.data.remove(at: index)
+            comment.childrenWinston.data.insert(contentsOf: loadedComments, at: index)
+          }
+        }
+      case .post(let postArr):
+        if let index = postArr.data.firstIndex(where: { $0.id == id }) {
+          withAnimation {
+            postArr.data.remove(at: index)
+            postArr.data.insert(contentsOf: loadedComments, at: index)
           }
         }
       }
@@ -233,7 +219,8 @@ extension Comment {
   
   func reply(_ text: String) async -> Bool {
     if let fullname = data?.name {
-      let result = await RedditAPI.shared.newReply(text, fullname) ?? false
+      let result = await RedditWire.shared.newReply(text, to: fullname, postFullname: data?.link_id)
+      let meData = await RedditWire.shared.me?.data
       if result, let data = data {
         var newComment = CommentData(id: UUID().uuidString)
         newComment.subreddit_id = data.subreddit_id
@@ -242,12 +229,12 @@ extension Comment {
         newComment.saved = false
         newComment.archived = false
         newComment.count = 0
-        newComment.author = RedditAPI.shared.me?.data?.name ?? ""
+        newComment.author = meData?.name ?? ""
         newComment.created_utc = nil
         newComment.send_replies = nil
         newComment.parent_id = id
         newComment.score = nil
-        newComment.author_fullname = "t2_\(RedditAPI.shared.me?.data?.id ?? "")"
+        newComment.author_fullname = "t2_\(meData?.id ?? "")"
         newComment.approved_by = nil
         newComment.mod_note = nil
         newComment.collapsed = nil
@@ -288,9 +275,7 @@ extension Comment {
           self.data?.saved = !prev
         }
       }
-      let success: Bool? = Defaults[.useGraphQLAPI]
-        ? await RedditWire.shared.save(fullname: fullname, saved: !prev)
-        : await RedditAPI.shared.save(!prev, id: fullname)
+      let success: Bool? = await RedditWire.shared.save(fullname: fullname, saved: !prev)
       if !(success ?? false) {
         await MainActor.run {
           withAnimation {
@@ -304,7 +289,7 @@ extension Comment {
     return false
   }
   
-  func vote(action: RedditAPI.VoteAction) async -> Bool? {
+  func vote(action: VoteAction) async -> Bool? {
     let oldLikes = data?.likes
     let oldUps = data?.ups ?? 0
     var newAction = action
@@ -315,9 +300,7 @@ extension Comment {
         data?.ups = oldUps + (action.boolVersion() == oldLikes ? oldLikes == nil ? 0 : -(Int(action.rawValue) ?? 0) : (Int(action.rawValue) ?? 1) * (oldLikes == nil ? 1 : 2))
       }
     }
-    let result: Bool? = Defaults[.useGraphQLAPI]
-      ? await RedditWire.shared.vote(fullname: data?.name ?? "t1_\(id.dropLast(2))", action: newAction)
-      : await RedditAPI.shared.vote(newAction, id: "\(typePrefix ?? "")\(id.dropLast(2))")
+    let result: Bool? = await RedditWire.shared.vote(fullname: data?.name ?? "t1_\(id.dropLast(2))", action: newAction)
     if result == nil || !result! {
       await MainActor.run { [oldLikes] in
         withAnimation {
@@ -337,7 +320,7 @@ extension Comment {
       //          self.data?.body = newBody
       //        }
       //      }
-      let result = await RedditAPI.shared.edit(fullname: name, newText: newBody)
+      let result: Bool? = await RedditWire.shared.editComment(fullname: name, newText: newBody)
       if (result ?? false) {
         await MainActor.run {
           withAnimation {
@@ -359,7 +342,7 @@ extension Comment {
   
   func del() async -> Bool? {
     if let name = data?.name {
-      let result = await RedditAPI.shared.delete(fullname: name)
+      let result: Bool? = await RedditWire.shared.deleteComment(fullname: name)
       if (result ?? false) {
         if let parentWinston = self.parentWinston {
           let newParent = parentWinston.data.filter { $0.id != id }

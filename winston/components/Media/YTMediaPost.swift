@@ -19,6 +19,7 @@ struct YTMediaPostPlayer: View, Equatable {
   var player: YouTubePlayer
   var ytMediaExtracted: YTMediaExtracted
   var contentWidth: CGFloat
+  var diagnosticContext: String? = nil
   @Default(.BehaviorDefSettings) private var behaviorDefSettings
   @Environment(\.openURL) private var openURL
   @State private var showPlayer = false
@@ -30,7 +31,7 @@ struct YTMediaPostPlayer: View, Equatable {
     Group {
       if !showPlayer {
         ZStack {
-          URLImage(url: ytMediaExtracted.thumbnailURL, doLiveText: false, imgRequest: ytMediaExtracted.thumbnailRequest)
+          URLImage(url: ytMediaExtracted.thumbnailURL, doLiveText: false, imgRequest: ytMediaExtracted.thumbnailRequest, diagnosticContext: diagnosticContext.map { "\($0):youtubeThumb" } ?? "youtubeThumb:\(ytMediaExtracted.videoID)")
             .scaledToFill()
           Image(systemName: "play.circle.fill").fontSize(compact ? 22 : 32)
         }
@@ -55,5 +56,4 @@ struct YTMediaPostPlayer: View, Equatable {
     }
   }
 }
-
 

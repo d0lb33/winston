@@ -169,7 +169,7 @@ struct NewPostGalleryItem: Codable {
 //  @State var currentDraft: PostDraft?
 //  @State var editorHeight: CGFloat = 200
 //  @State var loading = false
-//  @State var postKind: RedditAPI.PostType = .text
+
 //  @State private var selection: PresentationDetent = .medium
 //  @State var selectedFlair: Flair?
 //  @Environment(\.useTheme) private var selectedTheme

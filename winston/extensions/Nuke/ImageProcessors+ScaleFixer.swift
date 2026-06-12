@@ -9,6 +9,17 @@ import Foundation
 import Nuke
 import UIKit
 
+func winstonImageRequest(
+  url: URL,
+  processors: [ImageProcessing] = [],
+  priority: ImageRequest.Priority = .normal,
+  thumbnail: ImageRequest.ThumbnailOptions? = nil
+) -> ImageRequest {
+  var request = ImageRequest(url: url, processors: processors, priority: priority)
+  request.thumbnail = thumbnail
+  return request
+}
+
 extension ImageProcessors {
     public struct ScaleFixer: ImageProcessing, Hashable, CustomStringConvertible {
         public func process(_ image: PlatformImage) -> PlatformImage? {

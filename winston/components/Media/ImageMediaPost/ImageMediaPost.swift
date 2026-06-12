@@ -28,7 +28,7 @@ struct ImageMediaPostCompactMoreImagesOverlay: View, Equatable {
 struct ImageMediaPost: View, Equatable {
   static let gallerySpacing: CGFloat = 8
   static func == (lhs: ImageMediaPost, rhs: ImageMediaPost) -> Bool {
-    return lhs.postTitle == rhs.postTitle && lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.images == rhs.images
+    return lhs.postTitle == rhs.postTitle && lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.images == rhs.images && lhs.diagnosticContext == rhs.diagnosticContext
   }
     
   @Binding var postDimensions: PostDimensions
@@ -42,69 +42,34 @@ struct ImageMediaPost: View, Equatable {
   var images: [ImgExtracted]
   var contentWidth: CGFloat
   var maxMediaHeightScreenPercentage: CGFloat
+  var diagnosticContext: String? = nil
 //  @State var fullscreen = false
   @State var fullscreenIndex: Int?
   
   var body: some View {
-//    let maxMediaHeightScreenPercentage = 100.0
-    let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * (.screenH)
-    VStack {
-      if images.count == 1 || compact {
-        let img = images[0]
-        let sourceHeight = img.size.height
-        let sourceWidth = img.size.width
-        
-        let propHeight = (contentWidth * sourceHeight) / sourceWidth
-        let finalHeight = maxMediaHeightScreenPercentage != 110 ? Double(min(maxHeight, propHeight)) : Double(propHeight)
-        
-        GalleryThumb(cornerRadius: cornerRadius, width: compact ? scaledCompactModeThumbSize() : contentWidth, height: compact ? scaledCompactModeThumbSize() : sourceHeight > 0 ? finalHeight : nil, url: img.url, imgRequest: images.count > 0 ? images[0].request : nil)
-          .background(sourceHeight > 0 || compact ? nil : GeometryReader { geo in Color.clear.onAppear { postDimensions.mediaSize = geo.size }.onChange(of: geo.size) { postDimensions.mediaSize = $0 } })
-          .onTapGesture { withAnimation(spring) { fullscreenIndex = 0 } }
-          .overlay(
-            !compact || images.count <= 1
-            ? nil
-            : ImageMediaPostCompactMoreImagesOverlay(count: images.count - 1).equatable()
-            , alignment: .bottomTrailing
-          )
-        
-      } else if images.count > 1 {
-        
-        let width = ((contentWidth - 8) / 2)
-        let height = width
-        VStack(spacing: ImageMediaPost.gallerySpacing) {
-          HStack(spacing: ImageMediaPost.gallerySpacing) {
-            GalleryThumb(cornerRadius: cornerRadius, width: compact ? scaledCompactModeThumbSize() : width, height: compact ? scaledCompactModeThumbSize() : height, url: images[0].url, imgRequest: images.count > 0 ? images[0].request : nil)
-              .equatable()
-              .onTapGesture { withAnimation(spring) { fullscreenIndex = 0 } }
-
-            GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: images[1].url, imgRequest: images.count > 1 ? images[1].request : nil)
-              .equatable()
-                .onTapGesture { withAnimation(spring) { fullscreenIndex = 1 } }
-          }
-          
-          
-          if images.count > 2 {
-            HStack(spacing: ImageMediaPost.gallerySpacing) {
-              GalleryThumb(cornerRadius: cornerRadius, width: images.count == 3 ? contentWidth : width, height: height, url: images[2].url, imgRequest: images.count > 2 ? images[2].request : nil)
-                .equatable()
-                .onTapGesture { withAnimation(spring) { fullscreenIndex = 2 } }
-              if images.count == 4 {
-                GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: images[3].url, imgRequest: images.count > 3 ? images[3].request : nil)
-                  .equatable()
-                  .onTapGesture { withAnimation(spring) { fullscreenIndex = 3 } }
-              } else if images.count > 4 {
-                Text("\(images.count - 3)+")
-                  .fontSize(24, .medium)
-                  .frame(width: width - 32, height: height - 32)
-                  .background(Circle().fill(.primary.opacity(0.05)))
-                  .frame(width: width, height: height)
-                  .onTapGesture { withAnimation(spring) { fullscreenIndex = 0 } }
-              }
-            }
-            //              .frame(width: contentWidth, height: height)
-          }
-          
-        }
+    Group {
+      if images.isEmpty {
+        ImageMediaUnavailablePreview(cornerRadius: cornerRadius, compact: compact)
+      } else if images.count == 1 || compact {
+        ImageMediaSinglePreview(
+          postDimensions: $postDimensions,
+          cornerRadius: cornerRadius,
+          compact: compact,
+          image: images[0],
+          imageCount: images.count,
+          contentWidth: contentWidth,
+          maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
+          diagnosticContext: diagnosticContext,
+          open: { fullscreenIndex = 0 }
+        )
+      } else {
+        ImageMediaGalleryPreview(
+          cornerRadius: cornerRadius,
+          images: images,
+          contentWidth: contentWidth,
+          diagnosticContext: diagnosticContext,
+          open: { fullscreenIndex = $0 }
+        )
       }
     }
     .frame(maxWidth: compact ? nil : .infinity)
@@ -116,8 +81,135 @@ struct ImageMediaPost: View, Equatable {
 //      LightBoxImage(postTitle: postTitle, badgeKit: badgeKit, markAsSeen: markAsSeen, i: fullscreenIndex ?? 0, imagesArr: images)
 //    })
     .fullScreenCover(item: $fullscreenIndex) { i in
-      LightBoxImage(postTitle: postTitle, badgeKit: badgeKit, avatarImageRequest: avatarImageRequest, markAsSeen: markAsSeen, i: i, imagesArr: images, doLiveText: Defaults[.BehaviorDefSettings].doLiveText)
+      LightBoxImage(postTitle: postTitle, badgeKit: badgeKit, avatarImageRequest: avatarImageRequest, markAsSeen: markAsSeen, i: min(max(i, 0), max(images.count - 1, 0)), imagesArr: images, doLiveText: Defaults[.BehaviorDefSettings].doLiveText)
     }
+  }
+}
+
+private struct ImageMediaSinglePreview: View {
+  @Binding var postDimensions: PostDimensions
+  let cornerRadius: Double
+  let compact: Bool
+  let image: ImgExtracted
+  let imageCount: Int
+  let contentWidth: CGFloat
+  let maxMediaHeightScreenPercentage: CGFloat
+  let diagnosticContext: String?
+  let open: () -> Void
+
+  private var width: CGFloat {
+    compact ? scaledCompactModeThumbSize() : max(contentWidth, 1)
+  }
+
+  private var height: CGFloat? {
+    if compact { return scaledCompactModeThumbSize() }
+    guard image.size.width > 0, image.size.height > 0 else { return nil }
+    let proportionalHeight = (max(contentWidth, 1) * image.size.height) / image.size.width
+    guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
+    return min((maxMediaHeightScreenPercentage / 100) * .screenH, proportionalHeight)
+  }
+
+  var body: some View {
+    GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: image.url, imgRequest: image.request, diagnosticContext: diagnosticContext)
+      .background(
+        height == nil && !compact
+        ? GeometryReader { geo in
+          Color.clear
+            .onAppear { postDimensions.mediaSize = geo.size }
+            .onChange(of: geo.size) { postDimensions.mediaSize = $0 }
+        }
+        : nil
+      )
+      .onTapGesture { withAnimation(spring) { open() } }
+      .overlay(alignment: .bottomTrailing) {
+        if compact && imageCount > 1 {
+          ImageMediaPostCompactMoreImagesOverlay(count: imageCount - 1).equatable()
+        }
+      }
+  }
+}
+
+private struct ImageMediaGalleryPreview: View {
+  let cornerRadius: Double
+  let images: [ImgExtracted]
+  let contentWidth: CGFloat
+  let diagnosticContext: String?
+  let open: (Int) -> Void
+
+  private var tileWidth: CGFloat {
+    max(1, (contentWidth - ImageMediaPost.gallerySpacing) / 2)
+  }
+
+  var body: some View {
+    VStack(spacing: ImageMediaPost.gallerySpacing) {
+      HStack(spacing: ImageMediaPost.gallerySpacing) {
+        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[0], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(0) })
+        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[1], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(1) })
+      }
+
+      if images.count > 2 {
+        HStack(spacing: ImageMediaPost.gallerySpacing) {
+          ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[2], width: images.count == 3 ? max(contentWidth, 1) : tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(2) })
+
+          if images.count > 3 {
+            ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[3], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(3) })
+              .overlay {
+                if images.count > 4 {
+                  ImageMediaMoreOverlay(count: images.count - 4)
+                }
+              }
+          }
+        }
+      }
+    }
+  }
+}
+
+private struct ImageMediaGalleryTile: View {
+  let cornerRadius: Double
+  let image: ImgExtracted
+  let width: CGFloat
+  let height: CGFloat
+  let diagnosticContext: String?
+  let open: () -> Void
+
+  var body: some View {
+    GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: image.url, imgRequest: image.request, diagnosticContext: diagnosticContext)
+      .equatable()
+      .onTapGesture { withAnimation(spring) { open() } }
+  }
+}
+
+private struct ImageMediaMoreOverlay: View {
+  let count: Int
+
+  var body: some View {
+    ZStack {
+      Rectangle()
+        .fill(.black.opacity(0.42))
+      Text("+\(count)")
+        .fontSize(28, .bold)
+        .foregroundStyle(.white)
+        .minimumScaleFactor(0.7)
+    }
+    .allowsHitTesting(false)
+  }
+}
+
+private struct ImageMediaUnavailablePreview: View {
+  let cornerRadius: Double
+  let compact: Bool
+
+  var body: some View {
+    Rectangle()
+      .fill(.regularMaterial)
+      .overlay {
+        Image(systemName: "photo")
+          .fontSize(22, .semibold)
+          .foregroundStyle(.secondary)
+      }
+      .frame(width: compact ? scaledCompactModeThumbSize() : nil, height: compact ? scaledCompactModeThumbSize() : 120)
+      .mask(RR(cornerRadius, Color.black).equatable())
   }
 }
 

@@ -237,12 +237,12 @@ struct Subreddits: View, Equatable {
       }
       .refreshable {
         Task(priority: .background) {
-          await updatePostsInBox(RedditAPI.shared, force: true)
+          await updatePostsInBox(force: true)
         }
         Task(priority: .background) {
-          _ = await RedditAPI.shared.fetchMyMultis()
+          await RedditWire.shared.fetchMyMultis()
         }
-        _ = await RedditAPI.shared.fetchSubs()
+        await RedditWire.shared.fetchSubs()
       }
       .navigationTitle("Subs")
     }

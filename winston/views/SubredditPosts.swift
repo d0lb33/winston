@@ -27,7 +27,6 @@ struct SubredditPosts: View, Equatable {
     lhs.subreddit == rhs.subreddit
   }
   
-  @ObservedObject var redditAPI = RedditAPI.shared
   @ObservedObject var subreddit: Subreddit
   @Default(.filteredSubreddits) private var filteredSubreddits
   @State private var loading = true
@@ -57,6 +56,7 @@ struct SubredditPosts: View, Equatable {
   @State private var hasViewLoaded: Bool = false
   @State private var reachedEndOfFeed: Bool = false
   @State private var showLoadMoreButton: Bool = false
+  @State private var feedRequestInFlight: Bool = false
   
   @StateObject private var unfilteredPosts = NonObservableArray<Post>()
   @State private var unfilteredLastPostAfter: String?
@@ -128,6 +128,15 @@ struct SubredditPosts: View, Equatable {
     }
     
     if (searchText == nil || searchText!.isEmpty) && !loadMore && !forceRefresh && !unfilteredPosts.data.isEmpty {
+      AppDiagnostics.asyncBreadcrumb(
+        "Feed restored from in-memory cache",
+        metadata: [
+          "subreddit": subreddit.id,
+          "cachedPosts": "\(unfilteredPosts.data.count)",
+          "after": unfilteredLastPostAfter ?? "nil",
+          "reachedEnd": "\(unfilteredreachedEndOfFeed)"
+        ]
+      )
       posts.data = unfilteredPosts.data
       lastPostAfter = unfilteredLastPostAfter
       reachedEndOfFeed = unfilteredreachedEndOfFeed
@@ -135,6 +144,17 @@ struct SubredditPosts: View, Equatable {
     }
     
     if posts.data.count > 0 && lastPostAfter == nil && !force {
+      AppDiagnostics.asyncRecord(
+        .info,
+        category: "ui.feed",
+        message: "Feed load skipped because cursor is nil",
+        metadata: [
+          "subreddit": subreddit.id,
+          "posts": "\(posts.data.count)",
+          "loadMore": "\(loadMore)",
+          "search": searchText ?? ""
+        ]
+      )
       reachedEndOfFeed = true
       return
     }
@@ -151,10 +171,38 @@ struct SubredditPosts: View, Equatable {
     }
     
     if subreddit.id != "saved" {
+      AppDiagnostics.asyncBreadcrumb(
+        "Feed fetch started",
+        metadata: [
+          "subreddit": subreddit.id,
+          "sort": sort.rawVal.value,
+          "loadMore": "\(loadMore)",
+          "existingPosts": "\(posts.data.count)",
+          "after": (loadMore ? lastPostAfter : nil) ?? "nil",
+          "search": searchText ?? ""
+        ]
+      )
       if let result = await subreddit.fetchPosts(sort: sort, after: loadMore ? lastPostAfter : nil, searchText: searchText, contentWidth: contentWidth), let newPosts = result.0 {
-        Task(priority: .background) { await RedditAPI.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size) }
+        Task(priority: .background) { await RedditWire.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size) }
         withAnimation {
+          let duplicateCount = newPosts.filter { loadedPosts.contains($0.id) }.count
+          let filteredCount = newPosts.filter { !loadedPosts.contains($0.id) && filteredSubreddits.contains($0.data?.subreddit ?? "") }.count
           let newPostsFiltered = newPosts.filter { !loadedPosts.contains($0.id) && !filteredSubreddits.contains($0.data?.subreddit ?? "") }
+          AppDiagnostics.asyncRecord(
+            newPosts.isEmpty || (!loadMore && newPostsFiltered.isEmpty) ? .warning : .info,
+            category: "ui.feed",
+            message: "Feed fetch applied",
+            metadata: [
+              "subreddit": subreddit.id,
+              "loadMore": "\(loadMore)",
+              "received": "\(newPosts.count)",
+              "applied": "\(newPostsFiltered.count)",
+              "duplicates": "\(duplicateCount)",
+              "filtered": "\(filteredCount)",
+              "existingBefore": "\(posts.data.count)",
+              "nextAfter": result.1 ?? "nil"
+            ]
+          )
           
           if loadMore {
             posts.data.append(contentsOf: newPostsFiltered)
@@ -168,6 +216,7 @@ struct SubredditPosts: View, Equatable {
           
           loading = false
           lastPostAfter = result.1
+          reachedEndOfFeed = result.1 == nil
           
 //        reachedEndOfFeed = newPostsFiltered.count == 0
           
@@ -194,6 +243,19 @@ struct SubredditPosts: View, Equatable {
             }
           }
         }
+      } else {
+        AppDiagnostics.asyncRecord(
+          .error,
+          category: "ui.feed",
+          message: "Feed fetch returned no result",
+          metadata: [
+            "subreddit": subreddit.id,
+            "loadMore": "\(loadMore)",
+            "after": (loadMore ? lastPostAfter : nil) ?? "nil",
+            "search": searchText ?? ""
+          ]
+        )
+        loading = false
       }
     } else {
       await asyncFetchSaved(loadMore: loadMore)
@@ -218,7 +280,7 @@ struct SubredditPosts: View, Equatable {
           loadedSavedPostIDs.removeAll()
         }
         let uniquePosts = newPosts.filter { loadedSavedPostIDs.insert($0.id).inserted }
-        Task(priority: .background) { await RedditAPI.shared.updatePostsWithAvatar(posts: uniquePosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size) }
+        Task(priority: .background) { await RedditWire.shared.updatePostsWithAvatar(posts: uniquePosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size) }
         withAnimation {
           if loadMore {
             savedPosts = (savedPosts ?? []) + uniquePosts
@@ -273,11 +335,29 @@ struct SubredditPosts: View, Equatable {
   }
   
   func fetch(_ loadMore: Bool = false, _ searchText: String? = nil, forceRefresh: Bool = false) {
+    guard !feedRequestInFlight else {
+      AppDiagnostics.asyncBreadcrumb(
+        "Feed fetch suppressed while request is in flight",
+        metadata: [
+          "subreddit": subreddit.id,
+          "loadMore": "\(loadMore)",
+          "after": (loadMore ? lastPostAfter : nil) ?? "nil",
+          "search": searchText ?? ""
+        ]
+      )
+      return
+    }
+
+    feedRequestInFlight = true
+    loading = true
     Task(priority: .background) {
       do {
         try await asyncFetch(loadMore: loadMore, searchText: searchText, forceRefresh: forceRefresh)
       } catch {
         print(error)
+      }
+      await MainActor.run {
+        feedRequestInFlight = false
       }
     }
   }
@@ -400,6 +480,9 @@ struct SubredditPosts: View, Equatable {
 //        .padding(.all, 12)
 //      , alignment: .bottomTrailing
 //    )
+    // TODO(graphql): post composer is disabled — only a CreateSubredditPost
+    // (text) operation is captured so far; link/image/gallery submission has
+    // no GraphQL surface yet.
     //    .sheet(isPresented: $newPost, content: {
     //      NewPostModal(subreddit: subreddit)
     //    })

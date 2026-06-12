@@ -38,6 +38,16 @@ struct SubredditPostsIPAD: View, Equatable {
   @Default(.SubredditFeedDefSettings) private var feedDefSettings
 	
 	func loadMorePosts() {
+    AppDiagnostics.asyncBreadcrumb(
+      "Feed load-more requested",
+      metadata: [
+        "surface": "ipad",
+        "subreddit": subreddit?.id ?? "unknown",
+        "posts": "\(posts.count)",
+        "after": lastPostAfter ?? "nil",
+        "loading": "\(loading)"
+      ]
+    )
 		if !searchText.isEmpty {
 			fetch(true, searchText, true)
 		} else {
@@ -91,7 +101,9 @@ struct SubredditPostsIPAD: View, Equatable {
               .environmentObject(sub)
               .environmentObject(winstonData)
               .onAppear {
-                if(posts.count - 7 == i && !isFiltered && !loading) { loadMorePosts() }
+                if i >= max(posts.count - 7, 0) && !isFiltered && !loading && !reachedEndOfFeed {
+                  loadMorePosts()
+                }
               }
             }
 						if isFiltered && !loading && !reachedEndOfFeed && i == posts.count - 1  {

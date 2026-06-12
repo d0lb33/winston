@@ -90,6 +90,7 @@ struct CommentLinkContent: View {
   @State private var highlight = false
   @State private var showSpoiler = false
   @State private var commentSwipeActions: SwipeActionsSet = Defaults[.CommentLinkDefSettings].swipeActions
+  @State private var loggedBodyDiagnostics = false
   
   @Default(.CommentLinkDefSettings) private var defSettings
   @Default(.CommentsSectionDefSettings) private var sectionDefSettings
@@ -313,6 +314,23 @@ struct CommentLinkContent: View {
         let newCommentSwipeActions = Defaults[.CommentLinkDefSettings].swipeActions
         if commentSwipeActions != newCommentSwipeActions {
           commentSwipeActions = newCommentSwipeActions
+        }
+        if !loggedBodyDiagnostics && data.body?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+          loggedBodyDiagnostics = true
+          AppDiagnostics.asyncRecord(
+            .warning,
+            category: "ui.commentRow",
+            message: "Visible comment row has no body",
+            metadata: [
+              "id": data.id,
+              "name": data.name ?? "nil",
+              "parent": data.parent_id ?? "nil",
+              "post": data.link_id ?? post?.data?.name ?? "nil",
+              "author": data.author ?? "nil",
+              "depth": "\(data.depth ?? -1)",
+              "hasHTML": "\(data.body_html?.isEmpty == false)"
+            ]
+          )
         }
         if var specificID = highlightID {
           specificID = specificID.hasPrefix("t1_") ? String(specificID.dropFirst(3)) : specificID

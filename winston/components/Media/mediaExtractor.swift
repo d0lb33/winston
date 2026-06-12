@@ -116,30 +116,35 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
         
         let sizeSimple = compact ? scaledCompactModeThumbSize() : actualWidth
         let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: .init(width: sizeSimple, height: sizeSimple), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
-        var userInfo: [ImageRequest.UserInfoKey : Any] = [:]
+        var thumbnail: ImageRequest.ThumbnailOptions?
         if compact && !imgURL.absoluteString.hasSuffix(".gif") {
-          userInfo[.thumbnailKey] = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+          thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
         }
-        return ImgExtracted(url: imgURL, size: CGSize(width: size.x, height: size.y), request: ImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], userInfo: userInfo))
+        return ImgExtracted(url: imgURL, size: CGSize(width: size.x, height: size.y), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
       }
       return nil
     }
+    recordMediaExtraction(data: data, kind: "gallery", compact: compact, contentWidth: contentWidth, size: CGSize(width: contentWidth, height: contentWidth), extra: ["items": "\(galleryArr.count)"])
     return .imgs(galleryArr)
   }
   
   if let videoPreview = data.preview?.reddit_video_preview, let url = videoPreview.hls_url, let videoURL = URL(string: url) {
     let downloadURL = videoPreview.fallback_url.flatMap(URL.init(string:))
+    let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
     let size = videoSize(from: data, width: cgFloat(videoPreview.width), height: cgFloat(videoPreview.height))
     let posterURL = videoPosterURL(from: data)
-    let video = SharedVideo.get(url: videoURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+    recordMediaExtraction(data: data, kind: "reddit_video_preview", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size)
+    let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
     return .video(video)
   }
   
   if let redditVideo = data.media?.reddit_video, let url = redditVideo.hls_url, let videoURL = URL(string: url) {
     let downloadURL = redditVideo.fallback_url.flatMap(URL.init(string:))
+    let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
     let size = videoSize(from: data, width: cgFloat(redditVideo.width), height: cgFloat(redditVideo.height))
     let posterURL = videoPosterURL(from: data)
-    let video = SharedVideo.get(url: videoURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+    recordMediaExtraction(data: data, kind: "reddit_video", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size)
+    let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
     return .video(video)
   }
 
@@ -147,6 +152,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     let source = data.preview?.images?.first?.source
     let size = CGSize(width: source?.width ?? 0, height: source?.height ?? 0)
     let posterURL = videoPosterURL(from: data)
+    recordMediaExtraction(data: data, kind: "hosted_video", compact: compact, contentWidth: contentWidth, playbackURL: hostedVideo.playbackURL, downloadURL: hostedVideo.downloadURL, posterURL: posterURL, size: size)
     let video = SharedVideo.get(url: hostedVideo.playbackURL, size: size, downloadURL: hostedVideo.downloadURL, posterURL: posterURL)
     return .video(video)
   }
@@ -155,6 +161,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     let thumbReq = ImageRequest(url: thumbURL, processors: [.resize(width: getPostContentWidth(contentWidth: contentWidth, theme: theme))], priority: .normal)
     Post.prefetcher.startPrefetching(with: [thumbReq])
     let size = CGSize(width: CGFloat(width), height: CGFloat(height))
+    recordMediaExtraction(data: data, kind: "youtube", compact: compact, contentWidth: contentWidth, playbackURL: thumbURL, posterURL: thumbURL, size: size)
     let newExtracted = YTMediaExtracted(videoID: ytID, size: size, thumbnailURL: thumbURL, thumbnailRequest: thumbReq, player: YouTubePlayer(source: .video(id: ytID)), author: author_name, authorURL: authorURL)
     return .yt(newExtracted)
   }
@@ -173,11 +180,12 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     
     let size = compact ? scaledCompactModeThumbSize() : contentWidth
     let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
-    var userInfo: [ImageRequest.UserInfoKey : Any] = [:]
+    var thumbnail: ImageRequest.ThumbnailOptions?
     if compact && !url.absoluteString.hasSuffix(".gif") {
-      userInfo[.thumbnailKey] = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
     }
-    let imgExtracted = ImgExtracted(url: url, size: CGSize(width: actualWidth, height: actualHeight), request: ImageRequest(url: url, processors: processors + [ImageProcessors.ScaleFixer()], userInfo: userInfo))
+    let imgExtracted = ImgExtracted(url: url, size: CGSize(width: actualWidth, height: actualHeight), request: winstonImageRequest(url: url, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
+    recordMediaExtraction(data: data, kind: "direct_image", compact: compact, contentWidth: contentWidth, playbackURL: url, size: CGSize(width: actualWidth, height: actualHeight), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])
     return .imgs([imgExtracted])
   }
   
@@ -185,16 +193,18 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     
     let size = compact ? scaledCompactModeThumbSize() : contentWidth
     let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
-    var userInfo: [ImageRequest.UserInfoKey : Any] = [:]
+    var thumbnail: ImageRequest.ThumbnailOptions?
     if compact {
-      userInfo[.thumbnailKey] = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
+      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(), height: scaledCompactModeThumbSize()), unit: .points, contentMode: .aspectFill)
     }
-    let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: width, height: height), request: ImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], userInfo: userInfo))
+    let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: width, height: height), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
+    recordMediaExtraction(data: data, kind: "preview_image", compact: compact, contentWidth: contentWidth, playbackURL: imgURL, size: CGSize(width: width, height: height), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])
     return .imgs([imgExtracted])
   }
   
   if VIDEOS_FORMATS.contains(where: { data.url.hasSuffix($0) }), let url = URL(string: data.url) {
     let posterURL = videoPosterURL(from: data)
+    recordMediaExtraction(data: data, kind: "direct_video", compact: compact, contentWidth: contentWidth, playbackURL: url, downloadURL: url, posterURL: posterURL, size: .zero)
     let video = SharedVideo.get(url: url, size: .zero, downloadURL: url, posterURL: posterURL)
     return .video(video)
   }
@@ -252,9 +262,11 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   }
   
   if data.post_hint == "link" || !data.domain.isEmpty, let linkURL = URL(string: data.url) {
+    recordMediaExtraction(data: data, kind: "link", compact: compact, contentWidth: contentWidth, playbackURL: linkURL, size: .zero)
     return .link(PreviewModel.get(linkURL, compact: compact))
   }
   
+  recordMediaExtraction(data: data, kind: "none", compact: compact, contentWidth: contentWidth, size: .zero)
   return nil
 }
 
@@ -269,11 +281,115 @@ private func videoPosterURL(from data: PostData) -> URL? {
     guard let candidate, !candidate.isEmpty else { continue }
     let escaped = candidate.escape
     if let url = URL(string: escaped), ["http", "https"].contains(url.scheme?.lowercased()) {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.media.extract",
+        message: "Video poster candidate selected",
+        metadata: mediaExtractionMetadata(data: data, kind: "poster-candidate", compact: false, contentWidth: 0, playbackURL: url, posterURL: url, size: .zero, extra: ["candidate": candidate])
+      )
       return url
+    } else {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.media.extract",
+        message: "Video poster candidate rejected",
+        metadata: mediaExtractionMetadata(data: data, kind: "poster-candidate-rejected", compact: false, contentWidth: 0, size: .zero, extra: ["candidate": candidate])
+      )
     }
   }
 
+  AppDiagnostics.asyncRecord(
+    .warning,
+    category: "ui.media.extract",
+    message: "Video poster URL missing",
+    metadata: mediaExtractionMetadata(data: data, kind: "poster-missing", compact: false, contentWidth: 0, size: .zero)
+  )
   return nil
+}
+
+private func recordMediaExtraction(
+  data: PostData,
+  kind: String,
+  compact: Bool,
+  contentWidth: Double,
+  playbackURL: URL? = nil,
+  downloadURL: URL? = nil,
+  posterURL: URL? = nil,
+  size: CGSize,
+  extra: [String: String] = [:]
+) {
+  AppDiagnostics.asyncRecord(
+    .debug,
+    category: "ui.media.extract",
+    message: "Media extracted",
+    metadata: mediaExtractionMetadata(data: data, kind: kind, compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size, extra: extra)
+  )
+}
+
+private func mediaExtractionMetadata(
+  data: PostData,
+  kind: String,
+  compact: Bool,
+  contentWidth: Double,
+  playbackURL: URL? = nil,
+  downloadURL: URL? = nil,
+  posterURL: URL? = nil,
+  size: CGSize,
+  extra: [String: String] = [:]
+) -> [String: String] {
+  [
+    "kind": kind,
+    "post": data.name,
+    "title": data.title,
+    "subreddit": data.subreddit,
+    "domain": data.domain,
+    "postHint": data.post_hint ?? "nil",
+    "isSelf": "\(data.is_self)",
+    "compact": "\(compact)",
+    "contentWidth": "\(contentWidth)",
+    "playbackURL": playbackURL?.absoluteString ?? "nil",
+    "downloadURL": downloadURL?.absoluteString ?? "nil",
+    "posterURL": posterURL?.absoluteString ?? "nil",
+    "size": "\(size.width)x\(size.height)",
+    "previewImageCount": "\(data.preview?.images?.count ?? 0)",
+    "thumbnail": data.thumbnail ?? "nil",
+    "url": data.url
+  ].merging(extra) { _, new in new }
+}
+
+private func preferredInlineVideoPlaybackURL(streamURL: URL, downloadURL: URL?, postID: String, title: String) -> URL {
+  guard let downloadURL, isFreshPackagedRedditMediaURL(downloadURL) else {
+    return streamURL
+  }
+
+  AppDiagnostics.asyncRecord(
+    .debug,
+    category: "ui.video",
+    message: "Using packaged Reddit MP4 for inline playback",
+    metadata: [
+      "post": postID,
+      "title": title,
+      "streamHost": streamURL.host ?? "nil",
+      "downloadHost": downloadURL.host ?? "nil",
+      "downloadPath": downloadURL.path
+    ]
+  )
+  return downloadURL
+}
+
+private func isFreshPackagedRedditMediaURL(_ url: URL) -> Bool {
+  let host = url.host?.lowercased()
+  guard host == "packaged-media.redd.it" || host == "external-packaged-media.redd.it" else {
+    return false
+  }
+
+  guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+        let expiryRaw = components.queryItems?.first(where: { $0.name == "e" })?.value,
+        let expiry = TimeInterval(expiryRaw) else {
+    return true
+  }
+
+  return Date(timeIntervalSince1970: expiry) > Date().addingTimeInterval(15 * 60)
 }
 
 private func videoSize(from data: PostData, width: CGFloat?, height: CGFloat?) -> CGSize {

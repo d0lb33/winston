@@ -22,7 +22,7 @@ extension User {
   }
   
   func refetchOverview(_ dataTypeFilter: String? = nil, _ after: String? = nil) async -> [Either<Post, Comment>]? {
-    if let name = data?.name, let overviewData = await RedditAPI.shared.fetchUserOverview(name, dataTypeFilter, after) {
+    if let name = data?.name, let overviewData = await RedditWire.shared.userOverviewData(name, filter: dataTypeFilter, after: after) {
       await MainActor.run {
         self.loading = false
       }
@@ -44,7 +44,7 @@ extension User {
       self.loading = true
     }
     let userName = data?.name ?? id
-    if let data = (await RedditAPI.shared.fetchUser(userName)) {
+    if let data = await RedditWire.shared.userProfile(userName) {
       await MainActor.run {
         self.data = data
       }
@@ -56,7 +56,7 @@ extension User {
   
   func fetchItself() {
     Task(priority: .background) {
-      if let data = await RedditAPI.shared.fetchUser(id) {
+      if let data = await RedditWire.shared.userProfile(id) {
         await MainActor.run { withAnimation {
           self.data = data
         } }

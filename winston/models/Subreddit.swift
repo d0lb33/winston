@@ -71,9 +71,7 @@ extension Subreddit {
     applyFavoriteState(targetFavorited)
 
     Task(priority: .background) {
-      let result = Defaults[.useGraphQLAPI]
-        ? await RedditWire.shared.favoriteSubreddit(subredditID: data.name, favorited: targetFavorited)
-        : await RedditAPI.shared.favorite(targetFavorited, subName: data.display_name ?? data.id)
+      let result = await RedditWire.shared.favoriteSubreddit(subredditID: data.name, favorited: targetFavorited)
 
       if !result {
         await MainActor.run {
@@ -131,9 +129,7 @@ extension Subreddit {
         }
       }
       Task(priority: .background) {
-        let result = Defaults[.useGraphQLAPI]
-          ? await RedditWire.shared.subscribe(subredditIDs: [data.name], subscribe: targetSubscribed)
-          : await RedditAPI.shared.subscribe(targetSubscribed ? .sub : .unsub, subFullname: data.name)
+        let result = await RedditWire.shared.subscribe(subredditIDs: [data.name], subscribe: targetSubscribed)
 
         if result && !optimistic {
           await MainActor.run {
@@ -158,21 +154,13 @@ extension Subreddit {
   }
   
   func getFlairs() async -> [Flair]? {
-    if self.data?.winstonFlairs != nil { return self.data?.winstonFlairs }
-    
-    if let data = (await RedditAPI.shared.getFlairs(data?.display_name ?? id)) {
-      _ = await MainActor.run {
-        withAnimation {
-          self.data?.winstonFlairs = data
-          return data
-        }
-      }
-    }
-    return nil
+    // TODO(graphql): no captured GraphQL operation exposes subreddit link-flair
+    // templates yet; flair fetching is disabled until one is recovered.
+    return self.data?.winstonFlairs
   }
   
   func refreshSubreddit() async {
-    if let data = (await RedditAPI.shared.fetchSub(data?.display_name ?? id))?.data {
+    if let data = await RedditWire.shared.subredditData(name: data?.display_name ?? id) {
       await MainActor.run {
         withAnimation {
           self.data = data
@@ -203,25 +191,21 @@ extension Subreddit {
   }
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
-    // GraphQL path (migration): SDUI feed → PostsByIds hydration. The existing
-    // view pagination passes `after` back in from the previous response cursor.
-    if Defaults[.useGraphQLAPI] {
-      let isHome = id == "home"
-      let name = isHome ? "" : (data?.display_name ?? id)
-      let (datas, nextAfter) = await RedditWire.shared.feedPosts(subreddit: name, isHome: isHome, sort: sort, after: after)
-      return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nextAfter)
+    let isHome = id == "home"
+    let name = isHome ? "" : (data?.display_name ?? id)
+
+    // In-subreddit search rides DynamicSearch with a community filter; it has
+    // no pagination cursor on this surface.
+    if let searchText, !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      guard after == nil, let datas = await RedditWire.shared.searchInSubreddit(name, query: searchText) else { return nil }
+      return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nil)
     }
 
-    if let response = await RedditAPI.shared.fetchSubPosts(data?.url ?? (id == "home" ? "" : id), sort: sort, after: after, searchText: searchText), let data = response.0 {
-      return (Post.initMultiple(datas: data.compactMap { $0.data }, sub: self, contentWidth: contentWidth), response.1)
-    }
-
-    return nil
+    let (datas, nextAfter) = await RedditWire.shared.feedPosts(subreddit: name, isHome: isHome, sort: sort, after: after)
+    return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nextAfter)
   }
   
   func fetchSavedPosts(after: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
-    guard Defaults[.useGraphQLAPI] else { return nil }
-
     let (savedPostData, nextAfter) = await RedditWire.shared.savedPosts(after: after)
     await MainActor.run {
       self.loading = false
@@ -231,8 +215,6 @@ extension Subreddit {
   }
 
   func fetchSavedComments(after: String? = nil) async -> ([Comment]?, String?)? {
-    guard Defaults[.useGraphQLAPI] else { return nil }
-
     let (savedCommentData, nextAfter) = await RedditWire.shared.savedComments(after: after)
     await MainActor.run {
       self.loading = false
@@ -241,7 +223,7 @@ extension Subreddit {
     let comments = savedCommentData.map { Comment(data: $0) }
     let selectedTheme = getEnabledTheme()
     Task(priority: .background) { [comments] in
-      _ = await RedditAPI.shared.updateCommentsWithAvatar(comments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
+      await RedditWire.shared.updateCommentsWithAvatar(comments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
     }
 
     return (comments, nextAfter)

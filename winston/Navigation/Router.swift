@@ -81,9 +81,18 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     $fullPath.map { $0.isEmpty }.assign(to: \.isAtRoot, on: self).store(in: &cancellables)
   }
   
-  func goBack() { _ = withAnimation { self.fullPath.removeLast() } }
-  func resetNavPath() { withAnimation { self.fullPath.removeAll() } }
-  func navigateTo(_ dest: NavDest, _ reset: Bool = false) { withAnimation { self.path = reset ? [dest] : self.path + [dest] } }
+  func goBack() {
+    AppDiagnostics.asyncBreadcrumb("Router.goBack", metadata: ["router": id])
+    _ = withAnimation { self.fullPath.removeLast() }
+  }
+  func resetNavPath() {
+    AppDiagnostics.asyncBreadcrumb("Router.resetNavPath", metadata: ["router": id])
+    withAnimation { self.fullPath.removeAll() }
+  }
+  func navigateTo(_ dest: NavDest, _ reset: Bool = false) {
+    AppDiagnostics.asyncBreadcrumb("Router.navigateTo", metadata: ["router": id, "destination": dest.diagnosticsName, "reset": "\(reset)"])
+    withAnimation { self.path = reset ? [dest] : self.path + [dest] }
+  }
   
   enum NavDest: Hashable, Codable, Identifiable {
     var id: String {
@@ -117,7 +126,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     }
     enum Setting: String, Hashable, Codable, Identifiable {
       var id: String { self.rawValue }
-      case behavior, appearance, credentials, about, commentSwipe, postSwipe, accessibility, faq, general, themes, filteredSubreddits, appIcon, themeStore
+      case behavior, appearance, accounts, diagnostics, about, commentSwipe, postSwipe, accessibility, faq, general, themes, filteredSubreddits, appIcon, themeStore
     }
   }
   
@@ -133,6 +142,31 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     hasher.combine(id)
     hasher.combine(firstSelected)
     hasher.combine(path)
+  }
+}
+
+extension Router.NavDest {
+  var diagnosticsName: String {
+    switch self {
+    case .setting(let setting):
+      return "setting.\(setting.rawValue)"
+    case .reddit(let reddit):
+      return reddit.diagnosticsName
+    }
+  }
+}
+
+extension Router.NavDest.Reddit {
+  var diagnosticsName: String {
+    switch self {
+    case .post(let post): return "reddit.post.\(post.id)"
+    case .postHighlighted(let post, let highlightID): return "reddit.postHighlighted.\(post.id).\(highlightID)"
+    case .subFeed(let subreddit): return "reddit.subFeed.\(subreddit.id)"
+    case .subInfo(let subreddit): return "reddit.subInfo.\(subreddit.id)"
+    case .multiFeed(let multi): return "reddit.multiFeed.\(multi.id)"
+    case .multiInfo(let multi): return "reddit.multiInfo.\(multi.id)"
+    case .user(let user): return "reddit.user.\(user.id)"
+    }
   }
 }
 

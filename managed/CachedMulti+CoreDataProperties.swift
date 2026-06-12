@@ -8,6 +8,7 @@
 
 import Foundation
 import CoreData
+import Defaults
 
 
 extension CachedMulti {
@@ -39,7 +40,7 @@ extension CachedMulti {
   }
   
   func getSubEntities(_ subs: [MultiSub], context: NSManagedObjectContext, credentialID: UUID) -> [CachedSub] {
-    guard let currentCredentialID = RedditCredentialsManager.shared.selectedCredential?.id else { return [] }
+    guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return [] }
     var cachedSubs: [String:CachedSub] = [:]
     let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
       fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)

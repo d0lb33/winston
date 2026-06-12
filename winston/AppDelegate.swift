@@ -19,6 +19,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   
   func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
     AppDelegate.instance = self
+    DiagnosticsCrashCatcher.install()
+    Task { @MainActor in
+      AppDiagnostics.shared.startSession()
+      AppDiagnostics.shared.record(.info, category: "app.launch", message: "didFinishLaunching")
+    }
     setAudioToMixWithOthers()
     
     let hapticCapability = CHHapticEngine.capabilitiesForHardware()
@@ -29,9 +34,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     
   func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
     setAudioToMixWithOthers()
+    Task { @MainActor in
+      AppDiagnostics.shared.breadcrumb("Connecting scene", metadata: ["role": connectingSceneSession.role.rawValue])
+    }
     
     if let shortcutItem = options.shortcutItem {
       shortcutItemToProcess = shortcutItem
+      Task { @MainActor in
+        AppDiagnostics.shared.breadcrumb("Received launch shortcut", metadata: ["type": shortcutItem.type])
+      }
     }
     
     let sceneConfiguration = UISceneConfiguration(name: "Custom Configuration", sessionRole: connectingSceneSession.role)
@@ -42,6 +53,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
   
   func applicationDidFinishLaunching(_ application: UIApplication) {
     setAudioToMixWithOthers()
+    Task { @MainActor in
+      AppDiagnostics.shared.breadcrumb("applicationDidFinishLaunching")
+    }
     
     let defaultPipeline = ImagePipeline { config in
       let dataCache = try? DataCache(name: "lo.cafe.winston.datacache")
@@ -64,6 +78,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 class CustomSceneDelegate: UIResponder, UIWindowSceneDelegate {
   func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {
     shortcutItemToProcess = shortcutItem
+    Task { @MainActor in
+      AppDiagnostics.shared.breadcrumb("Scene shortcut", metadata: ["type": shortcutItem.type])
+    }
   }
 }
 

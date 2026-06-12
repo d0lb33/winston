@@ -29,7 +29,7 @@ struct AccountSwitcherTarget: View, Equatable {
   static let hitboxTolerance: Double = 5
   
   static func == (lhs: AccountSwitcherTarget, rhs: AccountSwitcherTarget) -> Bool {
-    lhs.cred == rhs.cred && lhs.index == rhs.index && lhs.hovered == rhs.hovered && lhs.distance == rhs.distance && lhs.attraction == rhs.attraction
+    lhs.target == rhs.target && lhs.index == rhs.index && lhs.hovered == rhs.hovered && lhs.distance == rhs.distance && lhs.attraction == rhs.attraction
   }
   
 //  @State private var appear = false
@@ -40,7 +40,12 @@ struct AccountSwitcherTarget: View, Equatable {
   let containerSize: CGSize
   let index: Int
   let targetsCount: Int
-  var cred: RedditCredential
+  var target: AccountSwitcherTargetID
+  
+  private var account: RedditAccount? {
+    if case .account(let account) = target { return account }
+    return nil
+  }
   
   @ObservedObject var transmitter: AccountSwitcherTransmitter
   
@@ -51,8 +56,8 @@ struct AccountSwitcherTarget: View, Equatable {
   private let distanceMaxSelectedVibrating: Double = 100
   private let verticalOffset = -50.0
   private let textSpace = (AccountSwitcherTarget.fontSize * 1.2) + AccountSwitcherTarget.vStackSpacing
-  private var isAddBtn: Bool { cred.validationStatus != .authorized }
-  private var isSelected: Bool { !isAddBtn && Defaults[.GeneralDefSettings].redditCredentialSelectedID == cred.id }
+  private var isAddBtn: Bool { target == .addAccount }
+  private var isSelected: Bool { account != nil && Defaults[.GeneralDefSettings].redditCredentialSelectedID == account?.id }
   private var radiusX: Double { (containerSize.width / 2) }
   private var radiusY: Double { (containerSize.height / 2) }
   private var initialOffset: CGSize { getOffsetAroundCircleForIndex(count: targetsCount, index: index, circleSize: containerSize) }
@@ -88,7 +93,7 @@ struct AccountSwitcherTarget: View, Equatable {
           .foregroundStyle(.primary)
       } else {
         Group {
-          if let picture = cred.profilePicture, let url = URL(string: picture) {
+          if let picture = account?.avatarURL, let url = URL(string: picture) {
             URLImage(url: url).equatable()
           } else {
             Image(.emptyCredential).resizable()
@@ -134,7 +139,7 @@ struct AccountSwitcherTarget: View, Equatable {
     .changeEffect(.shake(rate: .fast), value: jump)
     .background(alignment: .top) {
       VStack(spacing: 2) {
-        Text(isAddBtn ? "Add new" : cred.userName ?? "Unknown")
+        Text(isAddBtn ? "Add new" : account.map { "u/\($0.username)" } ?? "Unknown")
           .fixedSize(horizontal: true, vertical: false)
           .foregroundStyle(.primary)
           .fontSize(Self.fontSize, .semibold)
@@ -159,8 +164,8 @@ struct AccountSwitcherTarget: View, Equatable {
     .vibrate(.transient(sharpness: !isSelected && !hovered ? 1.0 : 0, intensity: isSelected && hovered ? 0 : 1.0), trigger: hovered, disabled: !appear)
     .onChange(of: hovered) {
       if !isSelected {
-        if transmitter.selectedCred == nil && $0 { transmitter.selectedCred = cred }
-        else if transmitter.selectedCred == cred && !$0 { transmitter.selectedCred = nil }
+        if transmitter.selectedTarget == nil && $0 { transmitter.selectedTarget = target }
+        else if transmitter.selectedTarget == target && !$0 { transmitter.selectedTarget = nil }
       } else if $0 { jump += 1 }
     }
     .transition(.identity)

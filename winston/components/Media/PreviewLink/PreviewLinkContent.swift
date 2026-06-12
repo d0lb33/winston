@@ -44,6 +44,7 @@ struct PreviewLinkContentRaw: View, Equatable {
   var openURL: OpenURLAction
     
   var body: some View {
+    let imageSize = compact ? scaledCompactModeThumbSize() : 76
     HStack(spacing: 16) {
       
       if !compact {
@@ -72,7 +73,12 @@ struct PreviewLinkContentRaw: View, Equatable {
       
       Group {
         if let image = image, let imageURL = URL(string: image) {
-          URLImage(url: imageURL, processors: [.resize(width:  compact ? scaledCompactModeThumbSize() : 76)])
+          URLImage(
+            url: imageURL,
+            processors: [.resize(size: CGSize(width: imageSize, height: imageSize))],
+            size: CGSize(width: imageSize, height: imageSize),
+            diagnosticContext: "previewLink:\(url.host ?? "unknown")"
+          )
             .scaledToFill()
         } else {
           if loading {
@@ -83,7 +89,7 @@ struct PreviewLinkContentRaw: View, Equatable {
           }
         }
       }
-      .frame(width:  compact ? scaledCompactModeThumbSize() : 76, height:  compact ? scaledCompactModeThumbSize() : 76)
+      .frame(width: imageSize, height: imageSize)
       .clipped()
       .mask(RR(12, Color.black))
       .background(RR(12, Color.primary.opacity(0.1)))

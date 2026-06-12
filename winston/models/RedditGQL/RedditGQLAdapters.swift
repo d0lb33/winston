@@ -76,6 +76,10 @@ extension PostData {
     subreddit_id = p.subreddit?.id
     crosspost_parent_list = p.crossposts.map { PostData(graphQL: $0) }
     applyGraphQLMedia(from: p)
+    AvatarRegistry.shared.register(
+      fullname: p.authorInfo?.id,
+      url: p.authorInfo?.iconSmall?.url ?? p.authorInfo?.snoovatarIcon?.url
+    )
   }
 
   private mutating func applyGraphQLMedia(from p: SubredditPost) {
@@ -228,7 +232,7 @@ extension CommentData {
     name = fullID
     // Top-level comments report a nil parentId; root them at the post so
     // nestComments treats them as roots.
-    parent_id = parentID ?? postFullname
+    parent_id = parentID?.isEmpty == false ? parentID : postFullname
     link_id = postFullname
     self.depth = depth
     body = CommentData.markdownBody(from: node.content)
@@ -250,6 +254,10 @@ extension CommentData {
       subreddit = post.subreddit?.name ?? post.subreddit?.prefixedName?.replacingOccurrences(of: "r/", with: "")
       subreddit_name_prefixed = post.subreddit?.prefixedName
     }
+    AvatarRegistry.shared.register(
+      fullname: node.authorInfo?.id,
+      url: node.authorInfo?.iconSmall?.url ?? node.authorInfo?.snoovatarIcon?.url
+    )
   }
 
   private static func markdownBody(from content: RedditContent?) -> String? {
@@ -274,7 +282,28 @@ extension CommentData {
       let alt = item.mimeType?.contains("gif") == true ? "gif" : "img"
       return "![\(alt)](\(url))"
     }
-    return fallback.isEmpty ? markdown : fallback.joined(separator: "\n\n")
+    if !fallback.isEmpty {
+      return fallback.joined(separator: "\n\n")
+    }
+
+    return markdown ?? htmlTextFallback(content.html) ?? htmlTextFallback(content.rtJsonText)
+  }
+
+  private static func htmlTextFallback(_ html: String?) -> String? {
+    guard let html, !html.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+    var text = html
+      .replacingOccurrences(of: "<br>", with: "\n")
+      .replacingOccurrences(of: "<br/>", with: "\n")
+      .replacingOccurrences(of: "<br />", with: "\n")
+      .replacingOccurrences(of: "</p>", with: "\n\n")
+      .replacingOccurrences(of: "</div>", with: "\n")
+
+    while let start = text.firstIndex(of: "<"), let end = text[start...].firstIndex(of: ">") {
+      text.removeSubrange(start...end)
+    }
+
+    text = text.escape.trimmingCharacters(in: .whitespacesAndNewlines)
+    return text.isEmpty ? nil : text
   }
 
   private static func commentMediaURL(from item: RedditGalleryMedia) -> String? {

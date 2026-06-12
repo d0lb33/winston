@@ -16,12 +16,7 @@ struct AppIconSetting: View {
       Section {
         ForEach(WinstonAppIcon.allCases) { icon in
           HStack(spacing: 12) {
-            Image(uiImage: icon.preview)
-              .resizable()
-              .scaledToFill()
-              .frame(width: 64, height: 64)
-              .fixedSize()
-              .mask(RR(16, Color.black))
+            AppIconPreview(icon: icon, size: 64, radius: 16)
             
             HStack(spacing: 0) {
               VStack(alignment: .leading) {

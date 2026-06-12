@@ -31,7 +31,8 @@ struct Settings: View {
             WSNavigationLink(.setting(.general), "General", icon: "gear")
             WSNavigationLink(.setting(.behavior), "Behavior", icon: "arrow.triangle.turn.up.right.diamond.fill")
             WSNavigationLink(.setting(.appearance), "Appearance", icon: "theatermask.and.paintbrush.fill")
-            WSNavigationLink(.setting(.credentials), "Credentials", icon: "key.horizontal.fill")
+            WSNavigationLink(.setting(.accounts), "Accounts", icon: "person.crop.circle.fill")
+            WSNavigationLink(.setting(.diagnostics), "Diagnostics", icon: "stethoscope")
           }
           
           Section {
@@ -82,6 +83,9 @@ struct Settings: View {
       .scrollContentBackground(.hidden)
       .navigationTitle("Settings")
       .injectInTabDestinations(viewControllerHolder: router.navController)
+      .onAppear {
+        AppDiagnostics.shared.breadcrumb("Opened Settings root")
+      }
     }
   }
 }

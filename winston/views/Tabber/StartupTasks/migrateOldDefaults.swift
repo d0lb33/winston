@@ -56,7 +56,6 @@ func migrateOldDefaults() {
   )
   let newGeneralDefSettings = GeneralDefSettings(
     redditCredentialSelectedID: Defaults[._redditCredentialSelectedID],
-    redditAPIUserAgent: Defaults[._redditAPIUserAgent],
     lastSeenAnnouncementTimeStamp: Defaults[._lastSeenAnnouncementTimeStamp],
     useAuth: Defaults[._useAuth],
     showingUpsellDict: Defaults[._showingUpsellDict]

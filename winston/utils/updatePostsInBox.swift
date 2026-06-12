@@ -10,7 +10,7 @@ import Defaults
 import SwiftUI
 import CoreData
 
-func updatePostsInBox(_ redditAPI: RedditAPI, force: Bool = false) async {
+func updatePostsInBox(force: Bool = false) async {
   let postsInBox = Defaults[.postsInBox]
   let postsInBoxNames: [String] = postsInBox.compactMap { post in
     if let lastRefresh = post.lastUpdatedAt, !force, Date().timeIntervalSince1970 - lastRefresh < 120 {
@@ -18,7 +18,8 @@ func updatePostsInBox(_ redditAPI: RedditAPI, force: Bool = false) async {
     }
     return post.fullname
   }
-  if let posts = await RedditAPI.shared.fetchPosts(postFullnames: postsInBoxNames) {
+  if !postsInBoxNames.isEmpty {
+    let posts = await RedditWire.shared.postData(forIDs: postsInBoxNames)
     var postsDict: [String:PostData] = [:]
     posts.forEach { data in
       postsDict[data.name] = data

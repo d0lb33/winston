@@ -40,7 +40,7 @@ struct UserView: View {
         }
       }
       
-      await user.redditAPI.updateOverviewSubjectsWithAvatar(subjects: data, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+      await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: data, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
       
       if let lastItem = data.last {
         lastItemId = getItemId(for: lastItem)
@@ -57,7 +57,7 @@ struct UserView: View {
           }
         }
         
-        await user.redditAPI.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+        await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
         
         if let lastItem = overviewData.last {
           lastItemId = getItemId(for: lastItem)

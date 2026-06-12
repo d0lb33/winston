@@ -1,0 +1,104 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Debug reddit-session-capture (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-session-capture",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug reddit-session-capture (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Release reddit-session-capture (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-session-capture",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release reddit-session-capture (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Debug reddit-media-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-media-inspect",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug reddit-media-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Release reddit-media-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-media-inspect",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release reddit-media-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Debug reddit-search-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-search-inspect",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug reddit-search-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Release reddit-search-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-search-inspect",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release reddit-search-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Debug reddit-profile-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-profile-inspect",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug reddit-profile-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Release reddit-profile-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-profile-inspect",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release reddit-profile-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Debug reddit-operation-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-operation-inspect",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug reddit-operation-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:winston}/RedditAPIResearch/SwiftRedditPOC",
+      "name": "Release reddit-operation-inspect (RedditAPIResearch/SwiftRedditPOC)",
+      "target": "reddit-operation-inspect",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release reddit-operation-inspect (RedditAPIResearch/SwiftRedditPOC)"
+    }
+  ]
+}

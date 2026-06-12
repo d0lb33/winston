@@ -145,8 +145,7 @@ struct RedditChallengeWebView: UIViewRepresentable {
 
 /// Fresh-install / add-account login. Presents the reddit.com webview, captures
 /// the session on successful login, and hands it to `RedditWire.addAccount`,
-/// which mints the Android bearer and registers the account. Replaces the dead
-/// REST API-key onboarding when `Defaults[.useGraphQLAPI]` is on.
+/// which mints the Android bearer and registers the account.
 struct OnboardingGraphQL: View {
   @StateObject private var loginController = WebLoginController()
   @StateObject private var challengeController = WebLoginController()

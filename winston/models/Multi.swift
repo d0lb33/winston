@@ -23,24 +23,20 @@ extension Multi {
   }
   
   func fetchData() async -> Bool? {
-//    if let data = await RedditAPI.shared.fetchMultiInfo(id) {
-//      
-//    }
     return nil
   }
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
     if let data = data {
-      if let response = await RedditAPI.shared.fetchMultiPosts(path: data.path, sort: sort, after: after), let data = response.0 {
-        return (Post.initMultiple(datas: data.compactMap { $0.data }, contentWidth: contentWidth), response.1)
-      }
+      let (datas, nextAfter) = await RedditWire.shared.multiPosts(path: data.path, sort: sort, after: after)
+      return (Post.initMultiple(datas: datas, contentWidth: contentWidth), nextAfter)
     }
     return nil
   }
   
   func delete() async -> Bool? {
     if let data = data {
-      return await RedditAPI.shared.deleteMulti(data.path)
+      return await RedditWire.shared.deleteMulti(path: data.path)
     }
     return nil
   }

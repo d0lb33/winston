@@ -37,6 +37,16 @@ struct SubredditPostsIOS: View, Equatable {
   @Environment(\.contentWidth) private var contentWidth
   
   func loadMorePosts() {
+    AppDiagnostics.asyncBreadcrumb(
+      "Feed load-more requested",
+      metadata: [
+        "surface": "ios",
+        "subreddit": subreddit?.id ?? "unknown",
+        "posts": "\(posts.count)",
+        "after": lastPostAfter ?? "nil",
+        "loading": "\(loading)"
+      ]
+    )
     if !searchText.isEmpty {
       fetch(true, searchText, true)
     } else {
@@ -75,7 +85,9 @@ struct SubredditPostsIOS: View, Equatable {
             .environmentObject(post)
             .environmentObject(winstonData)
             .task(priority: .background) {
-              if(posts.count - 7 == i && !isFiltered && !loading) { loadMorePosts() }
+              if i >= max(posts.count - 7, 0) && !isFiltered && !loading && !reachedEndOfFeed {
+                loadMorePosts()
+              }
             }
             .listRowInsets(EdgeInsets(top: paddingV, leading: paddingH, bottom: paddingV, trailing: paddingH))
           }

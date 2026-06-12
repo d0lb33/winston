@@ -49,7 +49,7 @@ private struct SearchResultsPayload {
 }
 
 private extension SearchScope {
-  func graphQLResults(query: String, contentWidth: CGFloat) async -> SearchResultsPayload {
+  func results(query: String, contentWidth: CGFloat) async -> SearchResultsPayload {
     switch self {
     case .all:
       let result = await RedditWire.shared.searchAll(query, contentWidth: contentWidth)
@@ -64,34 +64,6 @@ private extension SearchScope {
       let users = await RedditWire.shared.searchUsers(query).map(User.init(data:))
       return SearchResultsPayload(posts: [], subs: [], users: users)
     }
-  }
-
-  func restResults(query: String, contentWidth: CGFloat, dummyAllSub: Subreddit?) async -> SearchResultsPayload {
-    switch self {
-    case .all:
-      let posts = await SearchScope.fetchRESTPosts(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
-      let subs = await RedditAPI.shared.searchSubreddits(query)?.map(Subreddit.init(data:)) ?? []
-      let users = await RedditAPI.shared.searchUsers(query)?.map(User.init(data:)) ?? []
-      return SearchResultsPayload(posts: posts, subs: subs, users: users)
-    case .posts:
-      let posts = await SearchScope.fetchRESTPosts(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
-      return SearchResultsPayload(posts: posts, subs: [], users: [])
-    case .subreddits:
-      let subs = await RedditAPI.shared.searchSubreddits(query)?.map(Subreddit.init(data:)) ?? []
-      return SearchResultsPayload(posts: [], subs: subs, users: [])
-    case .users:
-      let users = await RedditAPI.shared.searchUsers(query)?.map(User.init(data:)) ?? []
-      return SearchResultsPayload(posts: [], subs: [], users: users)
-    }
-  }
-
-  private static func fetchRESTPosts(query: String, contentWidth: CGFloat, dummyAllSub: Subreddit?) async -> [Post] {
-    guard
-      let dummyAllSub,
-      let result = await dummyAllSub.fetchPosts(searchText: query, contentWidth: contentWidth),
-      let posts = result.0
-    else { return [] }
-    return posts
   }
 }
 
@@ -126,12 +98,7 @@ struct Search: View {
     resultPosts.data.removeAll()
 
     Task(priority: .background) {
-      let searchResults: SearchResultsPayload
-      if Defaults[.useGraphQLAPI] {
-        searchResults = await scope.graphQLResults(query: query, contentWidth: contentWidth)
-      } else {
-        searchResults = await scope.restResults(query: query, contentWidth: contentWidth, dummyAllSub: dummyAllSub)
-      }
+      let searchResults = await scope.results(query: query, contentWidth: contentWidth)
 
       await MainActor.run {
         withAnimation {

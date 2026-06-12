@@ -14,12 +14,14 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
     private var content: Content
     private var onTap: (()->())?
     @Binding var isZoomed: Bool // Add the binding parameter
+    @Binding var zoomScale: CGFloat
     
-    init(onTap: (()->())? = nil,isZoomed: Binding<Bool>, @ViewBuilder content: () -> Content) {
+    init(onTap: (()->())? = nil, isZoomed: Binding<Bool>, zoomScale: Binding<CGFloat>, @ViewBuilder content: () -> Content) {
         self.content = content()
         //set up helper class
         self.onTap = onTap
         self._isZoomed = isZoomed // Initialize the binding
+        self._zoomScale = zoomScale
     }
     
     func makeUIView(context: Context) -> UIScrollView {
@@ -61,7 +63,7 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
     }
     
     func makeCoordinator() -> Coordinator {
-        return Coordinator(hostingController: UIHostingController(rootView: self.content), onTap: self.onTap, isZoomed: $isZoomed)
+        return Coordinator(hostingController: UIHostingController(rootView: self.content), onTap: self.onTap, isZoomed: $isZoomed, zoomScale: $zoomScale)
     }
     
     // MARK: - Coordinator
@@ -70,12 +72,14 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         var hostingController: UIHostingController<Content>
         var onTap: (() -> ())?
         @Binding var isZoomed: Bool // Use the binding here
+        @Binding var zoomScale: CGFloat
         
         
-        init(hostingController: UIHostingController<Content>, onTap: (() -> ())? = nil, isZoomed: Binding<Bool>) {
+        init(hostingController: UIHostingController<Content>, onTap: (() -> ())? = nil, isZoomed: Binding<Bool>, zoomScale: Binding<CGFloat>) {
             self.hostingController = hostingController
             self.onTap = onTap
             _isZoomed = isZoomed
+            _zoomScale = zoomScale
         }
         
         func viewForZooming(in scrollView: UIScrollView) -> UIView? {
@@ -83,7 +87,8 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
         }
         
         func scrollViewDidZoom(_ scrollView: UIScrollView) {
-            isZoomed = scrollView.zoomScale > scrollView.minimumZoomScale
+            zoomScale = scrollView.zoomScale
+            isZoomed = scrollView.zoomScale > scrollView.minimumZoomScale + 0.01
         }
         
         @objc func handleTap(_ gestureRecognizer: UITapGestureRecognizer) {
@@ -99,6 +104,8 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
                     scrollView.zoom(to: zoomRect, animated: true)
                 } else {
                     scrollView.setZoomScale(1, animated: true)
+                    zoomScale = 1
+                    isZoomed = false
                 }
             }
         }
@@ -117,5 +124,4 @@ struct ZoomableScrollView<Content: View>: UIViewRepresentable {
     }
     
 }
-
 

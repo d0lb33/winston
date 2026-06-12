@@ -33,6 +33,9 @@ final class RedditWire: ObservableObject {
   private let store = KeychainTokenStore()
   let client: RedditPOCClient
   private var profileCursorByAfterKey: [String: String] = [:]
+  /// Continuation cursors for "load more comments" stubs, keyed by stub id
+  /// (the GraphQL comment tree exposes a cursor, not child id lists).
+  var moreCursorByStubID: [String: String] = [:]
 
   /// All connected accounts (mirrors `Defaults[.graphQLAccounts]`).
   @Published var accounts: [RedditAccount] = []
@@ -40,12 +43,22 @@ final class RedditWire: ObservableObject {
   @Published var account: RedditAccount?
   /// True when there's a usable session for the selected account.
   @Published var connected = false
-  @Published var status = "idle"
+  @Published var status = "idle" {
+    didSet {
+      if oldValue != status {
+        AppDiagnostics.shared.record(.info, category: "reddit.status", message: status)
+      }
+    }
+  }
+  /// The signed-in user's profile entity (replaces the REST-era
+  /// REST-era identity cache). Refreshed by `fetchMe(force:)`.
+  @Published var me: User?
 
   private init() {
     let config = RedditPOCConfiguration(transport: .managedAndroid, tokenStore: store)
     client = RedditPOCClient(configuration: config)
     accounts = Defaults[.graphQLAccounts]
+    AppDiagnostics.shared.record(.info, category: "reddit.init", message: "RedditWire initialized", metadata: ["accounts": "\(accounts.count)"])
     Task { await restore() }
   }
 
@@ -55,18 +68,35 @@ final class RedditWire: ObservableObject {
   /// single account, point the token store at the selected id, and warm the
   /// app's me + subscriptions caches.
   func restore() async {
+    AppDiagnostics.shared.breadcrumb("RedditWire.restore started")
     await migrateLegacyAccountIfNeeded()
     accounts = Defaults[.graphQLAccounts]
-    guard !accounts.isEmpty else { connected = false; account = nil; return }
+    guard !accounts.isEmpty else {
+      connected = false
+      account = nil
+      AppDiagnostics.shared.breadcrumb("RedditWire.restore no accounts")
+      return
+    }
 
     let selID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
     let selected = accounts.first { $0.id == selID } ?? accounts[0]
-    await store.setActive(selected.id)
     account = selected
     Defaults[.GeneralDefSettings].redditCredentialSelectedID = selected.id
 
-    connected = ((try? await store.loadCredentials(for: selected.id)) != nil)
-    if connected { await refreshSelectedIdentity() }
+    guard ((try? await store.loadCredentials(for: selected.id)) != nil) else {
+      await store.setActive(nil)
+      connected = false
+      me = nil
+      Self.currentUserName = nil
+      status = "missing session for u/\(selected.username)"
+      AppDiagnostics.shared.record(.warning, category: "reddit.session", message: "Selected account missing credentials", metadata: ["account": selected.username, "id": selected.id.uuidString])
+      return
+    }
+
+    await store.setActive(selected.id)
+    connected = true
+    await refreshSelectedIdentity()
+    AppDiagnostics.shared.breadcrumb("RedditWire.restore connected", metadata: ["account": selected.username])
   }
 
   /// Move a pre-multi-account single account (Defaults[.graphQLAccount] + the
@@ -84,6 +114,7 @@ final class RedditWire: ObservableObject {
   /// username, register + select it, and warm the app caches. Rolls back on
   /// failure. Used by onboarding and the switcher's "add account".
   func addAccount(cookies: [HTTPCookie]) async {
+    AppDiagnostics.shared.breadcrumb("RedditWire.addAccount started", metadata: ["cookieCount": "\(cookies.count)"])
     let newID = UUID()
     let previousActive = await store.currentActiveID
     do {
@@ -92,7 +123,7 @@ final class RedditWire: ObservableObject {
       await store.setActive(newID)
       try await store.saveCredentials(StoredRedditCredentials(webSession: session), for: newID)
       _ = try await client.getAccount() // forces the session→bearer exchange under newID
-      let profile = await me()
+      let profile = await accountProfile()
       let username = profile?.name ?? "reddit"
 
       // Re-login of an existing account (same username) reuses its id so we
@@ -118,10 +149,12 @@ final class RedditWire: ObservableObject {
       dismissOnboarding()
       await syncAppCaches()
       status = "connected ✅ u/\(username)"
+      AppDiagnostics.shared.record(.info, category: "reddit.session", message: "Account connected", metadata: ["account": username])
     } catch {
       try? await store.clearCredentials(for: newID)
       await store.setActive(previousActive)
       status = "connect failed: \(describe(error))"
+      AppDiagnostics.shared.record(.error, category: "reddit.session", message: "Account connect failed", metadata: ["error": describe(error)])
     }
   }
 
@@ -131,7 +164,20 @@ final class RedditWire: ObservableObject {
   /// Switch the active account (from the account switcher). Points the token
   /// store at `id`, refreshes that account's identity, and reloads me + subs.
   func selectAccount(_ id: UUID) async {
+    AppDiagnostics.shared.breadcrumb("RedditWire.selectAccount", metadata: ["id": id.uuidString])
     guard accounts.contains(where: { $0.id == id }) else { return }
+    guard ((try? await store.loadCredentials(for: id)) != nil) else {
+      Defaults[.GeneralDefSettings].redditCredentialSelectedID = id
+      account = accounts.first { $0.id == id }
+      await store.setActive(nil)
+      connected = false
+      me = nil
+      Self.currentUserName = nil
+      status = "missing session for u/\(account?.username ?? "?")"
+      AppDiagnostics.shared.record(.warning, category: "reddit.session", message: "Selected account missing credentials", metadata: ["id": id.uuidString])
+      return
+    }
+
     await store.setActive(id)
     Defaults[.GeneralDefSettings].redditCredentialSelectedID = id
     account = accounts.first { $0.id == id }
@@ -143,6 +189,7 @@ final class RedditWire: ObservableObject {
   /// Remove an account: drop its stored session and registry entry. If it was
   /// selected, fall back to another account, or to fully-logged-out.
   func removeAccount(_ id: UUID) async {
+    AppDiagnostics.shared.breadcrumb("RedditWire.removeAccount", metadata: ["id": id.uuidString])
     try? await store.clearCredentials(for: id)
     accounts.removeAll { $0.id == id }
     Defaults[.graphQLAccounts] = accounts
@@ -160,8 +207,49 @@ final class RedditWire: ObservableObject {
 
   /// Log out the currently-selected account (falls back to another if present).
   func disconnect() async {
+    AppDiagnostics.shared.breadcrumb("RedditWire.disconnect")
     if let id = account?.id { await removeAccount(id) }
     else { connected = false; account = nil }
+  }
+
+  func diagnosticsSnapshot() async -> [String: String] {
+    let selectedID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
+    let hasSelectedCredentials: Bool
+    if let selectedID {
+      hasSelectedCredentials = ((try? await store.loadCredentials(for: selectedID)) != nil)
+    } else {
+      hasSelectedCredentials = false
+    }
+
+    return [
+      "status": status,
+      "connected": "\(connected)",
+      "account": account?.username ?? "none",
+      "accountID": account?.id.uuidString ?? "none",
+      "accountsCount": "\(accounts.count)",
+      "selectedDefaultID": selectedID?.uuidString ?? "none",
+      "selectedHasCredentials": "\(hasSelectedCredentials)",
+      "me": me?.data?.name ?? "none",
+      "currentUserName": Self.currentUserName ?? "none",
+      "moreCursorCount": "\(moreCursorByStubID.count)"
+    ]
+  }
+
+  func debugResetGraphQLSessionState() async {
+    AppDiagnostics.shared.record(.warning, category: "reddit.debugReset", message: "Resetting GraphQL account state", metadata: ["accounts": "\(accounts.count)"])
+    for account in accounts {
+      try? await store.clearCredentials(for: account.id)
+    }
+    accounts = []
+    account = nil
+    connected = false
+    me = nil
+    Self.currentUserName = nil
+    await store.setActive(nil)
+    Defaults[.graphQLAccounts] = []
+    Defaults[.graphQLAccount] = nil
+    Defaults[.GeneralDefSettings].redditCredentialSelectedID = nil
+    status = "GraphQL account state reset"
   }
 
   // MARK: - Identity plumbing
@@ -183,14 +271,15 @@ final class RedditWire: ObservableObject {
   /// Re-read the active account's profile and refresh app caches.
   private func refreshSelectedIdentity() async {
     guard let id = account?.id else { return }
-    let profile = await me()
+    let profile = await accountProfile()
     applySelection(id, profile: profile)
     await syncAppCaches()
   }
 
   private func syncAppCaches() async {
-    _ = await RedditAPI.shared.fetchMe(force: true)
-    _ = await RedditAPI.shared.fetchSubs()
+    await fetchMe(force: true)
+    await fetchSubs()
+    await fetchMyMultis()
   }
 
   private func dismissOnboarding() {
@@ -201,29 +290,112 @@ final class RedditWire: ObservableObject {
   }
 
   /// Hydrate posts over GraphQL (PostsByIds) and adapt them into Winston's
-  /// PostData. Accepts bare or `t3_`-prefixed ids (the library normalizes).
+  /// PostData. Accepts bare, malformed `_id`, or `t3_`-prefixed ids.
   func postData(forIDs ids: [String]) async -> [PostData] {
     guard !ids.isEmpty else { return [] }
+    let requestIDs = ids.map(normalizedPostFullnameForRequest)
+    if requestIDs != ids {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "reddit.posts",
+        message: "Normalized malformed post ids before PostsByIds",
+        metadata: [
+          "ids": ids.joined(separator: ","),
+          "normalized": requestIDs.joined(separator: ",")
+        ]
+      )
+    }
     do {
-      let resp = try await client.postsByIDsResponse(ids)
+      let resp = try await client.postsByIDsResponse(requestIDs)
       let posts = resp.data?.postsInfoByIds ?? []
-      status = "postsByIDs(\(ids.count)) → \(posts.count) posts"
-      // Preserve the requested (feed) order; PostsByIds may reorder.
-      var byName: [String: SubredditPost] = [:]
-      for post in posts {
-        byName[post.id] = post
-        if post.id.hasPrefix("t3_") {
-          byName[String(post.id.dropFirst(3))] = post
-        }
-      }
-      return ids.compactMap { id in
-        byName[id] ?? byName[id.hasPrefix("t3_") ? String(id.dropFirst(3)) : "t3_\(id)"]
-      }
-      .map { PostData(graphQL: $0) }
+      status = "postsByIDs(\(requestIDs.count)) → \(posts.count) posts"
+      return orderedPostData(posts, requestedIDs: requestIDs)
     } catch {
-      status = "postsByIDs failed: \(describe(error))"
+      let message = describe(error)
+      if requestIDs.count > 1 {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "reddit.posts",
+          message: "PostsByIds batch failed; retrying individually",
+          metadata: [
+            "requested": "\(requestIDs.count)",
+            "error": message
+          ]
+        )
+        let recovered = await recoverPostDataIndividually(forIDs: requestIDs)
+        status = "postsByIDs recovered \(recovered.count)/\(requestIDs.count) after batch failure"
+        return recovered
+      }
+      status = "postsByIDs failed: \(message)"
+      AppDiagnostics.asyncRecord(
+        .error,
+        category: "reddit.posts",
+        message: "PostsByIds failed",
+        metadata: [
+          "ids": requestIDs.joined(separator: ","),
+          "error": message
+        ]
+      )
       return []
     }
+  }
+
+  private func orderedPostData(_ posts: [SubredditPost], requestedIDs ids: [String]) -> [PostData] {
+    // Preserve the requested (feed) order; PostsByIds may reorder.
+    var byName: [String: SubredditPost] = [:]
+    for post in posts {
+      byName[post.id] = post
+      if post.id.hasPrefix("t3_") {
+        byName[String(post.id.dropFirst(3))] = post
+      }
+    }
+    return ids.compactMap { id in
+      byName[id] ?? byName[id.hasPrefix("t3_") ? String(id.dropFirst(3)) : "t3_\(id)"]
+    }
+    .map { PostData(graphQL: $0) }
+  }
+
+  private func recoverPostDataIndividually(forIDs ids: [String]) async -> [PostData] {
+    var recovered: [PostData] = []
+    var failed: [String] = []
+
+    for id in ids {
+      do {
+        let resp = try await client.postsByIDsResponse([id])
+        let posts = orderedPostData(resp.data?.postsInfoByIds ?? [], requestedIDs: [id])
+        if posts.isEmpty {
+          failed.append(id)
+        } else {
+          recovered.append(contentsOf: posts)
+        }
+      } catch {
+        failed.append(id)
+      }
+    }
+
+    AppDiagnostics.asyncRecord(
+      failed.isEmpty ? .info : .warning,
+      category: "reddit.posts",
+      message: "PostsByIds individual recovery finished",
+      metadata: [
+        "requested": "\(ids.count)",
+        "recovered": "\(recovered.count)",
+        "failed": "\(failed.count)",
+        "failedIDs": failed.prefix(12).joined(separator: ",")
+      ]
+    )
+    return recovered
+  }
+
+  private func normalizedPostFullnameForRequest(_ rawID: String) -> String {
+    var id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+    if id.hasPrefix("t3_") {
+      return id
+    }
+    while id.hasPrefix("_") {
+      id.removeFirst()
+    }
+    return "t3_\(id)"
   }
 
   /// Fetch a single post over GraphQL and adapt it into Winston's PostData.
@@ -262,6 +434,22 @@ final class RedditWire: ObservableObject {
       }
       let nextAfter = (pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor
       status = "feed \(isHome ? "home" : name) → \(ids.count) ids, next \(nextAfter == nil ? "none" : "yes")"
+      let duplicateIDCount = ids.count - Set(ids).count
+      AppDiagnostics.asyncRecord(
+        ids.count < 7 && nextAfter != nil ? .warning : .info,
+        category: "reddit.feed",
+        message: "Feed IDs extracted",
+        metadata: [
+          "feed": isHome ? "home" : name,
+          "sort": gqlSort.sort.rawValue,
+          "after": after ?? "nil",
+          "ids": "\(ids.count)",
+          "duplicateIDs": "\(duplicateIDCount)",
+          "hasNextPage": pageInfo?.hasNextPage.map(String.init) ?? "nil",
+          "nextAfter": nextAfter ?? "nil",
+          "firstIDs": ids.prefix(8).joined(separator: ",")
+        ]
+      )
       guard !ids.isEmpty else { return ([], nextAfter) }
       return (await postData(forIDs: ids), nextAfter)
     } catch {
@@ -372,12 +560,21 @@ final class RedditWire: ObservableObject {
         }
         let postFullname = commentById.postInfo?.id ?? (postID.hasPrefix("t3_") ? postID : "t3_\(postID)")
         let trees = commentById.children?.trees ?? []
-        status = "commentByIdWithChildren \(commentID) → \(trees.count) comment nodes"
-        let children: [ListingChild<CommentData>] = trees.compactMap { tree in
-          guard let node = tree.node else { return nil }
-          let cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
-          return ListingChild<CommentData>(kind: "t1", data: cd)
+        var children = adaptCommentTrees(trees, postFullname: postFullname)
+        let targetFullname = commentID.hasPrefix("t1_") ? commentID : "t1_\(commentID)"
+        if let targetIndex = children.firstIndex(where: { $0.data?.name == targetFullname }) {
+          if isMissingCommentBody(children[targetIndex].data), let selected = await selectedCommentChild(commentID: commentID, postFullname: postFullname) {
+            children[targetIndex] = selected
+          }
+        } else {
+          if let selected = await selectedCommentChild(commentID: commentID, postFullname: postFullname) {
+            children.removeAll { $0.data?.name == selected.data?.name }
+            children.insert(selected, at: 0)
+          }
         }
+        promoteHighlightedComment(targetFullname, in: &children, postFullname: postFullname)
+        logCommentFetchDiagnostics(postID: postFullname, commentID: commentID, children: children)
+        status = "commentByIdWithChildren \(commentID) → \(children.count) comment nodes"
         return (commentById.postInfo.map(PostData.init(graphQL:)), children)
       }
 
@@ -389,16 +586,201 @@ final class RedditWire: ObservableObject {
       let postFullname = post.id // "t3_…"
       let trees = post.commentForest?.trees ?? []
       status = "postComments \(postFullname) → \(trees.count) comment nodes"
-      let children: [ListingChild<CommentData>] = trees.compactMap { tree in
-        guard let node = tree.node else { return nil } // skip "more" nodes (MVP)
-        let cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
-        return ListingChild<CommentData>(kind: "t1", data: cd)
-      }
+      let children = adaptCommentTrees(trees, postFullname: postFullname)
+      logCommentFetchDiagnostics(postID: postFullname, commentID: nil, children: children)
       return (PostData(graphQL: post), children)
     } catch {
       status = "postComments failed: \(describe(error))"
       return (nil, [])
     }
+  }
+
+  /// Adapt GraphQL comment trees into winston's flat ListingChild list. Trees
+  /// with a node become "t1" children; trees without one (continuations)
+  /// become "more" stubs whose cursor is remembered for `moreReplies`.
+  func adaptCommentTrees(_ trees: [CommentTree], postFullname: String) -> [ListingChild<CommentData>] {
+    var children = trees.compactMap { tree -> ListingChild<CommentData>? in
+      if let node = tree.node {
+        guard let nodeID = node.id, !nodeID.isEmpty else {
+          AppDiagnostics.asyncRecord(
+            .warning,
+            category: "reddit.comment",
+            message: "Skipped invalid comment tree node",
+            metadata: [
+              "postID": postFullname,
+              "parentID": tree.parentId ?? "nil",
+              "depth": "\(tree.depth ?? -1)",
+              "hasChildren": "\(tree.childCount ?? 0)"
+            ]
+          )
+          return nil
+        }
+        let cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
+        return ListingChild<CommentData>(kind: "t1", data: cd)
+      }
+      guard tree.more != nil || (tree.childCount ?? 0) > 0 else { return nil }
+      let parentID = tree.parentId ?? postFullname
+      let stubID = "more-\(parentID)"
+      var cd = CommentData(id: stubID)
+      cd.name = stubID
+      cd.parent_id = parentID
+      cd.depth = tree.depth
+      cd.count = tree.more?.count ?? tree.childCount ?? 0
+      cd.children = []
+      if let cursor = tree.more?.cursor, !cursor.isEmpty {
+        moreCursorByStubID[stubID] = cursor
+      }
+      return ListingChild<CommentData>(kind: "more", data: cd)
+    }
+    repairOrphanCommentRoots(in: &children, postFullname: postFullname)
+    return children
+  }
+
+  private func repairOrphanCommentRoots(in children: inout [ListingChild<CommentData>], postFullname: String) {
+    let knownCommentIDs = Set(children.compactMap { $0.kind == "t1" ? $0.data?.name : nil })
+    var repairedIDs: [String] = []
+
+    for index in children.indices {
+      guard
+        children[index].kind == "t1",
+        var data = children[index].data,
+        let name = data.name,
+        data.parent_id != postFullname
+      else { continue }
+
+      let parentID = data.parent_id ?? ""
+      guard parentID.isEmpty || !knownCommentIDs.contains(parentID) else { continue }
+
+      data.parent_id = postFullname
+      data.depth = 0
+      children[index].data = data
+      repairedIDs.append(name)
+    }
+
+    if !repairedIDs.isEmpty {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "reddit.comment",
+        message: "Repaired orphan comment roots",
+        metadata: [
+          "postID": postFullname,
+          "count": "\(repairedIDs.count)",
+          "commentIDs": repairedIDs.prefix(8).joined(separator: ",")
+        ]
+      )
+    }
+  }
+
+  private func selectedCommentChild(commentID: String, postFullname: String) async -> ListingChild<CommentData>? {
+    do {
+      let targetFullname = commentID.hasPrefix("t1_") ? commentID : "t1_\(commentID)"
+      let resp = try await client.getCommentByIdResponse(commentID)
+      guard
+        let raw = resp.data?.rawData,
+        let comment = raw.savedComments().first(where: { $0.id == targetFullname })
+      else {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "reddit.comment",
+          message: "selected comment fallback returned no target comment",
+          metadata: [
+            "commentID": commentID,
+            "postID": postFullname
+          ]
+        )
+        return nil
+      }
+      let data = CommentData(graphQL: comment, depth: 0, parentID: postFullname, postFullname: postFullname)
+      if isMissingCommentBody(data) {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "reddit.comment",
+          message: "selected comment fallback has empty body",
+          metadata: [
+            "commentID": data.name ?? commentID,
+            "postID": postFullname,
+            "author": data.author ?? "nil"
+          ]
+        )
+      }
+      return ListingChild<CommentData>(kind: "t1", data: data)
+    } catch {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "reddit.comment",
+        message: "selected comment fallback failed",
+        metadata: [
+          "commentID": commentID,
+          "error": describe(error)
+        ]
+      )
+      return nil
+    }
+  }
+
+  private func promoteHighlightedComment(_ targetFullname: String, in children: inout [ListingChild<CommentData>], postFullname: String) {
+    guard let targetIndex = children.firstIndex(where: { $0.data?.name == targetFullname }) else {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "reddit.comment",
+        message: "Highlighted comment missing after fallback",
+        metadata: [
+          "commentID": targetFullname,
+          "postID": postFullname,
+          "children": "\(children.count)"
+        ]
+      )
+      return
+    }
+
+    var target = children.remove(at: targetIndex)
+    if var data = target.data {
+      data.parent_id = postFullname
+      data.depth = 0
+      target.data = data
+    }
+    children.insert(target, at: 0)
+
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "reddit.comment",
+      message: "Promoted highlighted comment to post root",
+      metadata: [
+        "commentID": targetFullname,
+        "postID": postFullname,
+        "children": "\(children.count)"
+      ]
+    )
+  }
+
+  private func logCommentFetchDiagnostics(postID: String, commentID: String?, children: [ListingChild<CommentData>]) {
+    let commentChildren = children.filter { $0.kind == "t1" }
+    let missingBodies = commentChildren.compactMap { child -> String? in
+      guard isMissingCommentBody(child.data) else { return nil }
+      return child.data?.name ?? child.data?.id
+    }
+    let targetFullname = commentID.map { $0.hasPrefix("t1_") ? $0 : "t1_\($0)" }
+    let target = targetFullname.flatMap { targetFullname in commentChildren.first { $0.data?.name == targetFullname } }
+    AppDiagnostics.asyncRecord(
+      missingBodies.isEmpty ? .info : .warning,
+      category: "ui.comments",
+      message: missingBodies.isEmpty ? "Comment fetch ready" : "Comment fetch contains empty bodies",
+      metadata: [
+        "postID": postID,
+        "commentID": commentID ?? "nil",
+        "total": "\(children.count)",
+        "commentNodes": "\(commentChildren.count)",
+        "moreNodes": "\(children.filter { $0.kind == "more" }.count)",
+        "missingBodyCount": "\(missingBodies.count)",
+        "missingBodyIDs": missingBodies.prefix(8).joined(separator: ","),
+        "targetFound": "\(target != nil)",
+        "targetMissingBody": "\(target.map { isMissingCommentBody($0.data) } ?? false)"
+      ]
+    )
+  }
+
+  private func isMissingCommentBody(_ data: CommentData?) -> Bool {
+    data?.body?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
   }
 
   private func redditCommentSort(from sort: CommentSortOption) -> RedditCommentSortType {
@@ -415,7 +797,7 @@ final class RedditWire: ObservableObject {
   // MARK: - User / identity
 
   /// The signed-in user's profile (GetAccount → UserData).
-  func me() async -> UserData? {
+  func accountProfile() async -> UserData? {
     do {
       let resp = try await client.getAccountResponse()
       guard let acct = resp.data, let ud = UserData(graphQL: acct) else {
@@ -501,6 +883,23 @@ final class RedditWire: ObservableObject {
           authorName: username
         )
       }
+      let missingBodies = comments.compactMap { comment -> String? in
+        guard isMissingCommentBody(comment) else { return nil }
+        return comment.name ?? comment.id
+      }
+      AppDiagnostics.asyncRecord(
+        missingBodies.isEmpty ? .info : .warning,
+        category: "reddit.profile",
+        message: "Submitted comments loaded",
+        metadata: [
+          "username": username,
+          "requestedAfter": after ?? "nil",
+          "comments": "\(comments.count)",
+          "missingBodyCount": "\(missingBodies.count)",
+          "missingBodyIDs": missingBodies.prefix(8).joined(separator: ","),
+          "nextCursor": resp.data?.pageInfo?.endCursor ?? "nil"
+        ]
+      )
       rememberProfileCursor(resp.data?.pageInfo?.endCursor, username: username, filter: "comments", items: comments.map { "t1_\($0.id)" })
       status = "submitted comments \(username) → \(comments.count)"
       return comments
@@ -655,7 +1054,7 @@ final class RedditWire: ObservableObject {
 
   /// Vote on a post (`t3_`) or comment (`t1_`). Maps winston's VoteAction to the
   /// library's VoteState and dispatches on the fullname prefix.
-  func vote(fullname: String, action: RedditAPI.VoteAction) async -> Bool {
+  func vote(fullname: String, action: VoteAction) async -> Bool {
     let state: VoteState = action == .up ? .up : (action == .down ? .down : .none)
     do {
       if fullname.hasPrefix("t1_") {

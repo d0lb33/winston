@@ -49,6 +49,23 @@ extension Post {
       
       var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
       var extractedMediaForcedNormal = mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme)
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.media.setup",
+        message: "Post media setup extracted",
+        metadata: [
+          "post": data.name,
+          "title": data.title,
+          "subreddit": data.subreddit,
+          "compact": "\(compact)",
+          "contentWidth": "\(contentWidth)",
+          "media": Post.diagnosticsMediaKind(extractedMedia),
+          "forcedNormalMedia": Post.diagnosticsMediaKind(extractedMediaForcedNormal),
+          "postHint": data.post_hint ?? "nil",
+          "domain": data.domain,
+          "url": data.url
+        ]
+      )
       
       switch extractedMedia {
       case .streamable(let streamable):
@@ -96,7 +113,7 @@ extension Post {
       
       if fetchAvatar {
         Task(priority: .background) {
-          await RedditAPI.shared.updatePostsWithAvatar(posts: [self], avatarSize: theme.postLinks.theme.badge.avatar.size)
+          await RedditWire.shared.updatePostsWithAvatar(posts: [self], avatarSize: theme.postLinks.theme.badge.avatar.size)
         }
       }
     }
@@ -175,7 +192,7 @@ extension Post {
         return nil
       }
       
-      Task(priority: .background) { await RedditAPI.shared.updatePostsWithAvatar(posts: repostsAvatars, avatarSize: getEnabledTheme().postLinks.theme.badge.avatar.size) }
+      Task(priority: .background) { await RedditWire.shared.updatePostsWithAvatar(posts: repostsAvatars, avatarSize: getEnabledTheme().postLinks.theme.badge.avatar.size) }
       
       let imgRequests: [ImageRequest] = posts.reduce(into: []) { prev, curr in
         if case .imgs(let imgsExtracted) = curr.winstonData?.extractedMedia {
@@ -183,6 +200,27 @@ extension Post {
           prev = prev + reqs
         }
       }
+      let mediaKinds = posts.prefix(8).map { post in
+        "\(post.id):\(Post.diagnosticsMediaKind(post.winstonData?.extractedMedia))"
+      }.joined(separator: ",")
+      let videoPosterURLs = posts.compactMap { post -> String? in
+        if case .video(let sharedVideo) = post.winstonData?.extractedMedia {
+          return sharedVideo.posterURL?.absoluteString
+        }
+        return nil
+      }
+      AppDiagnostics.asyncRecord(
+        .info,
+        category: "ui.media.prefetch",
+        message: "Starting feed media prefetch",
+        metadata: [
+          "posts": "\(posts.count)",
+          "requests": "\(imgRequests.count)",
+          "firstMediaKinds": mediaKinds,
+          "videoPosters": "\(videoPosterURLs.count)",
+          "firstVideoPosters": videoPosterURLs.prefix(5).joined(separator: ",")
+        ]
+      )
       Post.prefetcher.startPrefetching(with: imgRequests)
       return posts
     }
@@ -437,7 +475,7 @@ extension Post {
   
   func reply(_ text: String, updateComments: (() -> ())? = nil) async -> Bool {
     if let fullname = data?.name {
-      let result = await RedditAPI.shared.newReply(text, fullname) ?? false
+      let result = await RedditWire.shared.newReply(text, to: fullname)
       if result {
         if let updateComments = updateComments {
           await MainActor.run {
@@ -446,47 +484,6 @@ extension Post {
             }
           }
         }
-        //        if let data = data {
-        //          let newComment = CommentData(
-        //            subreddit_id: data.subreddit_id,
-        //            subreddit: data.subreddit,
-        //            likes: true,
-        //            saved: false,
-        //            id: UUID().uuidString,
-        //            archived: false,
-        //            count: 0,
-        //            author: RedditAPI.shared.me?.data?.name ?? "",
-        //            created_utc: nil,
-        //            send_replies: nil,
-        //            parent_id: id,
-        //            score: nil,
-        //            author_fullname: "t2_\(redditAPI.me?.data?.id ?? "")",
-        //            approved_by: nil,
-        //            mod_note: nil,
-        //            collapsed: nil,
-        //            body: text,
-        //            top_awarded_type: nil,
-        //            name: nil,
-        //            downs: 0,
-        //            children: nil,
-        //            body_html: nil,
-        //            created: Double(Int(Date().timeIntervalSince1970)),
-        //            link_id: data.id,
-        //            link_title: data.title,
-        //            subreddit_name_prefixed: data.subreddit_name_prefixed,
-        //            depth: 0,
-        //            author_flair_background_color: nil,
-        //            collapsed_because_crowd_control: nil,
-        //            mod_reports: nil,
-        //            num_reports: nil,
-        //            ups: 1
-        //          )
-        //          await MainActor.run {
-        //            withAnimation {
-        //              childrenWinston.data.append(Comment(data: newComment))
-        //            }
-        //          }
-        //        }
       }
       return result
     }
@@ -494,56 +491,38 @@ extension Post {
   }
   
   func refreshPost(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> ([Comment]?, String?)? {
-    // GraphQL path (migration): post + comment forest via RedditPOC. The flat
-    // forest is assembled into the reply tree by nestComments. MVP: initial
-    // tree only.
-    if Defaults[.useGraphQLAPI] {
-      let (newData, children) = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
-      if full, let newData {
-        await MainActor.run {
-          self.data = newData
-          setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
-        }
-      }
-      let postFullname = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
-      let comments = nestComments(children, parentID: postFullname)
-      return (comments, nil)
-    }
-
-    if let subreddit = data?.subreddit ?? subreddit, let response = await RedditAPI.shared.fetchPost(subreddit: subreddit, postID: id, commentID: commentID, sort: sort) {
-      if response.count >= 2 {
-        if let post = response[0] {
-          switch post {
-          case .first(let actualData):
-            if full {
-              await MainActor.run {
-                let newData = actualData.data?.children?[0].data
-                self.data = newData
-                setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
-              }
-            }
-          case .second(_):
-            break
-          }
-        }
-        
-        if let comments = response[1] {
-          switch comments {
-          case .first(_):
-            return nil
-          case .second(let actualData):
-            if let data = actualData.data, let children = data.children {
-              await saveSeenComments(comments: data)
-              
-              let dataArr = children.compactMap { $0 }
-              let comments = Comment.initMultiple(datas: dataArr)
-              return (comments, data.after)
-            }
-          }
-        }
+    // Post + comment forest over GraphQL. The flat forest is assembled into
+    // the reply tree by nestComments; continuation nodes surface as "more"
+    // stubs. Comment-listing pagination doesn't exist on this surface, so the
+    // returned cursor is always nil.
+    let (newData, children) = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
+    if full, let newData {
+      await MainActor.run {
+        self.data = newData
+        setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
       }
     }
-    return nil
+    let postFullname = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
+    await saveSeenComments(comments: ListingData(after: nil, dist: nil, modhash: nil, geo_filter: nil, children: children))
+    let comments = nestComments(children, parentID: postFullname)
+    let missingBodies = comments.compactMap { comment -> String? in
+      guard comment.data?.body?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false else { return nil }
+      return comment.data?.name ?? comment.id
+    }
+    AppDiagnostics.asyncRecord(
+      missingBodies.isEmpty ? .info : .warning,
+      category: "ui.comments",
+      message: "Comment tree nested",
+      metadata: [
+        "postID": postFullname,
+        "highlightID": commentID ?? "nil",
+        "flatChildren": "\(children.count)",
+        "rootComments": "\(comments.count)",
+        "missingRootBodies": "\(missingBodies.count)",
+        "missingRootBodyIDs": missingBodies.prefix(8).joined(separator: ",")
+      ]
+    )
+    return (comments, nil)
   }
   
   func saveToggle() async -> Bool {
@@ -554,9 +533,7 @@ extension Post {
           self.data?.saved = !prev
         }
       }
-      let success: Bool? = Defaults[.useGraphQLAPI]
-        ? await RedditWire.shared.save(fullname: data.name, saved: !prev)
-        : await RedditAPI.shared.save(!prev, id: data.name)
+      let success: Bool? = await RedditWire.shared.save(fullname: data.name, saved: !prev)
       if !(success ?? false) {
         await MainActor.run {
           withAnimation {
@@ -570,7 +547,7 @@ extension Post {
     return false
   }
   
-  func vote(_ action: RedditAPI.VoteAction) async -> Bool? {
+  func vote(_ action: VoteAction) async -> Bool? {
     let oldLikes = data?.likes
     let oldUps = data?.ups ?? 0
     var newAction = action
@@ -582,9 +559,7 @@ extension Post {
       }
     }
     let fullname = "\(typePrefix ?? "")\(id)"
-    let result: Bool? = Defaults[.useGraphQLAPI]
-      ? await RedditWire.shared.vote(fullname: fullname, action: newAction)
-      : await RedditAPI.shared.vote(newAction, id: fullname)
+    let result: Bool? = await RedditWire.shared.vote(fullname: fullname, action: newAction)
     if result == nil || !result! {
       await MainActor.run {
         withAnimation(.spring()) {
@@ -604,7 +579,34 @@ extension Post {
       }
     }
     if let name = data?.name {
-      await RedditAPI.shared.hidePost(hide, fullnames: [name])
+      _ = await RedditWire.shared.hidePost(hide, fullname: name)
+    }
+  }
+
+  static func diagnosticsMediaKind(_ media: MediaExtractedType?) -> String {
+    switch media {
+    case .link:
+      return "link"
+    case .video(let sharedVideo):
+      return "video(poster:\(sharedVideo.posterURL == nil ? "nil" : "set"),download:\(sharedVideo.downloadURL == nil ? "nil" : "set"))"
+    case .imgs(let imgs):
+      return "imgs(\(imgs.count))"
+    case .yt:
+      return "youtube"
+    case .streamable:
+      return "streamable"
+    case .repost:
+      return "repost"
+    case .post:
+      return "post"
+    case .comment:
+      return "comment"
+    case .subreddit:
+      return "subreddit"
+    case .user:
+      return "user"
+    case nil:
+      return "nil"
     }
   }
 }

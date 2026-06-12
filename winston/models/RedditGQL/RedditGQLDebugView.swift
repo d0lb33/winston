@@ -189,7 +189,7 @@ struct RedditGQLDebugView: View {
     busy = true
     captureOut = "loading me + subscriptions…"
     Task {
-      let me = await wire.me()
+      let me = await wire.accountProfile()
       let subs = await wire.subscriptions()
       captureOut = """
       me: u/\(me?.name ?? "?")  id: \(me?.id ?? "?")

@@ -9,14 +9,17 @@ import SwiftUI
 import Combine
 import Defaults
 
+/// What a switcher bubble points at: a connected account or the "add" button.
+enum AccountSwitcherTargetID: Equatable, Hashable {
+  case account(RedditAccount)
+  case addAccount
+}
+
 class AccountSwitcherTransmitter: ObservableObject {
-  enum SwitchingState {
-    case showing, hidden, selectedCred(RedditCredential)
-  }
   private var cancellable: Timer? = nil
   @Published var positionInfo: PositionInfo? { willSet { self.cancellable?.invalidate() } }
   @Published var showing = false { willSet { if newValue { self.cancellable?.invalidate() } } }
-  @Published var selectedCred: RedditCredential? = nil
+  @Published var selectedTarget: AccountSwitcherTargetID? = nil
   @Published var screenshot: UIImage? = nil
   
   func scheduleReset(_ secs: Double) {
@@ -29,7 +32,7 @@ class AccountSwitcherTransmitter: ObservableObject {
     self.cancellable?.invalidate()
     self.positionInfo = nil
     self.showing = false
-    self.selectedCred = nil
+    self.selectedTarget = nil
     self.screenshot = nil
   }
   
@@ -63,29 +66,30 @@ struct AccountSwitcherProvider<Content: View>: View {
   
   var content: () -> Content
   
-  func selectCredential() {
-    guard let cred = transmitter.selectedCred else {
+  func selectAccount() {
+    guard let target = transmitter.selectedTarget else {
       transmitter.scheduleReset(0.5)
       return
     }
-    // In GraphQL mode the switcher works against RedditWire accounts (as shells);
-    // selecting one switches the active token-store account, and the "+" button
-    // (a sample cred not in the list) opens the reddit.com login onboarding.
-    let gql = Defaults[.useGraphQLAPI]
-    let switcherCreds: [RedditCredential] = gql
-      ? RedditWire.shared.accounts.map { $0.asCredentialShell }
-      : RedditCredentialsManager.shared.credentials
-
-    if let nextCredIndex = switcherCreds.firstIndex(of: cred) {
+    switch target {
+    case .addAccount:
+      // The "+" bubble opens the reddit.com login webview.
+      doThisAfter(0) {
+        transmitter.reset()
+        Nav.present(.onboarding)
+      }
+    case .account(let account):
+      let accounts = RedditWire.shared.accounts
+      let nextIndex = accounts.firstIndex(of: account) ?? 0
       let selID = Defaults[.GeneralDefSettings].redditCredentialSelectedID
-      let currCredIndex = switcherCreds.firstIndex { $0.id == selID } ?? -1
-      accTransKit.willLensHeadLeft = Int(currCredIndex - nextCredIndex) <= 0
-      transmitter.selectedCred = nil
+      let currIndex = accounts.firstIndex { $0.id == selID } ?? -1
+      accTransKit.willLensHeadLeft = Int(currIndex - nextIndex) <= 0
+      transmitter.selectedTarget = nil
       withAnimation(.snappy(extraBounce: 0.1)) { accTransKit.focusCloser = true } completion: {
         withAnimation(.linear(duration: 0.001)) {
           accTransKit.blurMain = true
-          Defaults[.GeneralDefSettings].redditCredentialSelectedID = cred.id
-          if gql { Task { await RedditWire.shared.selectAccount(cred.id) } }
+          Defaults[.GeneralDefSettings].redditCredentialSelectedID = account.id
+          Task { await RedditWire.shared.selectAccount(account.id) }
         } completion: {
           withAnimation(.spring) { accTransKit.passLens = true } completion: {
             withAnimation(.spring) { transmitter.positionInfo = nil; accTransKit.blurMain = false; transmitter.screenshot = nil; accTransKit.focusCloser = false;  } completion: {
@@ -93,12 +97,6 @@ struct AccountSwitcherProvider<Content: View>: View {
             }
           }
         }
-      }
-    } else {
-      doThisAfter(0) {
-        transmitter.reset()
-        if gql { Nav.present(.onboarding) }
-        else { Nav.present(.editingCredential(cred)) }
       }
     }
   }
@@ -159,7 +157,7 @@ struct AccountSwitcherProvider<Content: View>: View {
         AccountSwitcherOverlayView(fingerPosition: positionInfo, appear: transmitter.showing, transmitter: transmitter).equatable().zIndex(3).allowsHitTesting(false)
           .zIndex(3)
           .onAppear { transmitter.showing = true }
-          .onChange(of: transmitter.showing) { if !$0 { selectCredential() } }
+          .onChange(of: transmitter.showing) { if !$0 { selectAccount() } }
           .allowsHitTesting(false)
       }
     }

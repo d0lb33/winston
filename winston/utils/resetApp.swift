@@ -7,7 +7,6 @@
 
 import Foundation
 import Defaults
-import KeychainAccess
 import CoreData
 
 func resetApp() {
@@ -18,14 +17,9 @@ func resetApp() {
 }
 
 func resetCredentials() {
-  RedditCredentialsManager.shared.credentials.forEach { $0.delete() }
-  
-  let credentialsKeychain = Keychain(service: "lo.cafe.winston.reddit-credentials").synchronizable(Defaults[.BehaviorDefSettings].iCloudSyncCredentials)
-  
-  credentialsKeychain["apiAppID"] = nil
-  credentialsKeychain["apiAppSecret"] = nil
-  credentialsKeychain["accessToken"] = nil
-  credentialsKeychain["refreshToken"] = nil
+  Task { @MainActor in
+    for account in RedditWire.shared.accounts { await RedditWire.shared.removeAccount(account.id) }
+  }
 }
 
 func resetPreferences() {

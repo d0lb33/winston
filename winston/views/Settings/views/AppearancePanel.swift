@@ -34,10 +34,7 @@ struct AppearancePanel: View {
         Section {
           WNavigationLink(value: .setting(.appIcon)) {
             HStack{
-              Image(uiImage: appIconManager.current.preview)
-                .resizable()
-                .frame(width: 32, height: 32)
-                .mask(RoundedRectangle(cornerSize: CGSize(width: 10, height: 10)))
+              AppIconPreview(icon: appIconManager.current, size: 32, radius: 10)
               Text("App icon")
             }
           }
@@ -176,4 +173,3 @@ enum ThumbnailSizeModifier:  Codable, CaseIterable, Identifiable, Defaults.Seria
     }
   }
 }
-

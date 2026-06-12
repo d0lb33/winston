@@ -17,22 +17,17 @@ struct AccountSwitcherOverlayView: View, Equatable {
   let appear: Bool
   @ObservedObject var transmitter: AccountSwitcherTransmitter
   
-  @ObservedObject private var credentialsManager = RedditCredentialsManager.shared
+  @ObservedObject private var wire = RedditWire.shared
   @State private var showOverlay = false
-  @State private var newCredentialSample = RedditCredential()
   
   
   private let targetsContainerSize: CGSize = .init(width: 250, height: 150)
 
   var body: some View {
-    // In GraphQL mode the switcher lists RedditWire accounts as display shells;
-    // selection/add is intercepted in AccountSwitcherProvider.selectCredential.
-    let validCredentials: [RedditCredential] = Defaults[.useGraphQLAPI]
-      ? Array(RedditWire.shared.accounts.map { $0.asCredentialShell }.reversed())
-      : Array(credentialsManager.credentials.filter { $0.validationStatus == .authorized }.reversed())
-    let showAddBtn = validCredentials.count < 3
-    let targetsCount = validCredentials.count + (showAddBtn ? 1 : 0)
-    let lastsUntilEndOfAllTransitions = transmitter.selectedCred != nil ? (transmitter.positionInfo != nil || appear) : appear
+    let accounts = Array(wire.accounts.reversed())
+    let showAddBtn = accounts.count < 3
+    let targetsCount = accounts.count + (showAddBtn ? 1 : 0)
+    let lastsUntilEndOfAllTransitions = transmitter.selectedTarget != nil ? (transmitter.positionInfo != nil || appear) : appear
     ZStack(alignment: .bottom) {
       //        if let screenshot = screenshot {
       //          Image(uiImage: screenshot)
@@ -50,10 +45,10 @@ struct AccountSwitcherOverlayView: View, Equatable {
       
       ZStack {
         if showAddBtn {
-          AccountSwitcherTarget(containerSize: targetsContainerSize, index: 0, targetsCount: targetsCount, cred: newCredentialSample, transmitter: transmitter)
+          AccountSwitcherTarget(containerSize: targetsContainerSize, index: 0, targetsCount: targetsCount, target: .addAccount, transmitter: transmitter)
         }
-        ForEach(Array(validCredentials.enumerated()), id: \.element) { index, cred in
-          AccountSwitcherTarget(containerSize: targetsContainerSize, index: index + (showAddBtn ? 1 : 0), targetsCount: targetsCount, cred: cred, transmitter: transmitter)
+        ForEach(Array(accounts.enumerated()), id: \.element) { index, account in
+          AccountSwitcherTarget(containerSize: targetsContainerSize, index: index + (showAddBtn ? 1 : 0), targetsCount: targetsCount, target: .account(account), transmitter: transmitter)
         }
         
       }
