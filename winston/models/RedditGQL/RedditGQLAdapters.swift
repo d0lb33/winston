@@ -400,7 +400,7 @@ extension SubredditData {
       !resolvedName.isEmpty
     else { return nil }
 
-    let bareID = fullID?.hasPrefix("t5_") == true ? String(fullID!.dropFirst(3)) : (fullID ?? resolvedName)
+    let bareID = fullID.flatMap { $0.hasPrefix("t5_") ? String($0.dropFirst(3)) : $0 } ?? resolvedName
     self.init(id: bareID)
     self.name = fullID ?? (bareID.hasPrefix("t5_") ? bareID : "t5_\(bareID)")
     self.display_name = resolvedName
@@ -432,7 +432,7 @@ extension UserData {
     else { return nil }
 
     let fullID = object.string(for: ["id", "accountId", "userId"])
-    let bareID = fullID?.hasPrefix("t2_") == true ? String(fullID!.dropFirst(3)) : (fullID ?? username)
+    let bareID = fullID.flatMap { $0.hasPrefix("t2_") ? String($0.dropFirst(3)) : $0 } ?? username
     var dict: [String: Any] = ["id": bareID, "name": username]
     if let avatar = object.mediaURL(for: ["avatarURL", "avatarUrl", "icon", "iconSmall", "snoovatarIcon"]) {
       dict["icon_img"] = avatar

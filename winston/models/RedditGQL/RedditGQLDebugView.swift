@@ -13,6 +13,7 @@ struct RedditGQLDebugView: View {
   @ObservedObject private var wire = RedditWire.shared
   @Environment(\.dismiss) private var dismiss
 
+  @StateObject private var loginController = WebLoginController()
   @State private var presentingLogin = false
   @State private var busy = false
   @State private var postID = "t3_1q8ju15"
@@ -146,9 +147,8 @@ struct RedditGQLDebugView: View {
   // MARK: Login sheet
 
   @ViewBuilder private var loginSheet: some View {
-    let controller = WebLoginController()
     NavigationStack {
-      RedditLoginWebView(controller: controller) { cookies in
+      RedditLoginWebView(controller: loginController) { cookies in
         presentingLogin = false
         Task { busy = true; await wire.connect(cookies: cookies); busy = false }
       }
@@ -160,7 +160,7 @@ struct RedditGQLDebugView: View {
           Button("Cancel") { presentingLogin = false }
         }
         ToolbarItem(placement: .confirmationAction) {
-          Button("Capture now") { controller.captureNow?() }
+          Button("Capture now") { loginController.captureNow?() }
         }
       }
     }

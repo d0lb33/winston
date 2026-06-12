@@ -33,23 +33,6 @@ final class RedditWire: ObservableObject {
   private let store = KeychainTokenStore()
   let client: RedditPOCClient
   private var profileCursorByAfterKey: [String: String] = [:]
-  private let savedPostsFeedVariables: JSONValue = [
-    "feedContextInput": ["layout": "CARD"],
-    "includeGoldInfo": true,
-    "includePostContentPostHint": true,
-    "includePostContentThumbnailEnabled": true,
-    "includeSubredditInPosts": true,
-    "includeAwards": true,
-    "includePostStats": true,
-    "includeCurrentUserAwards": false,
-    "includeStillMediaAltText": false,
-    "includeExtraStillResolutions": false,
-    "includeExtendedVideoAsset": false,
-    "includePlaybackMp4s": false,
-    "includeMuxedMp4s": true,
-    "includeDevvitData": false,
-    "includeCommunityStatus": true,
-  ]
 
   /// All connected accounts (mirrors `Defaults[.graphQLAccounts]`).
   @Published var accounts: [RedditAccount] = []
@@ -227,8 +210,16 @@ final class RedditWire: ObservableObject {
       status = "postsByIDs(\(ids.count)) → \(posts.count) posts"
       // Preserve the requested (feed) order; PostsByIds may reorder.
       var byName: [String: SubredditPost] = [:]
-      for p in posts { byName[p.id] = p }
-      return ids.compactMap { byName[$0] }.map { PostData(graphQL: $0) }
+      for post in posts {
+        byName[post.id] = post
+        if post.id.hasPrefix("t3_") {
+          byName[String(post.id.dropFirst(3))] = post
+        }
+      }
+      return ids.compactMap { id in
+        byName[id] ?? byName[id.hasPrefix("t3_") ? String(id.dropFirst(3)) : "t3_\(id)"]
+      }
+      .map { PostData(graphQL: $0) }
     } catch {
       status = "postsByIDs failed: \(describe(error))"
       return []
@@ -284,10 +275,7 @@ final class RedditWire: ObservableObject {
   /// streams separate instead of synthesizing a mixed listing.
   func savedPosts(after: String? = nil) async -> ([PostData], String?) {
     do {
-      let savedPosts = try await client.savedPostsFeedSduiResponse(
-        capturedVariables: savedPostsFeedVariables,
-        after: after
-      )
+      let savedPosts = try await client.savedPostsFeedSduiResponse(after: after)
       let rawData = savedPosts.data?.rawData
       let postConnection = rawData?.firstFeedElementConnection()
       let connectionPostIDs = postConnection?.postIDs ?? []
@@ -295,12 +283,10 @@ final class RedditWire: ObservableObject {
       let nextAfter = normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
       let posts = await postData(forIDs: postIDs)
       status = "saved posts → \(posts.count) posts, next \(nextAfter == nil ? "none" : "yes")"
-      print("[RedditWire.savedPosts] after=\(after ?? "nil") ids=\(postIDs.count) hydrated=\(posts.count) next=\(nextAfter ?? "nil") keys=\(rawData?.topLevelKeysDescription ?? "nil")")
       return (posts, nextAfter)
     } catch {
       let message = describe(error)
       status = "saved posts failed: \(message)"
-      print("[RedditWire.savedPosts] after=\(after ?? "nil") failed: \(message)")
       return ([], nil)
     }
   }
@@ -327,12 +313,10 @@ final class RedditWire: ObservableObject {
       let pageInfo = rawData?.firstPageInfo()
       let nextAfter = normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
       status = "saved comments → \(comments.count) comments, next \(nextAfter == nil ? "none" : "yes")"
-      print("[RedditWire.savedComments] after=\(after ?? "nil") comments=\(comments.count) next=\(nextAfter ?? "nil") keys=\(rawData?.topLevelKeysDescription ?? "nil")")
       return (comments, nextAfter)
     } catch {
       let message = describe(error)
       status = "saved comments failed: \(message)"
-      print("[RedditWire.savedComments] after=\(after ?? "nil") failed: \(message)")
       return ([], nil)
     }
   }
@@ -645,7 +629,6 @@ final class RedditWire: ObservableObject {
     } catch {
       let message = describe(error)
       status = "about failed: \(message)"
-      print("[RedditWire.subredditAbout] name=\(trimmed) id=\(subredditID ?? "nil") failed: \(message)")
       return nil
     }
   }
@@ -664,7 +647,6 @@ final class RedditWire: ObservableObject {
     } catch {
       let message = describe(error)
       status = "rules failed: \(message)"
-      print("[RedditWire.subredditRules] name=\(trimmed) failed: \(message)")
       return nil
     }
   }
@@ -715,7 +697,6 @@ final class RedditWire: ObservableObject {
     } catch {
       let message = describe(error)
       status = "subscribe failed: \(message)"
-      print("[RedditWire.subscribe] ids=\(subredditIDs) subscribe=\(subscribe) failed: \(message)")
       return false
     }
   }
@@ -733,7 +714,6 @@ final class RedditWire: ObservableObject {
     } catch {
       let message = describe(error)
       status = "favorite failed: \(message)"
-      print("[RedditWire.favoriteSubreddit] id=\(subredditID) favorited=\(favorited) failed: \(message)")
       return false
     }
   }

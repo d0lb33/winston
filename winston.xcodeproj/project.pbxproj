@@ -2576,7 +2576,7 @@
 			);
 			mainGroup = EC593ACB2A4673B2002D6454;
 			packageReferences = (
-				BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "../RedditAPIResearch/SwiftRedditPOC" */,
+				BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */,
 				EC593AFE2A47AFC1002D6454 /* XCRemoteSwiftPackageReference "Defaults" */,
 				EC593B072A47B42D002D6454 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
 				EC593B0A2A47B801002D6454 /* XCRemoteSwiftPackageReference "Alamofire" */,
@@ -3533,9 +3533,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "../RedditAPIResearch/SwiftRedditPOC" */ = {
+		BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../RedditAPIResearch/SwiftRedditPOC;
+			relativePath = RedditAPIResearch/SwiftRedditPOC;
 		};
 /* End XCLocalSwiftPackageReference section */
 
@@ -3768,7 +3768,7 @@
 		};
 		BEEF000000000000000000A2 /* RedditPOC */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "../RedditAPIResearch/SwiftRedditPOC" */;
+			package = BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */;
 			productName = RedditPOC;
 		};
 		EC08543C2A4CFE1C00E88389 /* SwiftUIIntrospect */ = {
