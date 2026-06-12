@@ -88,11 +88,10 @@ struct BehaviorPanel: View {
           Toggle("Pause background audio on fullscreen", isOn: $videoDefSettings.pauseBGAudioOnFullscreen)
           Toggle("Read on preview media", isOn: $postLinkDefSettings.lightboxReadsPost)
           Toggle("Read on scroll", isOn: $postLinkDefSettings.readOnScroll)
-          Toggle("Hide read posts", isOn: $postLinkDefSettings.hideOnRead)
+          Toggle("Show hide read posts button", isOn: $postLinkDefSettings.hideOnRead)
           Toggle("Blur NSFW in opened posts", isOn: $postPageDefSettings.blurNSFW)
           Toggle("Blur NSFW", isOn: $postLinkDefSettings.blurNSFW)
           Toggle("Save sort per subreddit", isOn: $subredditFeedDefSettings.perSubredditSort)
-          Toggle("Open subreddit options on tap", isOn: $subredditFeedDefSettings.openOptionsOnTap)
           Toggle("Open media from feed", isOn: $postLinkDefSettings.isMediaTappable)
           Menu {
             ForEach(SubListingSortOption.allCases) { opt in

@@ -45,10 +45,30 @@ struct PostView: View, Equatable {
   }
   
   func asyncFetch(_ full: Bool = true) async {
+    let startedAt = Date()
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.postDetail",
+      message: "PostView fetch started",
+      metadata: postDetailMetadata(full: full, extra: ["phase": "start"])
+    )
     if full {
       update.toggle()
     }
     if let result = await post.refreshPost(commentID: ignoreSpecificComment ? nil : highlightID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full), let newComments = result.0 {
+      AppDiagnostics.asyncRecord(
+        .info,
+        category: "ui.postDetail",
+        message: "PostView fetch completed",
+        metadata: postDetailMetadata(
+          full: full,
+          extra: [
+            "phase": "success",
+            "rootComments": "\(newComments.count)",
+            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+          ]
+        )
+      )
       Task(priority: .background) {
         await RedditWire.shared.updateCommentsWithAvatar(comments: newComments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
       }
@@ -58,7 +78,33 @@ struct PostView: View, Equatable {
           await post.saveCommentsCount(numComments: numComments)
         }
       }
+    } else {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.postDetail",
+        message: "PostView fetch returned no comments",
+        metadata: postDetailMetadata(
+          full: full,
+          extra: [
+            "phase": "empty",
+            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+          ]
+        )
+      )
     }
+  }
+
+  func postDetailMetadata(full: Bool, extra: [String: String] = [:]) -> [String: String] {
+    [
+      "postID": post.id,
+      "postFullname": post.data?.name ?? "nil",
+      "title": post.data?.title ?? "nil",
+      "subreddit": subreddit.data?.display_name ?? subreddit.id,
+      "full": "\(full)",
+      "highlightID": highlightID ?? "nil",
+      "ignoreSpecificComment": "\(ignoreSpecificComment)",
+      "sort": sort.rawVal.value
+    ].merging(extra) { _, new in new }
   }
   
   func updatePost() {
@@ -139,11 +185,29 @@ struct PostView: View, Equatable {
         .navigationBarTitle("\(navtitle)", displayMode: .inline)
         .toolbar { Toolbar(title: navtitle, subtitle: subnavtitle, hideElements: hideElements, subreddit: subreddit, post: post, sort: $sort) }
         .onChange(of: sort) { val in
+          AppDiagnostics.asyncRecord(
+            .info,
+            category: "ui.postDetail",
+            message: "PostView sort changed",
+            metadata: postDetailMetadata(full: true, extra: ["newSort": val.rawVal.value])
+          )
           updatePost()
         }
         .onAppear {
+          AppDiagnostics.asyncRecord(
+            .debug,
+            category: "ui.postDetail",
+            message: "PostView appeared",
+            metadata: postDetailMetadata(full: post.data == nil, extra: ["forceCollapse": "\(forceCollapse)", "hideElements": "\(hideElements)"])
+          )
           doThisAfter(0.5) {
             hideElements = false
+            AppDiagnostics.asyncRecord(
+              .debug,
+              category: "ui.postDetail",
+              message: "PostView revealed comments section",
+              metadata: postDetailMetadata(full: post.data == nil, extra: ["hideElements": "\(hideElements)"])
+            )
             doThisAfter(0.1) {
               if highlightID != nil { withAnimation { proxy.scrollTo("loading-comments") } }
             }

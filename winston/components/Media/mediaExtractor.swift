@@ -87,6 +87,17 @@ enum MediaExtractedType: Equatable {
   case user(EntityExtracted<UserData, AnyHashable>?)
 }
 
+extension MediaExtractedType {
+  var alwaysAllowsInlineNavigation: Bool {
+    switch self {
+    case .post, .comment, .subreddit, .user, .repost:
+      return true
+    default:
+      return false
+    }
+  }
+}
+
 
 // ORDER MATTERS!
 func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
@@ -167,6 +178,20 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   }
   
   if let postEmbed = data.crosspost_parent_list?.first {
+    AppDiagnostics.asyncRecord(
+      .debug,
+      category: "ui.embeddedPost",
+      message: "Crosspost media extracted",
+      metadata: [
+        "post": data.name,
+        "title": data.title,
+        "embeddedPost": postEmbed.name,
+        "embeddedID": postEmbed.id,
+        "embeddedTitle": postEmbed.title,
+        "embeddedSubreddit": postEmbed.subreddit,
+        "contentWidth": "\(contentWidth)"
+      ]
+    )
     return .repost(Post(data: postEmbed, contentWidth: contentWidth, secondary: true, theme: theme))
   }
   
@@ -215,6 +240,17 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   
   let actualURL = data.url.hasPrefix("/r/") || data.url.hasPrefix("/u/") ? "https://reddit.com\(data.url)" : data.url
   guard let urlComponents = URLComponents(string: actualURL) else {
+    AppDiagnostics.asyncRecord(
+      .warning,
+      category: "ui.embeddedPost",
+      message: "Reddit media URL could not be parsed",
+      metadata: [
+        "post": data.name,
+        "title": data.title,
+        "url": data.url,
+        "actualURL": actualURL
+      ]
+    )
     return nil
   }
   
@@ -231,11 +267,13 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
           let comment = Comment(id: commentId, typePrefix: Comment.prefix)
           comment.fetchItself()
           let entityExtracted = EntityExtracted(subredditID: subredditName, postID: postId, commentID: commentId, entity: comment)
+          recordEmbeddedRedditEntity(data: data, kind: "comment", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: commentId)
           return .comment(entityExtracted)
         }
         let post = Post(id: postId, typePrefix: Post.prefix)
         post.fetchItself()
         let entityExtracted = EntityExtracted(subredditID: subredditName, postID: postId, entity: post)
+        recordEmbeddedRedditEntity(data: data, kind: "post", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: nil)
         return .post(entityExtracted)
 //        return .post(id: postId, subreddit: subredditName)
       }
@@ -244,6 +282,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
         await sub.refreshSubreddit()
       }
       let entityExtracted = EntityExtracted(subredditID: subredditName, entity: sub)
+      recordEmbeddedRedditEntity(data: data, kind: "subreddit", actualURL: actualURL, subredditID: subredditName, postID: nil, commentID: nil)
       return .subreddit(entityExtracted)
       
     case "user", "u":
@@ -251,6 +290,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       let user = User(id: username, typePrefix: User.prefix)
       user.fetchItself()
       let entityExtracted = EntityExtracted(userID: username, entity: user)
+      recordEmbeddedRedditEntity(data: data, kind: "user", actualURL: actualURL, subredditID: nil, postID: nil, commentID: nil, userID: username)
       return .user(entityExtracted)
 //      return .user(username: username)
       
@@ -268,6 +308,33 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   
   recordMediaExtraction(data: data, kind: "none", compact: compact, contentWidth: contentWidth, size: .zero)
   return nil
+}
+
+private func recordEmbeddedRedditEntity(
+  data: PostData,
+  kind: String,
+  actualURL: String,
+  subredditID: String?,
+  postID: String?,
+  commentID: String?,
+  userID: String? = nil
+) {
+  AppDiagnostics.asyncRecord(
+    .debug,
+    category: "ui.embeddedPost",
+    message: "Reddit media entity extracted",
+    metadata: [
+      "kind": kind,
+      "post": data.name,
+      "title": data.title,
+      "sourceURL": data.url,
+      "actualURL": actualURL,
+      "subredditID": subredditID ?? "nil",
+      "postID": postID ?? "nil",
+      "commentID": commentID ?? "nil",
+      "userID": userID ?? "nil"
+    ]
+  )
 }
 
 private func videoPosterURL(from data: PostData) -> URL? {

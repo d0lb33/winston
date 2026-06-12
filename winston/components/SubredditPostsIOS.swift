@@ -25,6 +25,7 @@ struct SubredditPostsIOS: View, Equatable {
   var searchText: String
   var searchCallback: ((String?) -> ())
   var editCustomFilter: ((FilterData) -> ())
+  var hideReadPosts: (() -> ())
   var fetch: (Bool, String?, Bool) -> ()
   var selectedTheme: WinstonTheme
   var loading: Bool
@@ -148,6 +149,6 @@ struct SubredditPostsIOS: View, Equatable {
     .listStyle(.plain)
     .listRowSeparator(.hidden)
     .listSectionSeparator(.hidden)
-    .floatingMenu(subId: subreddit?._id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter)
+    .floatingMenu(subId: subreddit?._id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
   }
 }

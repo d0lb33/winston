@@ -167,16 +167,46 @@ extension Comment {
   
   func loadChildren(parent: CommentParentElement, postFullname: String, avatarSize: Double, post: Post?) async {
     guard kind == "more", let data = data else { return }
+    let startedAt = Date()
+    let parentInfo: (kind: String, existingIDs: Set<String>) = {
+      switch parent {
+      case .comment(let comment):
+        return ("comment", Set(comment.childrenWinston.data.compactMap { $0.data?.id }))
+      case .post(let postArr):
+        return ("post", Set(postArr.data.compactMap { $0.data?.id }))
+      }
+    }()
+    let parentKind = parentInfo.kind
+    let existingIDs = parentInfo.existingIDs
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.commentTree",
+      message: "More replies fetch started",
+      metadata: moreRepliesDiagnosticsMetadata(
+        postFullname: postFullname,
+        parentKind: parentKind,
+        existingIDs: existingIDs,
+        extra: ["phase": "start"]
+      )
+    )
     // GraphQL continuation: re-fetch the subtree under this stub's parent and
     // splice in whatever isn't already shown (the GraphQL forest exposes a
     // cursor, not child-id lists like REST morechildren did).
-    let existingIDs: Set<String> = {
-      switch parent {
-      case .comment(let comment): return Set(comment.childrenWinston.data.compactMap { $0.data?.id })
-      case .post(let postArr): return Set(postArr.data.compactMap { $0.data?.id })
-      }
-    }()
     guard let children = await RedditWire.shared.moreReplies(stub: data, postID: postFullname, excluding: existingIDs), !children.isEmpty else {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.commentTree",
+        message: "More replies fetch returned no new children",
+        metadata: moreRepliesDiagnosticsMetadata(
+          postFullname: postFullname,
+          parentKind: parentKind,
+          existingIDs: existingIDs,
+          extra: [
+            "phase": "empty",
+            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+          ]
+        )
+      )
       // Nothing new came back: drop the stub so it stops advertising replies.
       await MainActor.run {
         withAnimation {
@@ -191,6 +221,23 @@ extension Comment {
 
     let parentID = data.parent_id ?? postFullname
     let loadedComments: [Comment] = nestComments(children, parentID: parentID)
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.commentTree",
+      message: "More replies nested",
+      metadata: moreRepliesDiagnosticsMetadata(
+        postFullname: postFullname,
+        parentKind: parentKind,
+        existingIDs: existingIDs,
+        extra: [
+          "phase": "nested",
+          "flatChildren": "\(children.count)",
+          "loadedComments": "\(loadedComments.count)",
+          "parentID": parentID,
+          "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+        ]
+      )
+    )
 
     Task(priority: .background) { [loadedComments] in
       await RedditWire.shared.updateCommentsWithAvatar(comments: loadedComments, avatarSize: avatarSize)
@@ -205,6 +252,17 @@ extension Comment {
             comment.childrenWinston.data.remove(at: index)
             comment.childrenWinston.data.insert(contentsOf: loadedComments, at: index)
           }
+          AppDiagnostics.asyncRecord(
+            .debug,
+            category: "ui.commentTree",
+            message: "More replies inserted into comment",
+            metadata: moreRepliesDiagnosticsMetadata(
+              postFullname: postFullname,
+              parentKind: parentKind,
+              existingIDs: existingIDs,
+              extra: ["insertIndex": "\(index)", "loadedComments": "\(loadedComments.count)"]
+            )
+          )
         }
       case .post(let postArr):
         if let index = postArr.data.firstIndex(where: { $0.id == id }) {
@@ -212,9 +270,32 @@ extension Comment {
             postArr.data.remove(at: index)
             postArr.data.insert(contentsOf: loadedComments, at: index)
           }
+          AppDiagnostics.asyncRecord(
+            .debug,
+            category: "ui.commentTree",
+            message: "More replies inserted into post",
+            metadata: moreRepliesDiagnosticsMetadata(
+              postFullname: postFullname,
+              parentKind: parentKind,
+              existingIDs: existingIDs,
+              extra: ["insertIndex": "\(index)", "loadedComments": "\(loadedComments.count)"]
+            )
+          )
         }
       }
     }
+  }
+
+  func moreRepliesDiagnosticsMetadata(postFullname: String, parentKind: String, existingIDs: Set<String>, extra: [String: String] = [:]) -> [String: String] {
+    [
+      "stubID": id,
+      "stubFullname": data?.name ?? "nil",
+      "parentID": data?.parent_id ?? "nil",
+      "postFullname": postFullname,
+      "parentKind": parentKind,
+      "existingCount": "\(existingIDs.count)",
+      "existingIDs": existingIDs.prefix(10).joined(separator: ",")
+    ].merging(extra) { _, new in new }
   }
   
   func reply(_ text: String) async -> Bool {

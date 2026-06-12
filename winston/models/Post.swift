@@ -19,6 +19,17 @@ extension Post {
   static var prefetcher = ImagePrefetcher(pipeline: ImagePipeline.shared, destination: .memoryCache, maxConcurrentRequestCount: 10)
   static var prefix = "t3"
   var selfPrefix: String { Self.prefix }
+
+  static func normalizedBareID(_ rawID: String) -> String {
+    var id = rawID.trimmingCharacters(in: .whitespacesAndNewlines)
+    if id.hasPrefix("\(Post.prefix)_") {
+      id.removeFirst(Post.prefix.count + 1)
+    }
+    while id.hasPrefix("_") {
+      id.removeFirst()
+    }
+    return id
+  }
   
   convenience init(data: T, sub: Subreddit? = nil, contentWidth: Double = .screenW, secondary: Bool = false, imgPriority: ImageRequest.Priority = .low, theme: WinstonTheme? = nil, fetchAvatar: Bool = true) {
     let theme = theme ?? getEnabledTheme()
@@ -27,14 +38,14 @@ extension Post {
   }
   
   convenience init(id: String, sub: Subreddit? = nil) {
-    self.init(id: id, typePrefix: "\(Post.prefix)_")
+    self.init(id: Post.normalizedBareID(id), typePrefix: "\(Post.prefix)_")
     let newWinstonData = PostWinstonData()
     newWinstonData.subreddit = sub
     self.winstonData = newWinstonData
   }
   
   convenience init(id: String, subID: String) {
-    self.init(id: id, typePrefix: "\(Post.prefix)_")
+    self.init(id: Post.normalizedBareID(id), typePrefix: "\(Post.prefix)_")
     let newWinstonData = PostWinstonData()
     newWinstonData._strongSubreddit = Subreddit(id: subID)
     self.winstonData = newWinstonData
@@ -48,7 +59,7 @@ extension Post {
       self.winstonData?.permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
       
       var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
-      var extractedMediaForcedNormal = mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme)
+      var extractedMediaForcedNormal = compact ? mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme) : extractedMedia
       AppDiagnostics.asyncRecord(
         .debug,
         category: "ui.media.setup",
@@ -495,14 +506,100 @@ extension Post {
     // the reply tree by nestComments; continuation nodes surface as "more"
     // stubs. Comment-listing pagination doesn't exist on this surface, so the
     // returned cursor is always nil.
+    let startedAt = Date()
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.commentTree",
+      message: "Post.refreshPost started",
+      metadata: refreshPostDiagnosticsMetadata(
+        commentID: commentID,
+        sort: sort,
+        full: full,
+        extra: ["phase": "start"]
+      )
+    )
     let (newData, children) = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
-    if full, let newData {
-      await MainActor.run {
-        self.data = newData
-        setupWinstonData(data: newData, secondary: false, theme: getEnabledTheme())
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.commentTree",
+      message: "Post.refreshPost GraphQL returned",
+      metadata: refreshPostDiagnosticsMetadata(
+        commentID: commentID,
+        sort: sort,
+        full: full,
+        extra: [
+          "phase": "graphql-returned",
+          "hasPostData": "\(newData != nil)",
+          "flatChildren": "\(children.count)",
+          "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+        ]
+      )
+    )
+    var postData = newData
+    let postFullnameFromComment = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
+    if full, commentID != nil {
+      let hydrationStartedAt = Date()
+      AppDiagnostics.asyncRecord(
+        .info,
+        category: "ui.postDetail",
+        message: "Hydrating highlighted comment parent post",
+        metadata: refreshPostDiagnosticsMetadata(
+          commentID: commentID,
+          sort: sort,
+          full: full,
+          extra: [
+            "phase": "hydrate-parent-start",
+            "postFullname": postFullnameFromComment,
+            "hadCommentPostData": "\(newData != nil)",
+            "commentPostDataMedia": Post.diagnosticsPostDataMedia(newData)
+          ]
+        )
+      )
+      if let hydratedData = await RedditWire.shared.postData(forID: postFullnameFromComment) {
+        postData = hydratedData
+        AppDiagnostics.asyncRecord(
+          .info,
+          category: "ui.postDetail",
+          message: "Hydrated highlighted comment parent post",
+          metadata: refreshPostDiagnosticsMetadata(
+            commentID: commentID,
+            sort: sort,
+            full: full,
+            extra: [
+              "phase": "hydrate-parent-success",
+              "postFullname": hydratedData.name,
+              "hydratedPostID": hydratedData.id,
+              "hydratedTitle": hydratedData.title,
+              "hydratedMedia": Post.diagnosticsPostDataMedia(hydratedData),
+              "elapsedMs": "\(Int(Date().timeIntervalSince(hydrationStartedAt) * 1000))"
+            ]
+          )
+        )
+      } else {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "ui.postDetail",
+          message: "Highlighted comment parent post hydration returned no post",
+          metadata: refreshPostDiagnosticsMetadata(
+            commentID: commentID,
+            sort: sort,
+            full: full,
+            extra: [
+              "phase": "hydrate-parent-empty",
+              "postFullname": postFullnameFromComment,
+              "elapsedMs": "\(Int(Date().timeIntervalSince(hydrationStartedAt) * 1000))"
+            ]
+          )
+        )
       }
     }
-    let postFullname = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
+    if full, let postData {
+      await MainActor.run {
+        self.data = postData
+        setupWinstonData(data: postData, secondary: false, theme: getEnabledTheme())
+      }
+    }
+    let postFullname = postData?.name ?? postFullnameFromComment
     await saveSeenComments(comments: ListingData(after: nil, dist: nil, modhash: nil, geo_filter: nil, children: children))
     let comments = nestComments(children, parentID: postFullname)
     let missingBodies = comments.compactMap { comment -> String? in
@@ -522,7 +619,37 @@ extension Post {
         "missingRootBodyIDs": missingBodies.prefix(8).joined(separator: ",")
       ]
     )
+    AppDiagnostics.asyncRecord(
+      missingBodies.isEmpty ? .info : .warning,
+      category: "ui.commentTree",
+      message: "Post.refreshPost completed",
+      metadata: refreshPostDiagnosticsMetadata(
+        commentID: commentID,
+        sort: sort,
+        full: full,
+        extra: [
+          "phase": "complete",
+          "postFullname": postFullname,
+          "flatChildren": "\(children.count)",
+          "rootComments": "\(comments.count)",
+          "missingRootBodies": "\(missingBodies.count)",
+          "missingRootBodyIDs": missingBodies.prefix(8).joined(separator: ","),
+          "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+        ]
+      )
+    )
     return (comments, nil)
+  }
+
+  func refreshPostDiagnosticsMetadata(commentID: String?, sort: CommentSortOption, full: Bool, extra: [String: String] = [:]) -> [String: String] {
+    [
+      "postID": id,
+      "postFullname": data?.name ?? "nil",
+      "title": data?.title ?? "nil",
+      "commentID": commentID ?? "nil",
+      "sort": sort.rawVal.value,
+      "full": "\(full)"
+    ].merging(extra) { _, new in new }
   }
   
   func saveToggle() async -> Bool {
@@ -575,11 +702,8 @@ extension Post {
     if data?.winstonHidden == hide { return }
     await MainActor.run {
       withAnimation {
-        data?.winstonHidden = true
+        data?.winstonHidden = hide
       }
-    }
-    if let name = data?.name {
-      _ = await RedditWire.shared.hidePost(hide, fullname: name)
     }
   }
 
@@ -608,6 +732,23 @@ extension Post {
     case nil:
       return "nil"
     }
+  }
+
+  static func diagnosticsPostDataMedia(_ data: PostData?) -> String {
+    guard let data else { return "nil" }
+    let previewCount = data.preview?.images?.count ?? 0
+    let galleryCount = data.gallery_data?.items?.count ?? 0
+    let metadataCount = data.media_metadata?.count ?? 0
+    return [
+      "hint:\(data.post_hint ?? "nil")",
+      "preview:\(previewCount)",
+      "gallery:\(galleryCount)",
+      "metadata:\(metadataCount)",
+      "isVideo:\(data.is_video == true)",
+      "isGallery:\(data.is_gallery == true)",
+      "hasMedia:\(data.media != nil)",
+      "urlEmpty:\(data.url.isEmpty)"
+    ].joined(separator: ",")
   }
 }
 

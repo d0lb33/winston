@@ -21,6 +21,7 @@ struct FloatingFeedMenu: View, Equatable {
   var searchText: String
   var searchCallback: ((String?) -> ())
   var customFilterCallback: ((FilterData) -> ())
+  var hideReadPosts: (() -> ())
   
   @State private var menuOpen = false
   @State private var showingFilters = false
@@ -38,7 +39,7 @@ struct FloatingFeedMenu: View, Equatable {
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
   
-  init(subId: String, filters: [FilterData], selected: String, filterCallback: @escaping ((String) -> ()), searchText: String, searchCallback: @escaping ((String?) -> ()), customFilterCallback: @escaping ((FilterData) -> ())) {
+  init(subId: String, filters: [FilterData], selected: String, filterCallback: @escaping ((String) -> ()), searchText: String, searchCallback: @escaping ((String?) -> ()), customFilterCallback: @escaping ((FilterData) -> ()), hideReadPosts: @escaping (() -> ())) {
     self.subId = subId
     self.filters = filters
     self.selected = selected
@@ -46,8 +47,28 @@ struct FloatingFeedMenu: View, Equatable {
     self.searchText = searchText
     self.searchCallback = searchCallback
     self.customFilterCallback = customFilterCallback
+    self.hideReadPosts = hideReadPosts
     
     _compact = State(initialValue: subredditFeedDefSettings.compactPerSubreddit[subId] ?? postLinkDefSettings.compactMode.enabled)
+  }
+
+  private func actionButton(systemName: String, label: LocalizedStringKey, transitionIndex: Int, action: @escaping () -> Void) -> some View {
+    Button {
+      Hap.shared.play(intensity: 0.75, sharpness: 0.9)
+      action()
+    } label: {
+      Image(systemName: systemName)
+        .fontSize(22, .bold)
+        .frame(width: actionsSize, height: actionsSize)
+        .foregroundColor(Color.accentColor)
+        .floating()
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(Text(label))
+    .transition(.comeFrom(.bottom, index: transitionIndex, total: 3))
+    .increaseHitboxOf(actionsSize, by: 1.125, shape: Circle(), disable: menuOpen)
+    .shrinkOnTap()
   }
   
   func dismiss() {
@@ -135,37 +156,21 @@ struct FloatingFeedMenu: View, Equatable {
         VStack(spacing: itemsSpacingDownscaled) {
           VStack(spacing: itemsSpacing) {
             if menuOpen {
-              Image(systemName: "star.fill")
-                .fontSize(22, .bold)
-                .frame(width: actionsSize, height: actionsSize)
-                .foregroundStyle(Color.accentColor)
-                .floating()
-                .transition(.comeFrom(.bottom, index: 1, total: 2))
+              if postLinkDefSettings.hideOnRead {
+                actionButton(systemName: "eye.slash.fill", label: "Hide read posts", transitionIndex: 2) {
+                    hideReadPosts()
+                    dismiss()
+                }
+              }
               
-              Image(systemName: compact ? "doc.text.image" : "doc.plaintext")
-                .fontSize(22, .bold)
-                .frame(width: actionsSize, height: actionsSize)
-                .foregroundColor(Color.accentColor)
-                .floating()
-                .transition(.comeFrom(.bottom, index: 0, total: 2))
-                .increaseHitboxOf(actionsSize, by: 1.125, shape: Circle(), disable: menuOpen)
-                .highPriorityGesture(TapGesture().onEnded({
-                  Hap.shared.play(intensity: 0.75, sharpness: 0.9)
-                  compact = !compact
-                  subredditFeedDefSettings.compactPerSubreddit[self.subId] = compact
-                }))
+              actionButton(systemName: compact ? "doc.text.image" : "doc.plaintext", label: compact ? "Use full post layout" : "Use compact post layout", transitionIndex: 1) {
+                compact = !compact
+                subredditFeedDefSettings.compactPerSubreddit[self.subId] = compact
+              }
               
-              Image(systemName: "plus")
-                .fontSize(22, .bold)
-                .frame(width: actionsSize, height: actionsSize)
-                .foregroundColor(Color.accentColor)
-                .floating()
-                .transition(.comeFrom(.bottom, index: 0, total: 2))
-                .increaseHitboxOf(actionsSize, by: 1.125, shape: Circle(), disable: menuOpen)
-                .highPriorityGesture(TapGesture().onEnded({
-                  Hap.shared.play(intensity: 0.75, sharpness: 0.9)
-                  customFilterCallback(FilterData())
-                }))
+              actionButton(systemName: "plus", label: "Create custom filter", transitionIndex: 0) {
+                customFilterCallback(FilterData())
+              }
             }
           }
           
@@ -180,9 +185,9 @@ struct FloatingFeedMenu: View, Equatable {
 
 
 extension View {
-  func floatingMenu(subId: String, filters: [FilterData], selected: String, filterCallback: @escaping ((String) -> ()), searchText: String, searchCallback: @escaping ((String?) -> ()), customFilterCallback: @escaping ((FilterData) -> ())) -> some View {
+  func floatingMenu(subId: String, filters: [FilterData], selected: String, filterCallback: @escaping ((String) -> ()), searchText: String, searchCallback: @escaping ((String?) -> ()), customFilterCallback: @escaping ((FilterData) -> ()), hideReadPosts: @escaping (() -> ())) -> some View {
     self
-      .overlay(FloatingFeedMenu(subId: subId, filters: filters, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: customFilterCallback).equatable(), alignment: .bottomTrailing)
+      .overlay(FloatingFeedMenu(subId: subId, filters: filters, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: customFilterCallback, hideReadPosts: hideReadPosts).equatable(), alignment: .bottomTrailing)
   }
 }
 

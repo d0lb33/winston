@@ -25,6 +25,8 @@ struct MultiPostsView: View {
   @State private var filter: String = "flair:All"
   @State private var customFilter: FilterData?
   @State private var reachedEndOfFeed: Bool = false
+  @State private var feedRequestInFlight: Bool = false
+  @State private var hidingReadPostsUntilUnread: Bool = false
   
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.contentWidth) private var contentWidth
@@ -43,6 +45,54 @@ struct MultiPostsView: View {
   
   func editCustomFilter(filterData: FilterData) {
     customFilter = filterData
+  }
+
+  func visiblePosts(_ posts: [Post]) -> [Post] {
+    posts.filter { !($0.data?.winstonHidden ?? false) }
+  }
+
+  func resetHiddenPosts() {
+    let hiddenPosts = posts.data.filter { $0.data?.winstonHidden == true }
+    guard !hiddenPosts.isEmpty else { return }
+
+    withAnimation {
+      hiddenPosts.forEach { $0.data?.winstonHidden = false }
+      posts.data = posts.data
+    }
+  }
+
+  @discardableResult
+  func hideVisibleReadPosts() -> Int {
+    let readPosts = visiblePosts(posts.data).filter { $0.data?.winstonSeen == true }
+    guard !readPosts.isEmpty else { return 0 }
+
+    withAnimation {
+      readPosts.forEach { $0.data?.winstonHidden = true }
+      posts.data = posts.data
+    }
+
+    return readPosts.count
+  }
+
+  func continueHidingReadPostsUntilUnread() {
+    guard hidingReadPostsUntilUnread else { return }
+
+    _ = hideVisibleReadPosts()
+    let remainingVisiblePosts = visiblePosts(posts.data)
+
+    if remainingVisiblePosts.contains(where: { !($0.data?.winstonSeen ?? false) }) || reachedEndOfFeed || lastPostAfter == nil {
+      hidingReadPostsUntilUnread = false
+      return
+    }
+
+    guard !loading && !feedRequestInFlight else { return }
+
+    fetch(loadMore: true)
+  }
+
+  func hideReadPosts() {
+    hidingReadPostsUntilUnread = true
+    continueHidingReadPostsUntilUnread()
   }
   
   func asyncFetch(force: Bool = false, loadMore: Bool = false) async {
@@ -70,8 +120,16 @@ struct MultiPostsView: View {
   }
   
   func fetch(loadMore: Bool = false, _ searchText: String? = nil, forceRefresh: Bool = false) {
+    guard !feedRequestInFlight else { return }
+
+    feedRequestInFlight = true
+    loading = true
     Task(priority: .background) {
       await asyncFetch(loadMore: loadMore)
+      await MainActor.run {
+        feedRequestInFlight = false
+        continueHidingReadPostsUntilUnread()
+      }
     }
   }
   
@@ -80,6 +138,7 @@ struct MultiPostsView: View {
       loading = true
       posts.data.removeAll()
       reachedEndOfFeed = false
+      hidingReadPostsUntilUnread = false
     }
     
     fetch()
@@ -91,10 +150,12 @@ struct MultiPostsView: View {
   
   var body: some View {
     Group {
+      let filteredPosts = visiblePosts(posts.data)
+
       if IPAD && hSizeClass == .regular {
-        SubredditPostsIPAD(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: posts.data, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+        SubredditPostsIPAD(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
       } else {
-        SubredditPostsIOS(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: posts.data, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+        SubredditPostsIOS(showSub: true, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
       }
     }
     //.themedListBG(selectedTheme.postLinks.bg)
@@ -139,6 +200,7 @@ struct MultiPostsView: View {
         .animation(nil, value: sort)
     )
     .onAppear {
+      resetHiddenPosts()
       if posts.data.count == 0 {
         doThisAfter(0.0) {
           fetch()

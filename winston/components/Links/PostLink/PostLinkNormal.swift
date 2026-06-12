@@ -71,9 +71,6 @@ struct PostLinkNormal: View, Equatable, Identifiable {
       if defSettings.readOnScroll {
         await post.toggleSeen(true, optimistic: true)
       }
-      if defSettings.hideOnRead {
-        await post.hide(true)
-      }
     }
   }
   
@@ -84,7 +81,7 @@ struct PostLinkNormal: View, Equatable, Identifiable {
     if let data = post.data {
       if let extractedMedia = winstonData.extractedMedia {
         MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, media: extractedMedia, over18: over18, compact: false, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post:\(id):\(String(data.title.prefix(80)))")
-          .allowsHitTesting(defSettings.isMediaTappable)
+          .allowsHitTesting(defSettings.isMediaTappable || extractedMedia.alwaysAllowsInlineNavigation)
         
         if case .repost(let repost) = extractedMedia {
           if let repostWinstonData = repost.winstonData, let repostSub = repostWinstonData.subreddit {
@@ -105,10 +102,46 @@ struct PostLinkNormal: View, Equatable, Identifiable {
             .environmentObject(repost)
             .environmentObject(repostWinstonData)
             .environmentObject(repostSub)
+            .onAppear {
+              AppDiagnostics.asyncRecord(
+                .debug,
+                category: "ui.embeddedPost",
+                message: "Rendering crosspost PostLink",
+                metadata: embeddedPostMetadata(parentData: data, repost: repost, reason: "render")
+              )
+            }
+          } else {
+            Color.clear
+              .frame(width: 0, height: 0)
+              .onAppear {
+                AppDiagnostics.asyncRecord(
+                  .warning,
+                  category: "ui.embeddedPost",
+                  message: "Crosspost PostLink missing render dependencies",
+                  metadata: embeddedPostMetadata(parentData: data, repost: repost, reason: "missing-dependencies")
+                )
+              }
           }
         }
       }
     }
+  }
+
+  func embeddedPostMetadata(parentData: PostData, repost: Post, reason: String) -> [String: String] {
+    [
+      "reason": reason,
+      "parentPost": parentData.name,
+      "parentID": id,
+      "parentTitle": parentData.title,
+      "repostID": repost.id,
+      "repostFullname": repost.data?.name ?? "nil",
+      "repostTitle": repost.data?.title ?? "nil",
+      "repostSubreddit": repost.data?.subreddit ?? "nil",
+      "hasWinstonData": "\(repost.winstonData != nil)",
+      "hasSubreddit": "\(repost.winstonData?.subreddit != nil)",
+      "contentWidth": "\(contentWidth)",
+      "secondary": "\(secondary)"
+    ]
   }
   
   var body: some View {
@@ -142,7 +175,7 @@ struct PostLinkNormal: View, Equatable, Identifiable {
           
         }
       }
-      .postLinkStyle(post: post, sub: sub, theme: theme, size: winstonData.postDimensions.size, secondary: secondary, openPost: openPost, readPostOnScroll: defSettings.readOnScroll, hideReadPosts: defSettings.hideOnRead)
+      .postLinkStyle(post: post, sub: sub, theme: theme, size: winstonData.postDimensions.size, secondary: secondary, openPost: openPost, readPostOnScroll: defSettings.readOnScroll)
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post, secondary: secondary)
     }
   }

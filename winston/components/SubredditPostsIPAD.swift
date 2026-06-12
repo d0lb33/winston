@@ -25,6 +25,7 @@ struct SubredditPostsIPAD: View, Equatable {
   var searchText: String
   var searchCallback: ((String?) -> ())
   var editCustomFilter: ((FilterData) -> ())
+  var hideReadPosts: (() -> ())
   var fetch: (Bool, String?, Bool) -> ()
   var selectedTheme: WinstonTheme
 	var loading: Bool
@@ -143,7 +144,7 @@ struct SubredditPostsIPAD: View, Equatable {
 						.id(UUID())
 				}
     }
-    .floatingMenu(subId: subreddit?.id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter)
+    .floatingMenu(subId: subreddit?.id ?? "", filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
 		.navigationBarTitleDisplayMode(.inline)
   }
 }

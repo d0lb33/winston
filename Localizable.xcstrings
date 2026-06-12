@@ -747,6 +747,9 @@
     "Clear Logs" : {
 
     },
+    "Close feed tools" : {
+
+    },
     "Close media viewer" : {
 
     },
@@ -915,6 +918,9 @@
           }
         }
       }
+    },
+    "Create custom filter" : {
+
     },
     "Created %@" : {
       "localizations" : {
@@ -2644,6 +2650,9 @@
         }
       }
     },
+    "Open feed tools" : {
+
+    },
     "Open links in Safari" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2680,9 +2689,6 @@
           }
         }
       }
-    },
-    "Open subreddit options on tap" : {
-
     },
     "Open Youtube Videos Externally" : {
       "localizations" : {
@@ -3345,6 +3351,9 @@
 
     },
     "Show Divider at Top" : {
+
+    },
+    "Show hide read posts button" : {
 
     },
     "Show Self Text" : {
@@ -4071,6 +4080,12 @@
           }
         }
       }
+    },
+    "Use compact post layout" : {
+
+    },
+    "Use full post layout" : {
+
     },
     "View full conversation" : {
       "localizations" : {

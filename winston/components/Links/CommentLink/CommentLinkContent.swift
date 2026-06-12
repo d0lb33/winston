@@ -115,7 +115,7 @@ struct CommentLinkContent: View {
     
     if let data = comment.data {
       let collapsed = data.collapsed ?? false
-      Group {
+      VStack(alignment: .leading, spacing: 0) {
         HStack(spacing: CommentLinkContent.indentLineContentSpacing) {
           if data.depth != 0 && indentLines != 0 {
             HStack(alignment:. bottom, spacing: CommentLinkContent.indentLinesSpacing) {

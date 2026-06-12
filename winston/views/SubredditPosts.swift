@@ -57,6 +57,7 @@ struct SubredditPosts: View, Equatable {
   @State private var reachedEndOfFeed: Bool = false
   @State private var showLoadMoreButton: Bool = false
   @State private var feedRequestInFlight: Bool = false
+  @State private var hidingReadPostsUntilUnread: Bool = false
   
   @StateObject private var unfilteredPosts = NonObservableArray<Post>()
   @State private var unfilteredLastPostAfter: String?
@@ -80,12 +81,12 @@ struct SubredditPosts: View, Equatable {
   var isFeedsAndSuch: Bool { feedsAndSuch.contains(subreddit.id) }
   
   func getFilteredPosts(posts: [Post], onlyUnseen: Bool = false) -> [Post] {
-    let filtered = posts
+    let filtered = posts.filter { !($0.data?.winstonHidden ?? false) }
     
     let filterData = FilterData.getTypeAndText(filter)
     
     if filterData[0] == "flair" {
-      if filterData[1] == "All" { return posts }
+      if filterData[1] == "All" { return filtered }
       return filtered.filter({ flairWithoutEmojis(str: $0.data?.link_flair_text)?.first ?? "" == filterData[1] })
     } else if filterData[0] == "filter" {
       return filtered.filter({ ($0.data?.title.lowercased().contains(filterData[1].lowercased()) ?? false) ||
@@ -121,6 +122,67 @@ struct SubredditPosts: View, Equatable {
   func editCustomFilter(filterData: FilterData) {
     customFilter = filterData
   }
+
+  func resetHiddenPosts() {
+    let hiddenPosts = posts.data.filter { $0.data?.winstonHidden == true }
+    guard !hiddenPosts.isEmpty else { return }
+
+    withAnimation {
+      hiddenPosts.forEach { $0.data?.winstonHidden = false }
+      posts.data = posts.data
+      unfilteredPosts.data = unfilteredPosts.data
+    }
+  }
+
+  @discardableResult
+  func hideVisibleReadPosts() -> Int {
+    let visibleReadPosts = getFilteredPosts(posts: posts.data).filter { $0.data?.winstonSeen == true }
+    guard !visibleReadPosts.isEmpty else { return 0 }
+
+    withAnimation {
+      visibleReadPosts.forEach { $0.data?.winstonHidden = true }
+      posts.data = posts.data
+      unfilteredPosts.data = unfilteredPosts.data
+    }
+
+    return visibleReadPosts.count
+  }
+
+  func continueHidingReadPostsUntilUnread() {
+    guard hidingReadPostsUntilUnread else { return }
+
+    let hiddenCount = hideVisibleReadPosts()
+    let visiblePosts = getFilteredPosts(posts: posts.data)
+
+    if visiblePosts.contains(where: { !($0.data?.winstonSeen ?? false) }) || reachedEndOfFeed || lastPostAfter == nil {
+      hidingReadPostsUntilUnread = false
+      return
+    }
+
+    guard !loading && !feedRequestInFlight else { return }
+
+    AppDiagnostics.asyncBreadcrumb(
+      "Hide-read paging requested",
+      metadata: [
+        "subreddit": subreddit.id,
+        "hidden": "\(hiddenCount)",
+        "loadedPosts": "\(posts.data.count)",
+        "after": lastPostAfter ?? "nil",
+        "search": searchText
+      ]
+    )
+
+    if searchText.isEmpty {
+      fetch(true, nil, forceRefresh: true)
+    } else {
+      fetch(true, searchText, forceRefresh: true)
+    }
+  }
+
+  func hideReadPosts() {
+    hidingReadPostsUntilUnread = true
+    continueHidingReadPostsUntilUnread()
+  }
   
   func asyncFetch(force: Bool = false, loadMore: Bool = false, searchText: String? = nil, forceRefresh: Bool = false) async throws {
     if (subreddit.data == nil || force) && !isFeedsAndSuch {
@@ -138,6 +200,7 @@ struct SubredditPosts: View, Equatable {
         ]
       )
       posts.data = unfilteredPosts.data
+      resetHiddenPosts()
       lastPostAfter = unfilteredLastPostAfter
       reachedEndOfFeed = unfilteredreachedEndOfFeed
       return
@@ -358,6 +421,7 @@ struct SubredditPosts: View, Equatable {
       }
       await MainActor.run {
         feedRequestInFlight = false
+        continueHidingReadPostsUntilUnread()
       }
     }
   }
@@ -367,6 +431,7 @@ struct SubredditPosts: View, Equatable {
 //      posts.data.removeAll()
       loadedPosts.removeAll()
       reachedEndOfFeed = false
+      hidingReadPostsUntilUnread = false
       
       if isSavedSubreddit {
         switch selectedSavedFeed {
@@ -411,9 +476,9 @@ struct SubredditPosts: View, Equatable {
           let filteredPosts = getFilteredPosts(posts: posts.data)
           
           if IPAD && hSizeClass == .regular {
-            SubredditPostsIPAD(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+            SubredditPostsIPAD(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
           } else {
-            SubredditPostsIOS(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+            SubredditPostsIOS(showSub: isFeedsAndSuch, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
           }
         }
         .searchable(text: $searchText, prompt: "Search r/\(subreddit.data?.display_name ?? subreddit.id)")
@@ -456,6 +521,7 @@ struct SubredditPosts: View, Equatable {
     .onAppear {
       if !hasViewLoaded {
         isSavedSubreddit = subreddit.id == "saved" // detect unique saved subreddit (saved posts and comments require unique logic)
+        resetHiddenPosts()
         hasViewLoaded = true
       }
     }

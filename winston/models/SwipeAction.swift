@@ -199,13 +199,6 @@ struct SeenPostAction: SwipeAction {
   var color = SwipeActionItem(normal: "0B84FE")
   var bgColor = SwipeActionItem(normal: "353439")
   func action(_ entity: Post) async {
-    if Defaults[.PostLinkDefSettings].hideOnRead {
-      if let data = entity.data {
-        Task(priority: .background) {
-          await entity.hide(!(data.winstonSeen ?? false))
-        }
-      }
-    }
     await entity.toggleSeen(optimistic: true)
   }
   func active(_ entity: Post) -> Bool { entity.data?.winstonSeen ?? false }

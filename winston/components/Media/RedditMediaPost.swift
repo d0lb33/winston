@@ -32,5 +32,47 @@ struct RedditMediaPost: View {
     .frame(maxWidth: .infinity, minHeight: RedditMediaPost.height, maxHeight: RedditMediaPost.height)
     .padding(.horizontal, 8)
     .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.primary.opacity(0.1)))
+    .onAppear {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.embeddedPost",
+        message: "RedditMediaPost appeared",
+        metadata: entityDiagnosticsMetadata()
+      )
+    }
+  }
+
+  func entityDiagnosticsMetadata() -> [String: String] {
+    switch entity {
+    case .comment(let comment):
+      return [
+        "kind": "comment",
+        "id": comment.id,
+        "hasData": "\(comment.data != nil)",
+        "hasWinstonData": "\(comment.winstonData != nil)",
+        "title": comment.data?.link_title ?? "nil"
+      ]
+    case .post(let post):
+      return [
+        "kind": "post",
+        "id": post.id,
+        "hasData": "\(post.data != nil)",
+        "hasWinstonData": "\(post.winstonData != nil)",
+        "title": post.data?.title ?? "nil",
+        "subreddit": post.data?.subreddit ?? "nil"
+      ]
+    case .user(let user):
+      return [
+        "kind": "user",
+        "id": user.id,
+        "hasData": "\(user.data != nil)"
+      ]
+    case .subreddit(let subreddit):
+      return [
+        "kind": "subreddit",
+        "id": subreddit.id,
+        "hasData": "\(subreddit.data != nil)"
+      ]
+    }
   }
 }

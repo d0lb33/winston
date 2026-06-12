@@ -173,11 +173,7 @@ struct VideoPlayerPost: View, Equatable {
         }
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "controller"])
-          removeObserver()
-          Task(priority: .background) {
-            sharedVideo.player.seek(to: .zero)
-            sharedVideo.player.pause()
-          }
+          handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
@@ -238,11 +234,7 @@ struct VideoPlayerPost: View, Equatable {
         }
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer"])
-          removeObserver()
-          Task(priority: .background) {
-            sharedVideo.player.seek(to: .zero)
-            sharedVideo.player.pause()
-          }
+          handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
@@ -418,6 +410,12 @@ struct VideoPlayerPost: View, Equatable {
     let itemReady = sharedVideo.player.currentItem?.status == .readyToPlay
     let isPlaying = sharedVideo.player.timeControlStatus == .playing || sharedVideo.player.rate > 0
     return itemReady && isPlaying && hasAdvanced
+  }
+
+  func handleInlineDisappear(_ sharedVideo: SharedVideo) {
+    posterHideGeneration = UUID()
+    removeObserver()
+    sharedVideo.player.pause()
   }
 
   func hideUnavailablePoster(reason: String, url: URL, sharedVideo: SharedVideo) {
@@ -788,21 +786,38 @@ struct AVPlayerRepresentable: UIViewRepresentable {
     view.addSubview(playerController.view)
     playerController.didMove(toParent: controller)
     view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+    let metadata = AVPlayerRepresentable.playerViewMetadata(
+      player: player,
+      view: view,
+      extra: [
+        "autoPlay": autoPlayVideos ? "true" : "false",
+        "aspect": aspect.rawValue
+      ]
+    )
     AppDiagnostics.asyncRecord(
       .debug,
       category: "ui.video.playerView",
       message: "AVPlayerRepresentable makeUIView",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "aspect": aspect.rawValue])
+      metadata: metadata
     )
     return view
   }
 
   func updateUIView(_ view: UIView, context: Context) {
+    let metadata = AVPlayerRepresentable.playerViewMetadata(
+      player: player,
+      view: view,
+      extra: [
+        "autoPlay": autoPlayVideos ? "true" : "false",
+        "fullscreen": fullscreen ? "true" : "false",
+        "aspect": aspect.rawValue
+      ]
+    )
     AppDiagnostics.asyncRecord(
       .debug,
       category: "ui.video.playerView",
       message: "AVPlayerRepresentable updateUIView",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "fullscreen": "\(fullscreen)", "aspect": aspect.rawValue])
+      metadata: metadata
     )
     if let playerController = context.coordinator.controller, playerController.autoPlayVideos != autoPlayVideos {
       playerController.autoPlayVideos = autoPlayVideos
@@ -930,13 +945,23 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     super.init(coder: aDecoder)
   }
 
+  private func diagnosticsMetadata(extra: [String: String] = [:]) -> [String: String] {
+    var metadata: [String: String] = [
+      "autoPlay": autoPlayVideos ? "true" : "false",
+      "gone": gone ? "true" : "false",
+      "showsPlaybackControls": showsPlaybackControls ? "true" : "false"
+    ]
+    metadata.merge(extra) { _, new in new }
+    return AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: metadata)
+  }
+
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
     AppDiagnostics.asyncRecord(
       .debug,
       category: "ui.video.playerView",
       message: "NiceAVPlayer viewDidAppear",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)"])
+      metadata: diagnosticsMetadata()
     )
     if videoDefSettings.loop, let player = self.player {
       NotificationCenter.default.addObserver(
@@ -955,7 +980,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
         .debug,
         category: "ui.video.playerView",
         message: "NiceAVPlayer autoplay started",
-        metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)"])
+        metadata: diagnosticsMetadata()
       )
     }
   }
@@ -966,7 +991,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
       .debug,
       category: "ui.video.playerView",
       message: "NiceAVPlayer viewDidDisappear",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)"])
+      metadata: diagnosticsMetadata()
     )
     if let player = self.player {
       NotificationCenter.default.removeObserver(
@@ -981,7 +1006,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
         .debug,
         category: "ui.video.playerView",
         message: "NiceAVPlayer inline playback paused on disappear",
-        metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)"])
+        metadata: diagnosticsMetadata()
       )
     }
   }
@@ -1015,7 +1040,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
       .debug,
       category: "ui.video.playerView",
       message: "NiceAVPlayer will begin fullscreen",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)"])
+      metadata: diagnosticsMetadata()
     )
     coordinator.animate(alongsideTransition: nil) { [weak self] context in
       guard let self = self else { return }
@@ -1040,7 +1065,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
       .debug,
       category: "ui.video.playerView",
       message: "NiceAVPlayer will end fullscreen",
-      metadata: AVPlayerRepresentable.playerViewMetadata(player: player, view: view, extra: ["autoPlay": "\(autoPlayVideos)", "gone": "\(gone)", "showsPlaybackControls": "\(showsPlaybackControls)", "isPlaying": "\(isPlaying)"])
+      metadata: diagnosticsMetadata(extra: ["isPlaying": isPlaying ? "true" : "false"])
     )
     coordinator.animate(alongsideTransition: nil) { [weak self] context in
       guard let self = self else { return }

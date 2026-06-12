@@ -75,9 +75,6 @@ struct PostLinkCompact: View, Equatable, Identifiable {
       if defSettings.readOnScroll {
         await post.toggleSeen(true, optimistic: true)
       }
-      if defSettings.hideOnRead {
-        await post.hide(true)
-      }
     }
   }
   
@@ -87,7 +84,7 @@ struct PostLinkCompact: View, Equatable, Identifiable {
   func mediaComponentCall(showURLInstead: Bool = false) -> some View {
     if let data = post.data, let extractedMedia = post.winstonData?.extractedMedia {
       MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, showURLInstead: showURLInstead, media: extractedMedia, over18: over18, compact: true, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post:\(id):\(String(data.title.prefix(80)))")
-        .allowsHitTesting(defSettings.isMediaTappable)
+        .allowsHitTesting(defSettings.isMediaTappable || extractedMedia.alwaysAllowsInlineNavigation)
     }
   }
   
@@ -105,8 +102,16 @@ struct PostLinkCompact: View, Equatable, Identifiable {
     if let extractedMedia = post.winstonData?.extractedMedia {
       if case .repost(let repost) = extractedMedia, let repostData = repost.data, let url = URL(string: "https://reddit.com/r/\(repostData.subreddit)/comments/\(repost.id)") {
         PreviewLink(url: url, compact: true, previewModel: PreviewModel.get(url, compact: true))
+          .onAppear {
+            recordEmbeddedPostEvent(message: "Rendering compact crosspost preview", repost: repost, url: url.absoluteString)
+          }
       } else {
         mediaComponentCall()
+          .onAppear {
+            if case .repost(let repost) = extractedMedia {
+              recordEmbeddedPostEvent(message: "Compact crosspost preview missing URL data", repost: repost, url: "nil", level: .warning)
+            }
+          }
       }
     } else if defSettings.compactMode.showPlaceholderThumbnail {
       PostLinkCompactThumbPlaceholder(theme: theme.theme.compactSelftextPostLinkPlaceholderImg).equatable()
@@ -129,6 +134,9 @@ struct PostLinkCompact: View, Equatable, Identifiable {
               if let extractedMedia = post.winstonData?.extractedMedia {
                 if case .repost(let repost) = extractedMedia, let repostData = repost.data, let url = URL(string: "https://reddit.com/r/\(repostData.subreddit)/comments/\(repost.id)") {
                   OnlyURL(url: url)
+                    .onAppear {
+                      recordEmbeddedPostEvent(message: "Rendering compact crosspost URL", repost: repost, url: url.absoluteString)
+                    }
                 }
                 mediaComponentCall(showURLInstead: true)
               }
@@ -154,9 +162,28 @@ struct PostLinkCompact: View, Equatable, Identifiable {
         .frame(maxWidth: .infinity, alignment: .topLeading)
         
       }
-      .postLinkStyle(showSubBottom: showSub && theme.theme.badge.avatar.visible, post: post, sub: sub, theme: theme, size: winstonData.postDimensions.size, secondary: secondary, openPost: openPost, readPostOnScroll: defSettings.readOnScroll, hideReadPosts: defSettings.hideOnRead)
+      .postLinkStyle(showSubBottom: showSub && theme.theme.badge.avatar.visible, post: post, sub: sub, theme: theme, size: winstonData.postDimensions.size, secondary: secondary, openPost: openPost, readPostOnScroll: defSettings.readOnScroll)
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post)
 //      .frame(width: winstonData.postDimensions.size.width, height: winstonData.postDimensions.size.height)
     }
+  }
+
+  func recordEmbeddedPostEvent(message: String, repost: Post, url: String, level: DiagnosticLevel = .debug) {
+    AppDiagnostics.asyncRecord(
+      level,
+      category: "ui.embeddedPost",
+      message: message,
+      metadata: [
+        "parentID": id,
+        "parentTitle": post.data?.title ?? "nil",
+        "repostID": repost.id,
+        "repostFullname": repost.data?.name ?? "nil",
+        "repostTitle": repost.data?.title ?? "nil",
+        "repostSubreddit": repost.data?.subreddit ?? "nil",
+        "url": url,
+        "contentWidth": "\(contentWidth)",
+        "secondary": "\(secondary)"
+      ]
+    )
   }
 }

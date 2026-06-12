@@ -60,9 +60,10 @@ struct PostLink: View, Equatable, Identifiable {
 }
 
 extension View {
-  func postLinkStyle(showSubBottom: Bool = false, post: Post, sub: Subreddit, theme: SubPostsListTheme, size: CGSize, secondary: Bool, openPost: @escaping () -> (), readPostOnScroll: Bool, hideReadPosts: Bool) -> some View {
+  func postLinkStyle(showSubBottom: Bool = false, post: Post, sub: Subreddit, theme: SubPostsListTheme, size: CGSize, secondary: Bool, openPost: @escaping () -> (), readPostOnScroll: Bool) -> some View {
     let seen = (post.data?.winstonSeen ?? false)
     let fadeReadPosts = theme.theme.unseenType == .fade
+    let readOpacity = fadeReadPosts ? theme.theme.unseenFadeOpacity : 0.68
     return self
       .padding(EdgeInsets(top: theme.theme.innerPadding.vertical, leading: theme.theme.innerPadding.horizontal, bottom: theme.theme.innerPadding.vertical, trailing: theme.theme.innerPadding.horizontal))
       .background(PostLinkBG(theme: theme, stickied: post.data?.stickied, secondary: secondary).equatable())
@@ -70,7 +71,8 @@ extension View {
       .contentShape(Rectangle())
       .compositingGroup()
 //      .brightness(isOpen.wrappedValue ? 0.075 : 0)
-      .opacity(fadeReadPosts && seen ? theme.theme.unseenFadeOpacity : 1)
+      .saturation(seen ? 0.45 : 1)
+      .opacity(seen ? readOpacity : 1)
       .contextMenu(menuItems: { PostLinkContext(post: post) }, preview: { PostLinkContextPreview(post: post, sub: sub) })
       .foregroundStyle(.primary)
       .multilineTextAlignment(.leading)
@@ -78,9 +80,6 @@ extension View {
         Task(priority: .background) {
           if readPostOnScroll {
             await post.toggleSeen(true, optimistic: true)
-          }
-          if hideReadPosts {
-            await post.hide(true)
           }
         }
       }
@@ -154,6 +153,5 @@ struct PostLinkBG: View, Equatable {
     .mask(RR(theme.theme.cornerRadius, Color.black).equatable())
   }
 }
-
 
 
