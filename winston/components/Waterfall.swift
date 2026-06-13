@@ -207,11 +207,59 @@ extension Waterfall {
     func collectionView(_ collectionView: UICollectionView, willDisplay cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
       let cell = cell as! HostedCollectionViewCell
       cell.attach(to: self.viewController!)
+      // Elect the centered video on initial load too (not just after a scroll).
+      DispatchQueue.main.throttle(interval: 0.15, context: "inlineVideoActiveWaterfall") { [weak self] in
+        self?.updateActiveInlineVideo(collectionView)
+      }
     }
     
     func collectionView(_ collectionView: UICollectionView, didEndDisplaying cell: UICollectionViewCell, forItemAt indexPath: IndexPath) {
       let cell = cell as! HostedCollectionViewCell
       cell.detach()
+    }
+
+    // MARK: - Inline video coordination (single active video + pause while scrolling)
+
+    func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+      InlineVideoCoordinator.shared.setScrolling(true)
+    }
+
+    func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+      if !decelerate {
+        InlineVideoCoordinator.shared.setScrolling(false)
+        updateActiveInlineVideo(scrollView)
+      }
+    }
+
+    func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+      InlineVideoCoordinator.shared.setScrolling(false)
+      updateActiveInlineVideo(scrollView)
+    }
+
+    func scrollViewDidScroll(_ scrollView: UIScrollView) {
+      DispatchQueue.main.throttle(interval: 0.1, context: "inlineVideoActiveWaterfall") { [weak self] in
+        self?.updateActiveInlineVideo(scrollView)
+      }
+    }
+
+    /// Elect the inline-video cell nearest the viewport center (matching the iOS feed),
+    /// or clear if none are visible.
+    private func updateActiveInlineVideo(_ scrollView: UIScrollView) {
+      guard let collectionView = viewController?.collectionView else { return }
+      let center = scrollView.contentOffset.y + scrollView.bounds.height / 2
+      var bestKey: String? = nil
+      var bestDistance = CGFloat.greatestFiniteMagnitude
+      for indexPath in collectionView.indexPathsForVisibleItems {
+        let data = self.view.collections[indexPath.section][indexPath.item]
+        guard let post = data as? Post, post.winstonData?.extractedMedia?.isInlineVideo == true else { continue }
+        guard let attributes = collectionView.layoutAttributesForItem(at: indexPath) else { continue }
+        let distance = abs(attributes.center.y - center)
+        if distance < bestDistance {
+          bestDistance = distance
+          bestKey = post.id
+        }
+      }
+      InlineVideoCoordinator.shared.setActive(bestKey)
     }
     
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {

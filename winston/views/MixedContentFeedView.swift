@@ -24,9 +24,18 @@ struct MixedContentFeedView: View {
   @State private var dataTypeFilter: String = "" // Handles filtering for only posts or only comments.
   
   @Binding var reachedEndOfFeed: Bool
-  
+
 //  @Environment(\.colorScheme) private var cs
-  
+
+  /// The inline-video gating key (post id) for a row, or nil if the row has no inline
+  /// video. Matches the feedItemKey that PostLink threads into VideoPlayerPost.
+  private func inlineVideoKey(for item: Either<Post, Comment>) -> String? {
+    if case .first(let post) = item, post.winstonData?.extractedMedia?.isInlineVideo == true {
+      return post.id
+    }
+    return nil
+  }
+
   func updateContentsCalcs(_ newTheme: WinstonTheme) {
     Task(priority: .background) {
       mixedMediaLinks.forEach {
@@ -50,7 +59,9 @@ struct MixedContentFeedView: View {
     List {
       Section {
         ForEach(Array(mixedMediaLinks.enumerated()), id: \.element.stableMixedContentID) { i, item in
+          let inlineVideoKey = inlineVideoKey(for: item)
           MixedContentLink(content: item, theme: postLinksTheme)
+          .trackInlineVideoCenter(key: inlineVideoKey ?? "", coordinateSpace: "mixedFeed", enabled: inlineVideoKey != nil)
           .listRowInsets(EdgeInsets(top: paddingV, leading: paddingH, bottom: paddingV, trailing: paddingH))
           .onAppear {
             if !reachedEndOfFeed && mixedMediaLinks.count > 0 && (Int(Double(mixedMediaLinks.count) * 0.75) == i) {
@@ -81,6 +92,7 @@ struct MixedContentFeedView: View {
     .scrollContentBackground(.hidden)
     .scrollIndicators(.never)
     .listStyle(.plain)
+    .driveInlineVideoCoordinator(coordinateSpace: "mixedFeed")
   }
 }
 

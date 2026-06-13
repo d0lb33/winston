@@ -16,6 +16,8 @@ extension View {
           switch parsed {
           case .post(let postID, let subID):
             Nav.fullTo(.posts, .reddit(.post(Post(id: postID, subID: subID))))
+          case .comment(let commentID, let postID, let subID):
+            Nav.fullTo(.posts, .reddit(.postHighlighted(Post(id: postID, subID: subID), commentID)))
           case .subreddit(let name):
             Nav.fullTo(.posts, .reddit(.subFeed(Subreddit(id: name))))
           case .user(let username):

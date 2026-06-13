@@ -64,23 +64,25 @@ extension Post {
       
       var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
       var extractedMediaForcedNormal = compact ? mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme) : extractedMedia
-      AppDiagnostics.asyncRecord(
-        .debug,
-        category: "ui.media.setup",
-        message: "Post media setup extracted",
-        metadata: [
-          "post": data.name,
-          "title": data.title,
-          "subreddit": data.subreddit,
-          "compact": "\(compact)",
-          "contentWidth": "\(contentWidth)",
-          "media": Post.diagnosticsMediaKind(extractedMedia),
-          "forcedNormalMedia": Post.diagnosticsMediaKind(extractedMediaForcedNormal),
-          "postHint": data.post_hint ?? "nil",
-          "domain": data.domain,
-          "url": data.url
-        ]
-      )
+      if AppDiagnostics.isEnabled(.debug, category: "ui.media.setup") {
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.media.setup",
+          message: "Post media setup extracted",
+          metadata: [
+            "post": data.name,
+            "title": data.title,
+            "subreddit": data.subreddit,
+            "compact": "\(compact)",
+            "contentWidth": "\(contentWidth)",
+            "media": Post.diagnosticsMediaKind(extractedMedia),
+            "forcedNormalMedia": Post.diagnosticsMediaKind(extractedMediaForcedNormal),
+            "postHint": data.post_hint ?? "nil",
+            "domain": data.domain,
+            "url": data.url
+          ]
+        )
+      }
       
       switch extractedMedia {
       case .streamable(let streamable):

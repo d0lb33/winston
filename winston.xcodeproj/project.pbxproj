@@ -467,6 +467,7 @@
 		ECF064EF2A80383C0088C2C0 /* MathCGSize.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF064EE2A80383C0088C2C0 /* MathCGSize.swift */; };
 		ECF0B7DD2A53DD5C002B9FAD /* ImageMediaPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF0B7DC2A53DD5C002B9FAD /* ImageMediaPost.swift */; };
 		ECF0B7DF2A53DD82002B9FAD /* VideoPlayerPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF0B7DE2A53DD82002B9FAD /* VideoPlayerPost.swift */; };
+		AA01CE0D2C01000000000001 /* InlineVideoCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01CE0D2C01000000000002 /* InlineVideoCoordinator.swift */; };
 		ECF0B7E12A53DE17002B9FAD /* ShortCommentPostLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF0B7E02A53DE17002B9FAD /* ShortCommentPostLink.swift */; };
 		ECF0B7E72A54357F002B9FAD /* StringToMD.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF0B7E62A54357F002B9FAD /* StringToMD.swift */; };
 		ECF1478D2AB61AE100572352 /* LabeledMultiline.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF1478C2AB61AE100572352 /* LabeledMultiline.swift */; };
@@ -958,6 +959,7 @@
 		ECF064EE2A80383C0088C2C0 /* MathCGSize.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MathCGSize.swift; sourceTree = "<group>"; };
 		ECF0B7DC2A53DD5C002B9FAD /* ImageMediaPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImageMediaPost.swift; sourceTree = "<group>"; };
 		ECF0B7DE2A53DD82002B9FAD /* VideoPlayerPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerPost.swift; sourceTree = "<group>"; };
+		AA01CE0D2C01000000000002 /* InlineVideoCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InlineVideoCoordinator.swift; sourceTree = "<group>"; };
 		ECF0B7E02A53DE17002B9FAD /* ShortCommentPostLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortCommentPostLink.swift; sourceTree = "<group>"; };
 		ECF0B7E62A54357F002B9FAD /* StringToMD.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringToMD.swift; sourceTree = "<group>"; };
 		ECF1478C2AB61AE100572352 /* LabeledMultiline.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabeledMultiline.swift; sourceTree = "<group>"; };
@@ -1266,6 +1268,7 @@
 				ECAEFF5D2A77A03E0052FCD3 /* RedditMediaPost.swift */,
 				ECAA8B882A764A3C00D9D636 /* YTMediaPost.swift */,
 				ECF0B7DE2A53DD82002B9FAD /* VideoPlayerPost.swift */,
+				AA01CE0D2C01000000000002 /* InlineVideoCoordinator.swift */,
 				EC31882A2A94439D00CB3738 /* mediaExtractor.swift */,
 				EC31882C2A94736E00CB3738 /* MediaPresenter.swift */,
 				BB978B442B4FA4A500BE90D1 /* ImageView.swift */,
@@ -2497,6 +2500,7 @@
 				EC200C862A7795B500E69543 /* PostReplies.swift in Sources */,
 				EC3AC9ED2AB3913E0078EC78 /* resetter.swift in Sources */,
 				ECF0B7DF2A53DD82002B9FAD /* VideoPlayerPost.swift in Sources */,
+				AA01CE0D2C01000000000001 /* InlineVideoCoordinator.swift in Sources */,
 				659FDEA82A87798300103414 /* VoteButton.swift in Sources */,
 				EC0854172A4BF45C00E88389 /* Comment.swift in Sources */,
 				ABC2180F2ABA528D00F0DABA /* Biometrics.swift in Sources */,

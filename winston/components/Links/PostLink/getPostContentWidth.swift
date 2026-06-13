@@ -61,6 +61,7 @@ struct PostDimensions: Hashable, Equatable {
 }
 
 func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWidth: Double = .screenW, secondary: Bool = false, rawTheme: WinstonTheme? = nil, compact: Bool? = nil, subId: String? = nil) -> PostDimensions {
+  ScrollPerfProbe.shared.bump("dimensions")
   if let data = post.data {
     let selectedTheme = rawTheme ?? getEnabledTheme()
     let postLinkDefSettings = Defaults[.PostLinkDefSettings]

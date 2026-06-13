@@ -748,7 +748,7 @@
     "Clean" : {
 
     },
-    "Clear Diagnostic Logs" : {
+    "Clear Diagnostic Logs and Network Console" : {
 
     },
     "Clear diagnostic logs?" : {
@@ -1190,6 +1190,9 @@
       }
     },
     "Done" : {
+
+    },
+    "Download" : {
 
     },
     "Drag Left" : {
@@ -3835,6 +3838,9 @@
         }
       }
     },
+    "Theme Store" : {
+
+    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3900,7 +3906,13 @@
         }
       }
     },
+    "There was an error importing this theme" : {
+
+    },
     "This clears GraphQL account records and stored sessions. It does not reset themes or general preferences." : {
+
+    },
+    "This clears recent events, persisted diagnostic logs, and the Network Console." : {
 
     },
     "This is not working yet :(" : {

@@ -47,12 +47,20 @@ struct URLImage: View, Equatable {
   }
   
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("imageViewBody")
     if url.pathExtension.lowercased() == "gif" {
       LazyImage(url: url) { state in
         let phase = imagePhase(hasImage: state.imageContainer?.data != nil || state.image != nil, error: state.error)
         Group {
           if let imageData = state.imageContainer?.data {
-            GIFImage(data: imageData, size: size)
+            ScrubbableGIFImage(
+              data: imageData,
+              url: url,
+              contentMode: .scaleAspectFill,
+              requestedProgress: nil,
+              playbackState: .constant(nil),
+              isScrubbing: .constant(false)
+            )
               .scaledToFill()
           } else if let image = state.image {
             image
@@ -168,7 +176,7 @@ struct URLImage: View, Equatable {
         .onAppear { beginImageLoad(source: "request") }
         .onDisappear { endImageLoad() }
         .id("\(requestIdentity)-\(retryID)")
-        .onChange(of: requestIdentity) { _ in
+        .onChange(of: requestIdentity) {
           recordImageEvent(.debug, message: "Image request identity changed", source: "request-change", phase: "identity-change")
           retryCount = 0
           loadCompleted = false
@@ -229,7 +237,7 @@ struct URLImage: View, Equatable {
         .onAppear { beginImageLoad(source: "url") }
         .onDisappear { endImageLoad() }
         .id("\(requestIdentity)-\(retryID)")
-        .onChange(of: requestIdentity) { _ in
+        .onChange(of: requestIdentity) {
           recordImageEvent(.debug, message: "Image request identity changed", source: "url-change", phase: "identity-change")
           retryCount = 0
           loadCompleted = false

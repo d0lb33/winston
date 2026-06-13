@@ -35,7 +35,7 @@ struct SubredditPostsIOS: View, Equatable {
   
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
   @Default(.SubredditFeedDefSettings) private var feedDefSettings
-    
+
   @Environment(\.contentWidth) private var contentWidth
   
   func loadMorePosts() {
@@ -84,6 +84,7 @@ struct SubredditPostsIOS: View, Equatable {
         ForEach(Array(posts.enumerated()), id: \.self.element.id) { i, post in
           if let sub = subreddit ?? post.winstonData?.subreddit, let winstonData = post.winstonData {
             PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[styleKey], postStyleOverride: feedDefSettings.postStylePerSubreddit[styleKey], contentWidth: contentWidth, defSettings: postLinkDefSettings)
+            .equatable()
             .environmentObject(sub)
             .environmentObject(post)
             .environmentObject(winstonData)
@@ -92,6 +93,7 @@ struct SubredditPostsIOS: View, Equatable {
                 loadMorePosts()
               }
             }
+            .trackInlineVideoCenter(key: post.id, coordinateSpace: "subredditFeed", enabled: winstonData.extractedMedia?.isInlineVideo == true)
             .listRowInsets(EdgeInsets(top: paddingV, leading: paddingH, bottom: paddingV, trailing: paddingH))
           }
           
@@ -151,6 +153,7 @@ struct SubredditPostsIOS: View, Equatable {
     .listStyle(.plain)
     .listRowSeparator(.hidden)
     .listSectionSeparator(.hidden)
+    .driveInlineVideoCoordinator(coordinateSpace: "subredditFeed")
     .floatingMenu(subId: styleKey, filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
   }
 }

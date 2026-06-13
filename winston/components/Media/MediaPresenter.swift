@@ -37,7 +37,7 @@ struct OnlyURL: View {
 
 struct MediaPresenter: View, Equatable {
   static func == (lhs: MediaPresenter, rhs: MediaPresenter) -> Bool {
-    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext
+    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
   }
   
   @Binding var postDimensions: PostDimensions
@@ -56,7 +56,10 @@ struct MediaPresenter: View, Equatable {
   let maxMediaHeightScreenPercentage: CGFloat
   let resetVideo: ((SharedVideo) -> ())?
   var diagnosticContext: String? = nil
-  
+  /// Stable feed-item key (post id) used to gate inline video autoplay so only the
+  /// centered video plays. nil when not presented in a gated feed (preserves old behavior).
+  var feedItemKey: String? = nil
+
   var body: some View {
     switch media {
     case .imgs(let imgsExtracted):
@@ -72,7 +75,7 @@ struct MediaPresenter: View, Equatable {
       }
     case .video(let sharedVideo):
       if !showURLInstead {
-        VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext)
+        VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext, feedItemKey: feedItemKey)
           .nsfw(over18 && blurPostLinkNSFW, smallIcon: compact, size: postDimensions.mediaSize)
       }
       

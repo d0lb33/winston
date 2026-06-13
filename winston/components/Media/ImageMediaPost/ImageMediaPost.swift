@@ -101,10 +101,15 @@ private struct ImageMediaSinglePreview: View {
     compact ? scaledCompactModeThumbSize(compact: compact) : max(contentWidth, 1)
   }
 
-  private var height: CGFloat? {
+  private var height: CGFloat {
     if compact { return scaledCompactModeThumbSize(compact: compact) }
-    guard image.size.width > 0, image.size.height > 0 else { return nil }
-    let proportionalHeight = (max(contentWidth, 1) * image.size.height) / image.size.width
+    let availableWidth = max(contentWidth, 1)
+    guard image.size.width > 0, image.size.height > 0 else {
+      let configuredMaxHeight = (maxMediaHeightScreenPercentage / 100) * .screenH
+      let maxHeight = maxMediaHeightScreenPercentage == 110 || configuredMaxHeight <= 0 ? availableWidth : configuredMaxHeight
+      return min(maxHeight, availableWidth)
+    }
+    let proportionalHeight = (availableWidth * image.size.height) / image.size.width
     guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
     return min((maxMediaHeightScreenPercentage / 100) * .screenH, proportionalHeight)
   }
@@ -112,11 +117,11 @@ private struct ImageMediaSinglePreview: View {
   var body: some View {
     GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: image.url, imgRequest: image.request, diagnosticContext: diagnosticContext)
       .background(
-        height == nil && !compact
+        !compact
         ? GeometryReader { geo in
           Color.clear
             .onAppear { postDimensions.mediaSize = geo.size }
-            .onChange(of: geo.size) { postDimensions.mediaSize = $0 }
+            .onChange(of: geo.size) { _, newSize in postDimensions.mediaSize = newSize }
         }
         : nil
       )

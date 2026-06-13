@@ -56,6 +56,13 @@ final class AppDiagnostics: ObservableObject {
     }
   }
 
+  /// Cheap, side-effect-free check for whether a log at this level/category would be kept.
+  /// Use this to gate construction of expensive metadata on hot paths (e.g. during scroll)
+  /// so we don't build dictionaries that `asyncRecord` would only discard.
+  nonisolated static func isEnabled(_ level: DiagnosticLevel, category: String) -> Bool {
+    shouldRecord(level, category: category)
+  }
+
   nonisolated static func asyncBreadcrumb(_ message: String, metadata: [String: String] = [:]) {
     Task { @MainActor in
       AppDiagnostics.shared.breadcrumb(message, metadata: metadata)
@@ -167,7 +174,12 @@ final class AppDiagnostics: ObservableObject {
       entries.removeFirst(entries.count - 300)
     }
     appendToLog(entry)
-    mirrorToPulse(entry)
+    // High-frequency perf entries stay in the JSONL only; mirroring each one into the
+    // Pulse store on the main thread adds lock/IO contention that would distort the very
+    // hitch measurements they carry.
+    if entry.category != "perf.hitch" {
+      mirrorToPulse(entry)
+    }
   }
 
   /// Mirror app events into the Pulse store so the Network Console shows app
@@ -198,8 +210,8 @@ final class AppDiagnostics: ObservableObject {
     flushPendingLogWrites()
     try? FileManager.default.removeItem(at: currentLogURL)
     try? FileManager.default.removeItem(at: previousLogURL)
+    LoggerStore.shared.removeAll()
     entries.removeAll()
-    record(.info, category: "diagnostics", message: "Diagnostics logs cleared")
   }
 
   func exportBundle() async -> URL? {

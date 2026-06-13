@@ -98,7 +98,7 @@ struct DiagnosticsPanel: View {
         WListButton {
           showClearAlert = true
         } label: {
-          Label("Clear Diagnostic Logs", systemImage: "trash")
+          Label("Clear Diagnostic Logs and Network Console", systemImage: "trash")
             .foregroundStyle(.red)
         }
       }
@@ -145,6 +145,8 @@ struct DiagnosticsPanel: View {
         diagnostics.clearLogs()
       }
       Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This clears recent events, persisted diagnostic logs, and the Network Console.")
     }
     .alert("Reset GraphQL account state?", isPresented: $showResetGraphQLAlert) {
       Button("Reset", role: .destructive) {

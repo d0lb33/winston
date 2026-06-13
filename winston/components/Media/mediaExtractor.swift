@@ -96,6 +96,17 @@ extension MediaExtractedType {
       return false
     }
   }
+
+  /// True for inline AVPlayer-backed media that participates in single-active-video
+  /// scroll gating. (.streamable resolves to .video once its URL is fetched.)
+  var isInlineVideo: Bool {
+    switch self {
+    case .video, .streamable:
+      return true
+    default:
+      return false
+    }
+  }
 }
 
 func isDirectMediaURL(_ rawURL: URL) -> Bool {
@@ -142,6 +153,7 @@ func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = .scre
 
 // ORDER MATTERS!
 func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
+  ScrollPerfProbe.shared.bump("mediaExtract")
   guard !data.is_self else { return nil }
 
   let contentWidth = contentWidth - ((theme?.postLinks.theme.innerPadding.horizontal ?? 0) * 2) - ((theme?.postLinks.theme.outerHPadding ?? 0) * 2)

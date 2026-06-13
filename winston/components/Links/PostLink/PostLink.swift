@@ -44,8 +44,9 @@ struct PostLink: View, Equatable, Identifiable {
   }
 
   var body: some View {
+    ScrollPerfProbe.shared.bump("cellBody")
     let style = defSettings.resolvedPostStyle(styleOverride: postStyleOverride, compactOverride: compactPerSubreddit)
-    Group {
+    return Group {
       switch style {
       case .compact:
         PostLinkCompact(
@@ -190,16 +191,11 @@ struct LiquidGlassCardBackground: View {
     let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
 
     ZStack {
-      if #available(iOS 26.0, *) {
-        shape
-          .fill(fillColor.opacity(0.36))
-          .glassEffect(.regular, in: shape)
-      } else {
-        shape
-          .fill(.ultraThinMaterial)
-        shape
-          .fill(fillColor.opacity(0.78))
-      }
+      // Static translucent fill instead of a live glass/material backdrop blur.
+      // The blur (.glassEffect / .ultraThinMaterial) was the dominant per-frame GPU
+      // cost while scrolling a card feed; a flat fill blends for free.
+      shape
+        .fill(fillColor.opacity(0.85))
 
       shape
         .stroke(.white.opacity(0.18), lineWidth: 0.7)

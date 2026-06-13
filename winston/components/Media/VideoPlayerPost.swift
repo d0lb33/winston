@@ -6,17 +6,40 @@ import AVFoundation
 import Combine
 import Nuke
 
-struct SharedVideo: Equatable {
+final class SharedVideo: Equatable {
   static func == (lhs: SharedVideo, rhs: SharedVideo) -> Bool {
     lhs.url == rhs.url && lhs.downloadURL == rhs.downloadURL && lhs.posterURL == rhs.posterURL && lhs.size == rhs.size
   }
-  
-  var player: AVPlayer
-  var url: URL
-  var downloadURL: URL?
-  var posterURL: URL?
-  var size: CGSize
-  
+
+  let url: URL
+  let downloadURL: URL?
+  let posterURL: URL?
+  let size: CGSize
+
+  // The AVPlayer (and its expensive CoreMedia/MediaToolbox HLS asset loading) is created
+  // lazily on first access. Only a video that actually needs to play pays for it, so a feed
+  // full of video posts no longer spins up dozens of AVPlayerItems demuxing at once — the
+  // CoreMedia lock contention that stalled the main thread during scroll.
+  private var _player: AVPlayer?
+  var player: AVPlayer {
+    if let existing = _player { return existing }
+    let newPlayer = ScrollPerfProbe.shared.measure("avPlayerCreate") { AVPlayer(url: url) }
+    newPlayer.volume = 0.0
+    _player = newPlayer
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.cache") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.cache",
+        message: "SharedVideo created AVPlayer (lazy)",
+        metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL))
+      )
+    }
+    return newPlayer
+  }
+
+  /// Whether the AVPlayer has been created yet (i.e. this video has been mounted to play).
+  var isPlayerLoaded: Bool { _player != nil }
+
   static func get(url: URL, size: CGSize, downloadURL: URL? = nil, posterURL: URL? = nil, resetCache: Bool = false) -> SharedVideo {
     let cacheKey =  SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
     
@@ -31,23 +54,27 @@ struct SharedVideo: Equatable {
     }
     
     if let sharedVideo = Caches.videos.get(key: cacheKey) {
-      AppDiagnostics.asyncRecord(
-        .debug,
-        category: "ui.video.cache",
-        message: "SharedVideo cache hit",
-        metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: cacheKey)
-      )
+      if AppDiagnostics.isEnabled(.debug, category: "ui.video.cache") {
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.video.cache",
+          message: "SharedVideo cache hit",
+          metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: cacheKey)
+        )
+      }
       return sharedVideo
     } else {
       let sharedVideo = SharedVideo(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
       Caches.videos.addKeyValue(key: cacheKey, data: { sharedVideo }, expires: Date().dateByAdding(1, .day).date)
-      AppDiagnostics.asyncRecord(
-        .debug,
-        category: "ui.video.cache",
-        message: "SharedVideo cache miss",
-        metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: cacheKey)
-      )
-      
+      if AppDiagnostics.isEnabled(.debug, category: "ui.video.cache") {
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.video.cache",
+          message: "SharedVideo cache miss",
+          metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: cacheKey)
+        )
+      }
+
       return sharedVideo
     }
   }
@@ -71,21 +98,12 @@ struct SharedVideo: Equatable {
     self.downloadURL = downloadURL
     self.posterURL = posterURL
     self.size = size
-    let newPlayer = AVPlayer(url: url)
-    newPlayer.volume = 0.0
-    self.player = newPlayer
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.cache",
-      message: "SharedVideo initialized AVPlayer",
-      metadata: SharedVideo.cacheDiagnosticsMetadata(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL, cacheKey: SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL))
-    )
   }
 }
 
 struct VideoPlayerPost: View, Equatable {
   static func == (lhs: VideoPlayerPost, rhs: VideoPlayerPost) -> Bool {
-    lhs.url == rhs.url && lhs.sharedVideo == rhs.sharedVideo && lhs.diagnosticContext == rhs.diagnosticContext
+    lhs.url == rhs.url && lhs.sharedVideo == rhs.sharedVideo && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
   }
   
   weak var controller: UIViewController?
@@ -98,6 +116,7 @@ struct VideoPlayerPost: View, Equatable {
   let resetVideo: ((SharedVideo) -> ())?
   var maxMediaHeightScreenPercentage: CGFloat
   var diagnosticContext: String? = nil
+  var feedItemKey: String? = nil
   @State private var firstFullscreen = false
   @State private var fullscreen = false
   @State private var preparedInlineVideoKey: String?
@@ -116,8 +135,27 @@ struct VideoPlayerPost: View, Equatable {
   private var loopVideos: Bool { videoDefSettings.loop }
   private var muteVideos: Bool { videoDefSettings.mute }
   private var pauseBackgroundAudioOnFullscreen: Bool { videoDefSettings.pauseBGAudioOnFullscreen }
-  
-  init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil) {
+
+  /// Whether this inline player should be actively playing right now. In a gated feed
+  /// (feedItemKey != nil) only the single centered video plays, and nothing plays while
+  /// scrolling. Outside a gated feed (feedItemKey == nil — e.g. post detail, comments)
+  /// behavior is unchanged: autoplay setting alone decides.
+  private var shouldPlayInline: Bool {
+    guard autoPlayVideos, !fullscreen else { return false }
+    guard let feedItemKey else { return true }
+    let coordinator = InlineVideoCoordinator.shared
+    return !coordinator.isScrolling && coordinator.isActive(feedItemKey)
+  }
+
+  /// Whether to mount the live AVPlayer layer at all. Off-center feed videos render only
+  /// their poster — never instantiating an AVPlayer — so a video-heavy feed no longer
+  /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
+  /// video, the fullscreen one, and non-feed usages mount as before.
+  private var shouldMountPlayer: Bool {
+    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey)
+  }
+
+  init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil, feedItemKey: String? = nil) {
     self.controller = controller
     self.sharedVideo = cachedVideo
     self.markAsSeen = markAsSeen
@@ -128,12 +166,14 @@ struct VideoPlayerPost: View, Equatable {
     self.resetVideo = resetVideo
     self.maxMediaHeightScreenPercentage = maxMediaHeightScreenPercentage
     self.diagnosticContext = diagnosticContext
+    self.feedItemKey = feedItemKey
   }
   
   var safe: Double { getSafeArea().top + getSafeArea().bottom }
   
   
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("videoBody")
     let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * (.screenH)
     let sourceWidth = size.width
     let sourceHeight = size.height
@@ -142,12 +182,14 @@ struct VideoPlayerPost: View, Equatable {
     
     if let sharedVideo = sharedVideo {
       let videoSize = CGSize(width: compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth, height: compact ? scaledCompactModeThumbSize(compact: compact) : CGFloat(finalHeight))
-      let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio })
       if let controller = controller {
         ZStack {
-          AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
-            .allowsHitTesting(false)
-            .id(inlineVideoRefreshID)
+          inlineVideoPlaceholder()
+          if shouldMountPlayer {
+            AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
+              .allowsHitTesting(false)
+              .id(inlineVideoRefreshID)
+          }
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
         }
@@ -171,21 +213,28 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
+        .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
+        .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "controller"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
-          handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
+          handleFullscreenChange(val, sharedVideo: sharedVideo)
         }
         .fullScreenCover(isPresented: $fullscreen) {
           FullScreenVP(sharedVideo: sharedVideo)
         }
       } else {
         ZStack {
-          
+          inlineVideoPlaceholder()
+
           Group {
-            if !fullscreen {
+            if shouldMountPlayer && !fullscreen {
               InlineAVPlayerLayerRepresentable(player: sharedVideo.player, videoGravity: .resizeAspectFill)
                 .id(inlineVideoRefreshID)
             } else {
@@ -232,17 +281,39 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
+        .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
+        .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
-          handleFullscreenChange(val, sharedVideo: sharedVideo, hasAudio: hasAudio)
+          handleFullscreenChange(val, sharedVideo: sharedVideo)
         }
         .fullScreenCover(isPresented: $fullscreen) {
           FullScreenVP(sharedVideo: sharedVideo)
         }
       }
+    }
+  }
+
+  /// Neutral backdrop shown behind the poster for videos that aren't mounted (off-center
+  /// in the feed). Prevents a blank gap when a video post has no/poster fails to load,
+  /// without instantiating an AVPlayer.
+  @ViewBuilder
+  func inlineVideoPlaceholder() -> some View {
+    if !shouldMountPlayer {
+      RR(12, Color.primary.opacity(0.06))
+        .overlay(
+          Image(systemName: "play.circle.fill")
+            .fontSize(30)
+            .foregroundStyle(.white.opacity(0.45))
+        )
+        .allowsHitTesting(false)
     }
   }
 
@@ -317,7 +388,6 @@ struct VideoPlayerPost: View, Equatable {
   func prepareForInlineDisplay(_ sharedVideo: SharedVideo) {
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
     recordVideoEvent(.debug, message: "Preparing inline video", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
-    sharedVideo.player.isMuted = muteVideos
     if activeInlineVideoKey != cacheKey {
       activeInlineVideoKey = cacheKey
       posterLoaded = false
@@ -325,18 +395,28 @@ struct VideoPlayerPost: View, Equatable {
       recordVideoEvent(.debug, message: "Inline video identity changed", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
     }
 
+    showInlinePoster = true
+    posterUnavailable = false
+
+    // Off-center feed videos are poster-only: do NOT touch sharedVideo.player here, since
+    // accessing it would create an AVPlayer (and load its HLS asset). Only the mounted
+    // video — active inline or fullscreen — sets up playback.
+    guard shouldMountPlayer else { return }
+
+    sharedVideo.player.isMuted = muteVideos
     if loopVideos {
       addObserver()
     }
-
     if (sharedVideo.player.status == .failed) {
       recordVideoEvent(.warning, message: "Inline video player failed before prepare", sharedVideo: sharedVideo)
       resetVideo?(sharedVideo)
     }
-
-    showInlinePoster = true
-    posterUnavailable = false
-    if autoPlayVideos {
+    // Cap forward buffering so the active video doesn't buffer aggressively.
+    // NOTE: do NOT call AVPlayer.preroll(atRate:) here — it raises
+    // NSInvalidArgumentException ("cannot service a preroll request") when the item
+    // isn't ready. The active video's play() buffers itself.
+    sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
+    if shouldPlayInline {
       sharedVideo.player.play()
       recordVideoEvent(.debug, message: "Inline autoplay requested", sharedVideo: sharedVideo)
       if sharedVideo.posterURL == nil || posterLoaded {
@@ -345,7 +425,23 @@ struct VideoPlayerPost: View, Equatable {
         recordVideoEvent(.debug, message: "Inline poster kept mounted waiting for poster load", sharedVideo: sharedVideo)
       }
     } else {
-      prepareInlinePlayback(sharedVideo)
+      sharedVideo.player.pause()
+    }
+  }
+
+  /// Re-evaluate playback against the current coordinator state. Called when the
+  /// active video or scrolling state changes. Pauses without re-showing the poster
+  /// on transient scroll (avoids flicker); the poster only returns on disappear.
+  func applyInlinePlaybackState(_ sharedVideo: SharedVideo) {
+    guard !fullscreen else { return }
+    if shouldPlayInline {
+      sharedVideo.player.play()
+      if sharedVideo.posterURL == nil || posterLoaded {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo)
+      }
+    } else if sharedVideo.isPlayerLoaded {
+      // Don't create a player just to pause it — only an already-mounted one needs pausing.
+      sharedVideo.player.pause()
     }
   }
 
@@ -416,7 +512,14 @@ struct VideoPlayerPost: View, Equatable {
   func handleInlineDisappear(_ sharedVideo: SharedVideo) {
     posterHideGeneration = UUID()
     removeObserver()
-    sharedVideo.player.pause()
+    if sharedVideo.isPlayerLoaded {
+      sharedVideo.player.pause()
+    }
+    // If the video that just scrolled off was the active one, drop it so a stale key
+    // doesn't keep an off-screen player "active". The feed re-elects the centered video.
+    if InlineVideoCoordinator.shared.isActive(feedItemKey) {
+      InlineVideoCoordinator.shared.setActive(nil)
+    }
   }
 
   func hideUnavailablePoster(reason: String, url: URL, sharedVideo: SharedVideo) {
@@ -445,6 +548,12 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   func refreshInlineVideoSurface(reason: String, sharedVideo: SharedVideo) {
+    // Recreating the AVPlayerLayer view (via the .id change below) is expensive. Skip it
+    // while scrolling — nothing plays during a scroll, and stalled posters on a fast
+    // media feed would otherwise thrash layer teardown/recreation every frame.
+    guard !InlineVideoCoordinator.shared.isScrolling else { return }
+    // Off-center videos have no mounted player to refresh; touching it would create one.
+    guard shouldMountPlayer else { return }
     inlineVideoRefreshID = UUID()
     if !autoPlayVideos && !fullscreen {
       sharedVideo.player.pause()
@@ -464,7 +573,9 @@ struct VideoPlayerPost: View, Equatable {
     )
   }
 
-  func handleFullscreenChange(_ val: Bool, sharedVideo: SharedVideo, hasAudio: Bool?) {
+  func handleFullscreenChange(_ val: Bool, sharedVideo: SharedVideo) {
+    // Player is mounted by the time fullscreen toggles, so this access is safe and cheap.
+    let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio })
     recordVideoEvent(.debug, message: "Fullscreen state changed", sharedVideo: sharedVideo, extra: ["fullscreen": "\(val)", "hasAudio": hasAudio.map { "\($0)" } ?? "nil"])
     if !firstFullscreen {
       firstFullscreen = true
@@ -502,7 +613,9 @@ struct VideoPlayerPost: View, Equatable {
         forName: .AVPlayerItemDidPlayToEndTime,
         object: sharedVideo.player.currentItem,
         queue: nil) { notif in
-          AppDiagnostics.asyncRecord(.debug, category: "ui.video", message: "AVPlayer item ended", metadata: ["cacheKeyHash": "\(cacheKey.hashValue)", "context": diagnosticContext ?? "nil"])
+          if AppDiagnostics.isEnabled(.debug, category: "ui.video") {
+            AppDiagnostics.asyncRecord(.debug, category: "ui.video", message: "AVPlayer item ended", metadata: ["cacheKeyHash": "\(cacheKey.hashValue)", "context": diagnosticContext ?? "nil"])
+          }
           Task(priority: .background) {
             sharedVideo.player.seek(to: .zero)
             sharedVideo.player.play()
@@ -532,34 +645,6 @@ struct VideoPlayerPost: View, Equatable {
     }
   }
   
-  func prepareInlinePlayback(_ sharedVideo: SharedVideo) {
-    let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
-    guard preparedInlineVideoKey != cacheKey else {
-      recordVideoEvent(.debug, message: "Inline playback already prepared", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
-      if posterUnavailable {
-        refreshInlineVideoSurface(reason: "already-prepared", sharedVideo: sharedVideo)
-      }
-      return
-    }
-    preparedInlineVideoKey = cacheKey
-    recordVideoEvent(.debug, message: "Preparing AVPlayer preroll", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
-    sharedVideo.player.isMuted = true
-    sharedVideo.player.automaticallyWaitsToMinimizeStalling = true
-    sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
-    let shouldPauseAfterPreroll = !autoPlayVideos && !fullscreen
-    sharedVideo.player.preroll(atRate: 1.0) { finished in
-      DispatchQueue.main.async {
-        recordVideoEvent(.debug, message: "AVPlayer preroll completed", sharedVideo: sharedVideo, extra: ["finished": "\(finished)", "shouldPauseAfterPreroll": "\(shouldPauseAfterPreroll)"])
-        if finished && shouldPauseAfterPreroll {
-          sharedVideo.player.pause()
-        }
-        if finished && posterUnavailable {
-          refreshInlineVideoSurface(reason: "preroll-finished", sharedVideo: sharedVideo)
-        }
-      }
-    }
-  }
-
   func videoStatus(_ status: AVPlayer.Status) -> String {
     switch status {
     case .unknown:
@@ -599,16 +684,19 @@ struct VideoPlayerPost: View, Equatable {
 
   func recordVideoEvent(
     _ level: DiagnosticLevel,
-    message: String,
+    message: @autoclosure () -> String,
     sharedVideo: SharedVideo,
     category: String = "ui.video",
-    extra: [String: String] = [:]
+    extra: @autoclosure () -> [String: String] = [:]
   ) {
+    // Gate before building the (expensive) diagnostics metadata: during scroll these debug
+    // events fire constantly and `asyncRecord` would discard them anyway in production.
+    guard AppDiagnostics.isEnabled(level, category: category) else { return }
     AppDiagnostics.asyncRecord(
       level,
       category: category,
-      message: message,
-      metadata: videoDiagnosticsMetadata(sharedVideo: sharedVideo).merging(extra) { _, new in new }
+      message: message(),
+      metadata: videoDiagnosticsMetadata(sharedVideo: sharedVideo).merging(extra()) { _, new in new }
     )
   }
 
@@ -679,6 +767,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   let videoGravity: AVLayerVideoGravity
 
   func makeUIView(context: Context) -> PlayerLayerView {
+    ScrollPerfProbe.shared.bump("playerLayerMake")
     let view = PlayerLayerView()
     view.backgroundColor = .clear
     view.playerLayer.player = player
@@ -687,6 +776,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 
   func updateUIView(_ uiView: PlayerLayerView, context: Context) {
+    ScrollPerfProbe.shared.bump("playerLayerUpdate")
     if uiView.playerLayer.player !== player {
       uiView.playerLayer.player = player
     }
@@ -1066,39 +1156,41 @@ struct AVPlayerRepresentable: UIViewRepresentable {
     view.addSubview(playerController.view)
     playerController.didMove(toParent: controller)
     view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-    let metadata = AVPlayerRepresentable.playerViewMetadata(
-      player: player,
-      view: view,
-      extra: [
-        "autoPlay": autoPlayVideos ? "true" : "false",
-        "aspect": aspect.rawValue
-      ]
-    )
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "AVPlayerRepresentable makeUIView",
-      metadata: metadata
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "AVPlayerRepresentable makeUIView",
+        metadata: AVPlayerRepresentable.playerViewMetadata(
+          player: player,
+          view: view,
+          extra: [
+            "autoPlay": autoPlayVideos ? "true" : "false",
+            "aspect": aspect.rawValue
+          ]
+        )
+      )
+    }
     return view
   }
 
   func updateUIView(_ view: UIView, context: Context) {
-    let metadata = AVPlayerRepresentable.playerViewMetadata(
-      player: player,
-      view: view,
-      extra: [
-        "autoPlay": autoPlayVideos ? "true" : "false",
-        "fullscreen": fullscreen ? "true" : "false",
-        "aspect": aspect.rawValue
-      ]
-    )
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "AVPlayerRepresentable updateUIView",
-      metadata: metadata
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "AVPlayerRepresentable updateUIView",
+        metadata: AVPlayerRepresentable.playerViewMetadata(
+          player: player,
+          view: view,
+          extra: [
+            "autoPlay": autoPlayVideos ? "true" : "false",
+            "fullscreen": fullscreen ? "true" : "false",
+            "aspect": aspect.rawValue
+          ]
+        )
+      )
+    }
     if let playerController = context.coordinator.controller, playerController.autoPlayVideos != autoPlayVideos {
       playerController.autoPlayVideos = autoPlayVideos
     }
@@ -1108,12 +1200,14 @@ struct AVPlayerRepresentable: UIViewRepresentable {
   }
 
   static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "AVPlayerRepresentable dismantleUIView",
-      metadata: playerViewMetadata(player: coordinator.controller?.player, view: uiView)
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "AVPlayerRepresentable dismantleUIView",
+        metadata: playerViewMetadata(player: coordinator.controller?.player, view: uiView)
+      )
+    }
     coordinator.controller?.willMove(toParent: nil)
     coordinator.controller?.view.removeFromSuperview()
     coordinator.controller?.removeFromParent()
@@ -1237,12 +1331,14 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "NiceAVPlayer viewDidAppear",
-      metadata: diagnosticsMetadata()
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "NiceAVPlayer viewDidAppear",
+        metadata: diagnosticsMetadata()
+      )
+    }
     if videoDefSettings.loop, let player = self.player {
       NotificationCenter.default.addObserver(
         forName: .AVPlayerItemDidPlayToEndTime,
@@ -1256,23 +1352,27 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     if autoPlayVideos && gone {
       self.player?.play()
       gone = false
-      AppDiagnostics.asyncRecord(
-        .debug,
-        category: "ui.video.playerView",
-        message: "NiceAVPlayer autoplay started",
-        metadata: diagnosticsMetadata()
-      )
+      if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.video.playerView",
+          message: "NiceAVPlayer autoplay started",
+          metadata: diagnosticsMetadata()
+        )
+      }
     }
   }
 
   override func viewDidDisappear(_ animated: Bool) {
     super.viewDidDisappear(animated)
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "NiceAVPlayer viewDidDisappear",
-      metadata: diagnosticsMetadata()
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "NiceAVPlayer viewDidDisappear",
+        metadata: diagnosticsMetadata()
+      )
+    }
     if let player = self.player {
       NotificationCenter.default.removeObserver(
         self,
@@ -1282,12 +1382,14 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     if !showsPlaybackControls {
       player?.pause()
       gone = true
-      AppDiagnostics.asyncRecord(
-        .debug,
-        category: "ui.video.playerView",
-        message: "NiceAVPlayer inline playback paused on disappear",
-        metadata: diagnosticsMetadata()
-      )
+      if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.video.playerView",
+          message: "NiceAVPlayer inline playback paused on disappear",
+          metadata: diagnosticsMetadata()
+        )
+      }
     }
   }
 
@@ -1316,12 +1418,14 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     _ playerViewController: AVPlayerViewController,
     willBeginFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
   ) {
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "NiceAVPlayer will begin fullscreen",
-      metadata: diagnosticsMetadata()
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "NiceAVPlayer will begin fullscreen",
+        metadata: diagnosticsMetadata()
+      )
+    }
     coordinator.animate(alongsideTransition: nil) { [weak self] context in
       guard let self = self else { return }
       if context.isCancelled {
@@ -1341,12 +1445,14 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     willEndFullScreenPresentationWithAnimationCoordinator coordinator: UIViewControllerTransitionCoordinator
   ) {
     let isPlaying = self.player?.isPlaying ?? false
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.video.playerView",
-      message: "NiceAVPlayer will end fullscreen",
-      metadata: diagnosticsMetadata(extra: ["isPlaying": isPlaying ? "true" : "false"])
-    )
+    if AppDiagnostics.isEnabled(.debug, category: "ui.video.playerView") {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.video.playerView",
+        message: "NiceAVPlayer will end fullscreen",
+        metadata: diagnosticsMetadata(extra: ["isPlaying": isPlaying ? "true" : "false"])
+      )
+    }
     coordinator.animate(alongsideTransition: nil) { [weak self] context in
       guard let self = self else { return }
       if context.isCancelled {
