@@ -21,7 +21,9 @@ struct LightBoxImage: View {
   var doLiveText: Bool
   @Environment(\.dismiss) private var dismiss
   @State private var appearBlack = false
-  @State private var appearContent = false
+  // Content is visible immediately so the zoom transition morphs the real image rather than
+  // fading it in (the fade was for the old modal presentation).
+  @State private var appearContent = true
   @State private var dragOffset: CGSize?
   @State private var drag: CGSize = .zero
   @State private var xPos: CGFloat = 0
@@ -61,11 +63,15 @@ struct LightBoxImage: View {
   private var isActiveImageGIF: Bool {
     activeImageURL?.pathExtension.lowercased() == "gif"
   }
-  
+
   func toggleOverlay() {
     withAnimation(.easeOut(duration: 0.2)) {
       showOverlay.toggle()
     }
+  }
+
+  private func closeViewer() {
+    dismiss()
   }
   
   var body: some View {
@@ -73,7 +79,7 @@ struct LightBoxImage: View {
     Group {
       if imagesArr.isEmpty {
         Color.black
-          .onAppear { dismiss() }
+          .onAppear { closeViewer() }
       } else {
         HStack(spacing: SPACING) {
           ForEach(Array(imagesArr.enumerated()), id: \.element.id) { index, img in
@@ -144,7 +150,7 @@ struct LightBoxImage: View {
               dragAxis = nil
               dragOffset = nil
               if shouldClose {
-                dismiss()
+                closeViewer()
               }
             }
           } else {
@@ -217,7 +223,7 @@ struct LightBoxImage: View {
               drag = .zero
               dragAxis = nil
               if shouldClose {
-                dismiss()
+                closeViewer()
               }
             }
           }

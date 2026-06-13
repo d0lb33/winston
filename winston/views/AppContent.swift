@@ -21,7 +21,7 @@ struct AppContent: View {
   @State private var isAuthenticating = false
   @State private var tabBarHeight: Double = 0
   @State private var lockBlur: Int = 50 // Set initial startup blur
-    
+
   func setTabBarHeight(_ val: Double) {
     tabBarHeight = val
   }

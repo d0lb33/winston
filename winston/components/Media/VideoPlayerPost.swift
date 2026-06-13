@@ -128,9 +128,19 @@ struct VideoPlayerPost: View, Equatable {
   @State private var inlineVideoRefreshID = UUID()
   @State private var activeInlineVideoKey: String?
   @State private var posterHideGeneration = UUID()
+  /// Cached mirror of `shouldMountPlayer`, written only by `syncInlineState` (driven by the
+  /// `InlineVideoCoordinatorObserver` child). The body reads THIS instead of the computed
+  /// `shouldMountPlayer`, so the heavy body no longer subscribes to the coordinator's
+  /// `@Observable` state and re-evaluates only when this cell's own mount state flips.
+  @State private var mountPlayer = false
+  /// True once the live AVPlayerLayer has composited a real frame. The grey "no frame yet"
+  /// backdrop and the poster both stay until this flips, so the poster→video handoff never
+  /// reveals an empty/grey gap. Reset when the row is reused for a different video.
+  @State private var playerReadyForDisplay = false
   @Default(.VideoDefSettings) private var videoDefSettings
   @Environment(\.scenePhase) private var scenePhase
-  
+  @Namespace private var videoNS
+
   private var autoPlayVideos: Bool { videoDefSettings.autoPlay }
   private var loopVideos: Bool { videoDefSettings.loop }
   private var muteVideos: Bool { videoDefSettings.mute }
@@ -192,23 +202,21 @@ struct VideoPlayerPost: View, Equatable {
       if let controller = controller {
         ZStack {
           inlineVideoPlaceholder()
-          if shouldMountPlayer {
-            AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
-              .allowsHitTesting(false)
-              .id(inlineVideoRefreshID)
-          }
+          inlineVideoLayer(sharedVideo: sharedVideo, videoSize: videoSize)
+            .id(inlineVideoRefreshID)
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .mask(RR(12, Color.black))
         .contentShape(Rectangle())
+        .matchedTransitionSource(id: "video", in: videoNS)
         .onTapGesture {
-          recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "controller"])
-          if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-          withAnimation {
-            fullscreen = true
-          }
+          openFullscreen(sharedVideo, branch: "controller")
+        }
+        .fullScreenCover(isPresented: $fullscreen) {
+          FullScreenVP(sharedVideo: sharedVideo)
+            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "controller", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
@@ -220,69 +228,33 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
-        .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.isFastScrolling) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
+        .background(InlineVideoCoordinatorObserver { syncInlineState(sharedVideo) })
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "controller"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
-        }
-        .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
+          syncInlineState(sharedVideo)
         }
       } else {
         ZStack {
           inlineVideoPlaceholder()
 
-          Group {
-            if shouldMountPlayer && !fullscreen {
-              InlineAVPlayerLayerRepresentable(player: sharedVideo.player, videoGravity: .resizeAspectFill)
-                .id(inlineVideoRefreshID)
-            } else {
-              Color.clear
-            }
-          }
-          .frame(width: videoSize.width, height: videoSize.height)
-          .clipped()
-          .fixedSize()
-          .mask(RR(12, Color.black))
-          .allowsHitTesting(false)
-          .contentShape(Rectangle())
-          .highPriorityGesture(TapGesture().onEnded({ _ in
-            recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer-highPriority"])
-            if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-            withAnimation {
-              fullscreen = true
-            }
-          }))
-          .allowsHitTesting(false)
-          .mask(RR(12, Color.black))
-          .overlay(
-            Color.clear
-              .contentShape(Rectangle())
-              .onTapGesture {
-                recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer-overlay"])
-                if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-                withAnimation {
-                  fullscreen = true
-                }
-              }
-          )
-          
+          inlineVideoLayer(sharedVideo: sharedVideo, videoSize: videoSize)
+            .id(inlineVideoRefreshID)
+
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
+        }
+        .contentShape(Rectangle())
+        .matchedTransitionSource(id: "video", in: videoNS)
+        .onTapGesture {
+          openFullscreen(sharedVideo, branch: "swiftuiVideoPlayer")
+        }
+        .fullScreenCover(isPresented: $fullscreen) {
+          FullScreenVP(sharedVideo: sharedVideo)
+            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
@@ -294,38 +266,68 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
-        .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.isFastScrolling) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
-        .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
-          applyInlinePlaybackState(sharedVideo)
-        }
+        .background(InlineVideoCoordinatorObserver { syncInlineState(sharedVideo) })
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
-        }
-        .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
+          syncInlineState(sharedVideo)
         }
       }
     }
   }
 
-  /// Neutral backdrop shown behind the poster for videos that aren't mounted (off-center
-  /// in the feed). Prevents a blank gap when a video post has no/poster fails to load,
-  /// without instantiating an AVPlayer.
+  /// Recompute this cell's mount state from the coordinator and apply playback. Called from
+  /// the `InlineVideoCoordinatorObserver` child (one call per coordinator change, replacing
+  /// the four per-property `onChange` handlers that each re-ran the body) and on fullscreen
+  /// changes. Assigning `mountPlayer` is a no-op when unchanged, so the heavy body only
+  /// re-evaluates on a real mount transition.
+  private func syncInlineState(_ sharedVideo: SharedVideo) {
+    let desiredMount = shouldMountPlayer
+    if mountPlayer != desiredMount { mountPlayer = desiredMount }
+    applyInlinePlaybackState(sharedVideo)
+  }
+
+  private func openFullscreen(_ sharedVideo: SharedVideo, branch: String) {
+    recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": branch])
+    if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
+    withAnimation { fullscreen = true }
+  }
+
+  /// Inline player layer bound to the shared `AVPlayer`. The fullscreen viewer renders its
+  /// own layer on the *same* player, so opening fullscreen never reloads the video — both
+  /// layers display one `AVPlayer`. Mounts only when the feed-gating allows it and we're not
+  /// already fullscreen (the cover owns the live layer then).
+  @ViewBuilder
+  func inlineVideoLayer(sharedVideo: SharedVideo, videoSize: CGSize) -> some View {
+    Group {
+      if mountPlayer && !fullscreen {
+        InlineAVPlayerLayerRepresentable(
+          player: sharedVideo.player,
+          videoGravity: .resizeAspectFill,
+          onReadyForDisplay: { handlePlayerReadyForDisplay(sharedVideo) }
+        )
+      } else {
+        Color.clear
+      }
+    }
+    .frame(width: videoSize.width, height: videoSize.height)
+    .clipped()
+    .fixedSize()
+    .mask(RR(12, Color.black))
+    .allowsHitTesting(false)
+  }
+
+  /// Neutral backdrop shown until the live layer has a real frame. It sits at the BACK of the
+  /// ZStack, so the poster (when present) and the video cover it — it only shows through while
+  /// there are genuinely no pixels yet (off-center, or a posterless video still warming up).
+  /// Gating on `playerReadyForDisplay` (not `mountPlayer`) is what removes the grey flash: the
+  /// grey can never appear on TOP of a hiding poster, only behind it.
   @ViewBuilder
   func inlineVideoPlaceholder() -> some View {
-    if !shouldMountPlayer {
+    if !playerReadyForDisplay {
       RR(12, Color.primary.opacity(0.06))
         .overlay(
           Image(systemName: "play.circle.fill")
@@ -333,7 +335,19 @@ struct VideoPlayerPost: View, Equatable {
             .foregroundStyle(.white.opacity(0.45))
         )
         .allowsHitTesting(false)
+        .transition(.opacity)
     }
+  }
+
+  /// The live layer composited its first frame. Drop the poster now (real pixels are on
+  /// screen, so there's no gap) and clear the grey backdrop.
+  private func handlePlayerReadyForDisplay(_ sharedVideo: SharedVideo) {
+    guard self.sharedVideo == sharedVideo else { return }
+    if !playerReadyForDisplay {
+      withAnimation(.easeOut(duration: 0.2)) { playerReadyForDisplay = true }
+    }
+    guard !fullscreen, autoPlayVideos, showInlinePoster else { return }
+    scheduleInlinePosterHide(sharedVideo: sharedVideo)
   }
 
   @ViewBuilder
@@ -413,9 +427,14 @@ struct VideoPlayerPost: View, Equatable {
       posterLoaded = false
       showInlinePoster = true
       posterUnavailable = false
+      playerReadyForDisplay = false
       posterHideGeneration = UUID()
       recordVideoEvent(.debug, message: "Inline video identity changed", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
     }
+
+    // Seed the body's cached mount flag (off-center videos stay false → poster-only).
+    let desiredMount = shouldMountPlayer
+    if mountPlayer != desiredMount { mountPlayer = desiredMount }
 
     // Off-center feed videos are poster-only: do NOT touch sharedVideo.player here, since
     // accessing it would create an AVPlayer (and load its HLS asset). Only the mounted
@@ -528,6 +547,9 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   func inlineVideoIsRenderable(_ sharedVideo: SharedVideo) -> Bool {
+    // The layer must have composited a real frame, otherwise hiding the poster reveals an
+    // empty/grey gap (the flash). isReadyForDisplay is the authoritative signal for this.
+    guard playerReadyForDisplay else { return false }
     let currentTime = CMTimeGetSeconds(sharedVideo.player.currentTime())
     let hasAdvanced = currentTime.isFinite && currentTime > 0.05
     let itemReady = sharedVideo.player.currentItem?.status == .readyToPlay
@@ -791,6 +813,12 @@ struct VideoPlayerPost: View, Equatable {
 struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   let player: AVPlayer
   let videoGravity: AVLayerVideoGravity
+  /// Fires (on the main actor) once the layer has actually composited its first frame.
+  /// Used to hold the poster until real pixels are on screen, avoiding the grey/blank flash
+  /// during the poster→video handoff.
+  var onReadyForDisplay: (() -> Void)? = nil
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
 
   func makeUIView(context: Context) -> PlayerLayerView {
     ScrollPerfProbe.shared.bump("playerLayerMake")
@@ -798,11 +826,14 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
     view.backgroundColor = .clear
     view.playerLayer.player = player
     view.playerLayer.videoGravity = videoGravity
+    context.coordinator.onReadyForDisplay = onReadyForDisplay
+    context.coordinator.observe(view.playerLayer)
     return view
   }
 
   func updateUIView(_ uiView: PlayerLayerView, context: Context) {
     ScrollPerfProbe.shared.bump("playerLayerUpdate")
+    context.coordinator.onReadyForDisplay = onReadyForDisplay
     if uiView.playerLayer.player !== player {
       uiView.playerLayer.player = player
     }
@@ -811,8 +842,27 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
     }
   }
 
-  static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: ()) {
+  static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: Coordinator) {
+    coordinator.invalidate()
     uiView.playerLayer.player = nil
+  }
+
+  final class Coordinator {
+    var onReadyForDisplay: (() -> Void)?
+    private var observation: NSKeyValueObservation?
+
+    func observe(_ layer: AVPlayerLayer) {
+      observation = layer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
+        guard layer.isReadyForDisplay else { return }
+        let callback = self?.onReadyForDisplay
+        DispatchQueue.main.async { callback?() }
+      }
+    }
+
+    func invalidate() {
+      observation?.invalidate()
+      observation = nil
+    }
   }
 
   final class PlayerLayerView: UIView {
@@ -826,8 +876,29 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 }
 
+/// Tiny `Color.clear` view whose only job is to subscribe to the `InlineVideoCoordinator`'s
+/// `@Observable` state. Because Observation tracking is per-view-body, keeping these
+/// `onChange` handlers HERE (rather than on the heavy `VideoPlayerPost` body) means a global
+/// coordinator tick (e.g. `warmVideoKeys` updating every 0.15s during scroll) re-evaluates
+/// only this trivial view across every visible video cell — the expensive video body stays
+/// put unless its own derived mount state actually changes.
+private struct InlineVideoCoordinatorObserver: View {
+  let onCoordinatorChange: () -> Void
+
+  var body: some View {
+    let coordinator = InlineVideoCoordinator.shared
+    Color.clear
+      .allowsHitTesting(false)
+      .onChange(of: coordinator.isScrolling) { _, _ in onCoordinatorChange() }
+      .onChange(of: coordinator.isFastScrolling) { _, _ in onCoordinatorChange() }
+      .onChange(of: coordinator.activeVideoKey) { _, _ in onCoordinatorChange() }
+      .onChange(of: coordinator.warmVideoKeys) { _, _ in onCoordinatorChange() }
+  }
+}
+
 struct FullScreenVP: View {
   var sharedVideo: SharedVideo
+  var closeAction: (() -> Void)? = nil
   @Environment(\.dismiss) private var dismiss
   @Default(.VideoDefSettings) private var videoDefSettings
   @State private var cancelDrag: Bool?
@@ -945,10 +1016,18 @@ struct FullScreenVP: View {
         withAnimation(.interpolatingSpring(stiffness: 200, damping: 20, initialVelocity: 0)) {
           drag = .zero
           if shouldClose {
-            dismiss()
+            closeViewer()
           }
         }
       }
+  }
+
+  private func closeViewer() {
+    if let closeAction {
+      closeAction()
+    } else {
+      dismiss()
+    }
   }
 
   private var videoDuration: TimeInterval {

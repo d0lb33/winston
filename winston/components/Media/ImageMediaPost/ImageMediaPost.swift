@@ -43,9 +43,10 @@ struct ImageMediaPost: View, Equatable {
   var contentWidth: CGFloat
   var maxMediaHeightScreenPercentage: CGFloat
   var diagnosticContext: String? = nil
-//  @State var fullscreen = false
-  @State var fullscreenIndex: Int?
-  
+
+  @State private var fullscreenIndex: Int?
+  @Namespace private var mediaNS
+
   var body: some View {
     Group {
       if images.isEmpty {
@@ -60,6 +61,7 @@ struct ImageMediaPost: View, Equatable {
           contentWidth: contentWidth,
           maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
           diagnosticContext: diagnosticContext,
+          namespace: mediaNS,
           open: { fullscreenIndex = 0 }
         )
       } else {
@@ -68,20 +70,23 @@ struct ImageMediaPost: View, Equatable {
           images: images,
           contentWidth: contentWidth,
           diagnosticContext: diagnosticContext,
+          namespace: mediaNS,
           open: { fullscreenIndex = $0 }
         )
       }
     }
     .frame(maxWidth: compact ? nil : .infinity)
-//    .customPresenter(parentController: controller, isPresented: Binding(get: {
-//      fullscreenIndex != nil
-//    }, set: { val in
-//      if !val { fullscreenIndex = nil }
-//    }), content: {
-//      LightBoxImage(postTitle: postTitle, badgeKit: badgeKit, markAsSeen: markAsSeen, i: fullscreenIndex ?? 0, imagesArr: images)
-//    })
     .fullScreenCover(item: $fullscreenIndex) { i in
-      LightBoxImage(postTitle: postTitle, badgeKit: badgeKit, avatarImageRequest: avatarImageRequest, markAsSeen: markAsSeen, i: min(max(i, 0), max(images.count - 1, 0)), imagesArr: images, doLiveText: Defaults[.BehaviorDefSettings].doLiveText)
+      LightBoxImage(
+        postTitle: postTitle,
+        badgeKit: badgeKit,
+        avatarImageRequest: avatarImageRequest,
+        markAsSeen: markAsSeen,
+        i: min(max(i, 0), max(images.count - 1, 0)),
+        imagesArr: images,
+        doLiveText: Defaults[.BehaviorDefSettings].doLiveText
+      )
+      .navigationTransition(.zoom(sourceID: i, in: mediaNS))
     }
   }
 }
@@ -95,6 +100,7 @@ private struct ImageMediaSinglePreview: View {
   let contentWidth: CGFloat
   let maxMediaHeightScreenPercentage: CGFloat
   let diagnosticContext: String?
+  let namespace: Namespace.ID
   let open: () -> Void
 
   private var width: CGFloat {
@@ -115,7 +121,16 @@ private struct ImageMediaSinglePreview: View {
   }
 
   var body: some View {
-    GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: image.url, imgRequest: image.request, diagnosticContext: diagnosticContext)
+    GalleryThumb(
+      cornerRadius: cornerRadius,
+      width: width,
+      height: height,
+      image: image,
+      index: 0,
+      namespace: namespace,
+      diagnosticContext: diagnosticContext,
+      open: open
+    )
       .background(
         !compact
         ? GeometryReader { geo in
@@ -125,7 +140,6 @@ private struct ImageMediaSinglePreview: View {
         }
         : nil
       )
-      .onTapGesture { withAnimation(spring) { open() } }
       .overlay(alignment: .bottomTrailing) {
         if compact && imageCount > 1 {
           ImageMediaPostCompactMoreImagesOverlay(count: imageCount - 1).equatable()
@@ -139,6 +153,7 @@ private struct ImageMediaGalleryPreview: View {
   let images: [ImgExtracted]
   let contentWidth: CGFloat
   let diagnosticContext: String?
+  let namespace: Namespace.ID
   let open: (Int) -> Void
 
   private var tileWidth: CGFloat {
@@ -148,16 +163,16 @@ private struct ImageMediaGalleryPreview: View {
   var body: some View {
     VStack(spacing: ImageMediaPost.gallerySpacing) {
       HStack(spacing: ImageMediaPost.gallerySpacing) {
-        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[0], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(0) })
-        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[1], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(1) })
+        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[0], index: 0, namespace: namespace, width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: open)
+        ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[1], index: 1, namespace: namespace, width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: open)
       }
 
       if images.count > 2 {
         HStack(spacing: ImageMediaPost.gallerySpacing) {
-          ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[2], width: images.count == 3 ? max(contentWidth, 1) : tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(2) })
+          ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[2], index: 2, namespace: namespace, width: images.count == 3 ? max(contentWidth, 1) : tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: open)
 
           if images.count > 3 {
-            ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[3], width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: { open(3) })
+            ImageMediaGalleryTile(cornerRadius: cornerRadius, image: images[3], index: 3, namespace: namespace, width: tileWidth, height: tileWidth, diagnosticContext: diagnosticContext, open: open)
               .overlay {
                 if images.count > 4 {
                   ImageMediaMoreOverlay(count: images.count - 4)
@@ -173,15 +188,25 @@ private struct ImageMediaGalleryPreview: View {
 private struct ImageMediaGalleryTile: View {
   let cornerRadius: Double
   let image: ImgExtracted
+  let index: Int
+  let namespace: Namespace.ID
   let width: CGFloat
   let height: CGFloat
   let diagnosticContext: String?
-  let open: () -> Void
+  let open: (Int) -> Void
 
   var body: some View {
-    GalleryThumb(cornerRadius: cornerRadius, width: width, height: height, url: image.url, imgRequest: image.request, diagnosticContext: diagnosticContext)
+    GalleryThumb(
+      cornerRadius: cornerRadius,
+      width: width,
+      height: height,
+      image: image,
+      index: index,
+      namespace: namespace,
+      diagnosticContext: diagnosticContext,
+      open: { open(index) }
+    )
       .equatable()
-      .onTapGesture { withAnimation(spring) { open() } }
   }
 }
 

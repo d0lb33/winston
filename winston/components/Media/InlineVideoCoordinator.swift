@@ -42,10 +42,8 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var lastCentersMeanY: CGFloat?
   @ObservationIgnored private var lastCentersTimestamp: TimeInterval?
   @ObservationIgnored private var lastScrollDeltaY: CGFloat = 0
-  @ObservationIgnored private var lastWarmUpdateTimestamp: TimeInterval = 0
 
   private let warmAheadCount = 3
-  private let warmUpdateInterval: TimeInterval = 0.15
   private let fastScrollVelocityThreshold: CGFloat = 2_200
 
   private init() {}
@@ -75,9 +73,12 @@ final class InlineVideoCoordinator {
     latestCenters = centers.sorted { $0.midY < $1.midY }
     updateScrollVelocity(from: latestCenters)
 
-    let now = Date.timeIntervalSinceReferenceDate
-    guard !isScrolling || now - lastWarmUpdateTimestamp >= warmUpdateInterval else { return }
-    lastWarmUpdateTimestamp = now
+    // Only (re)populate the warm set at rest. Mounting paused AVPlayers + AVPlayerLayers
+    // mid-scroll (attaching to the player and kicking off HLS asset loading on the main
+    // thread) is the main remaining source of fast-scroll hitches. `electCenteredVideo`
+    // already warms neighbors when the feed settles, so the next video is still ready by
+    // the time you stop — we just stop paying for it during the scroll itself.
+    guard !isScrolling else { return }
     updateWarmVideoKeys()
   }
 
