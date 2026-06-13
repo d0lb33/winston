@@ -101,3 +101,7 @@ node_modules/
 
 
 tmp/*
+# Reddit API research workspace — a sibling git repo (github.com/d0lb33/RedditAPIResearch).
+# The app links the local SPM package at RedditAPIResearch/SwiftRedditPOC; clone that repo
+# alongside this checkout to build.
+RedditAPIResearch/
