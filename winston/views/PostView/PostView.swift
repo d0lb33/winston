@@ -12,7 +12,7 @@ import AlertToast
 
 struct PostView: View, Equatable {
   static func == (lhs: PostView, rhs: PostView) -> Bool {
-    lhs.post == rhs.post && lhs.subreddit.id == rhs.subreddit.id && lhs.hideElements == rhs.hideElements && lhs.ignoreSpecificComment == rhs.ignoreSpecificComment && lhs.sort == rhs.sort && lhs.update == rhs.update
+    lhs.post == rhs.post && lhs.subreddit.id == rhs.subreddit.id && lhs.hideElements == rhs.hideElements && lhs.ignoreSpecificComment == rhs.ignoreSpecificComment && lhs.sort == rhs.sort
   }
   
   @ObservedObject var post: Post
@@ -23,11 +23,12 @@ struct PostView: View, Equatable {
   @Default(.CommentsSectionDefSettings) var commentsSectionDefSettings
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.globalLoaderStart) private var globalLoaderStart
+  @Environment(\.globalLoaderDismiss) private var globalLoaderDismiss
   @State private var ignoreSpecificComment = false
   @State private var hideElements = true
   @State private var sort: CommentSortOption
-  @State private var update = false
   @State private var isFetching = false
+  @State private var loadingComments = true
   
   @State private var topVisibleCommentId: String? = nil
   @State private var previousScrollTarget: String? = nil
@@ -46,7 +47,7 @@ struct PostView: View, Equatable {
   }
   
   @MainActor
-  func asyncFetch(_ full: Bool = true) async {
+  func asyncFetch(_ full: Bool = true, proxy: ScrollViewProxy? = nil) async {
     guard !isFetching else {
       AppDiagnostics.asyncRecord(
         .debug,
@@ -87,14 +88,33 @@ struct PostView: View, Equatable {
       newComments.forEach { $0.parentWinston = comments }
       withAnimation {
         comments.data = newComments
+        loadingComments = false
       }
-      
+
       Task(priority: .background) {
         if let numComments = post.data?.num_comments {
           await post.saveCommentsCount(numComments: numComments)
         }
       }
+
+      if let proxy, !ignoreSpecificComment, var specificID = highlightID {
+        specificID = specificID.hasPrefix("t1_") ? String(specificID.dropFirst(3)) : specificID
+        AppDiagnostics.asyncRecord(
+          .debug,
+          category: "ui.postDetail",
+          message: "PostView scheduling highlight scroll",
+          metadata: postDetailMetadata(full: full, extra: ["specificID": specificID])
+        )
+        // The replies section stays hidden for the first 0.5s (hideElements);
+        // wait it out so the target row exists before scrolling to it.
+        doThisAfter(hideElements ? 0.75 : 0.1) {
+          withAnimation(spring) {
+            proxy.scrollTo("\(specificID)-body", anchor: .center)
+          }
+        }
+      }
     } else {
+      withAnimation { loadingComments = false }
       AppDiagnostics.asyncRecord(
         .warning,
         category: "ui.postDetail",
@@ -123,8 +143,8 @@ struct PostView: View, Equatable {
     ].merging(extra) { _, new in new }
   }
   
-  func updatePost() {
-    Task { await asyncFetch(true) }
+  func updatePost(proxy: ScrollViewProxy? = nil) {
+    Task { await asyncFetch(true, proxy: proxy) }
   }
 
   func ensurePostPresentationData() {
@@ -161,7 +181,7 @@ struct PostView: View, Equatable {
             .listRowBackground(Color.clear)
             
             if !hideElements {
-              PostReplies(update: update, post: post, subreddit: subreddit, ignoreSpecificComment: ignoreSpecificComment, highlightID: highlightID, sort: sort, proxy: proxy, geometryReader: geometryReader, topVisibleCommentId: $topVisibleCommentId, previousScrollTarget: $previousScrollTarget, comments: comments)
+              PostReplies(loading: loadingComments, post: post, subreddit: subreddit, ignoreSpecificComment: ignoreSpecificComment, highlightID: highlightID, sort: sort, fetch: { full in await asyncFetch(full, proxy: proxy) }, comments: comments)
             }
             
             if !ignoreSpecificComment && highlightID != nil {
@@ -214,6 +234,23 @@ struct PostView: View, Equatable {
           )
           updatePost()
         }
+        .onChange(of: ignoreSpecificComment) { val in
+          AppDiagnostics.asyncRecord(
+            .info,
+            category: "ui.postDetail",
+            message: "PostView ignoreSpecificComment changed",
+            metadata: postDetailMetadata(full: post.data == nil, extra: ["newValue": "\(val)"])
+          )
+          Task {
+            await asyncFetch(post.data == nil)
+            globalLoaderDismiss()
+          }
+          if val {
+            withAnimation(spring) {
+              proxy.scrollTo("post-content", anchor: .bottom)
+            }
+          }
+        }
         .onAppear {
           ensurePostPresentationData()
           AppDiagnostics.asyncRecord(
@@ -234,11 +271,11 @@ struct PostView: View, Equatable {
               if highlightID != nil { withAnimation { proxy.scrollTo("loading-comments") } }
             }
           }
-          if post.data == nil {
-            updatePost()
+          if comments.data.count == 0 || post.data == nil {
+            Task { await asyncFetch(post.data == nil, proxy: proxy) }
           }
-          
-          
+
+
           Task(priority: .background) {
             if let numComments = post.data?.num_comments {
               await post.saveCommentsCount(numComments: numComments)

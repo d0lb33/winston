@@ -250,13 +250,10 @@ struct CommentLinkContent: View {
 
   @State private var sizer = Sizer()
   @State private var showReplyModal = false
-  @State private var pressing = false
-  @State private var dragging = false
-  @State private var offsetX: CGFloat = 0
   @State private var bodySize: CGSize = .zero
   @State private var highlight = false
   @State private var showSpoiler = false
-  @State private var commentSwipeActions: SwipeActionsSet = Defaults[.CommentLinkDefSettings].swipeActions
+  @State private var swipeActionsPresented = false
   @State private var loggedBodyDiagnostics = false
   
   @Default(.CommentLinkDefSettings) private var defSettings
@@ -377,16 +374,10 @@ struct CommentLinkContent: View {
           .compositingGroup()
           .opacity(collapsed ? 0.5 : 1)
           .contentShape(Rectangle())
-          .offset(x: offsetX)
-          .animation(draggingAnimation, value: offsetX)
-          .swipyUI(
-            controlledDragAmount: $offsetX,
-            controlledIsSource: false,
-            onTap: { withAnimation(spring) { comment.toggleCollapsed(optimistic: true) } },
-            actionsSet: commentSwipeActions,
-            entity: comment,
-            skipAnimation: true
-          )
+          .onTapGesture {
+            guard !swipeActionsPresented else { return }
+            withAnimation(spring) { comment.toggleCollapsed(optimistic: true) }
+          }
         }
         .padding(.horizontal, horPad)
         .frame(height: max(((theme.theme.badge.authorText.size * 1.2) + (theme.theme.badge.statsText.size * 1.2) + 2), theme.theme.badge.avatar.size) + max(0, theme.theme.innerPadding.vertical + (data.depth == 0 ? -theme.theme.cornerRadius : theme.theme.repliesSpacing)), alignment: .leading)
@@ -454,21 +445,15 @@ struct CommentLinkContent: View {
                 .fontSize(theme.theme.bodyText.size, theme.theme.bodyText.weight.t)
                 .foregroundColor(theme.theme.bodyText.color())
               }
-              .offset(x: offsetX)
-              .animation(draggingAnimation, value: offsetX)
-              .swipyUI(
-                offsetYAction: -15,
-                controlledDragAmount: $offsetX,
-                onTap: { if !selectable { withAnimation(spring) { comment.toggleCollapsed(optimistic: true) } } },
-                actionsSet: commentSwipeActions,
-                entity: comment,
-                skipAnimation: true
-              )
               .frame(maxWidth: .infinity, alignment: .topLeading)
               .padding(.top, theme.theme.bodyAuthorSpacing)
               .padding(.bottom, max(0, theme.theme.innerPadding.vertical + (data.depth == 0 && comment.childrenWinston.data.count == 0 ? -theme.theme.cornerRadius : theme.theme.innerPadding.vertical)))
               .scaleEffect(1)
               .contentShape(Rectangle())
+              .onTapGesture {
+                guard !selectable, !swipeActionsPresented else { return }
+                withAnimation(spring) { comment.toggleCollapsed(optimistic: true) }
+              }
               .background(forcedBodySize != nil ? nil : GeometryReader { geo in Color.clear.onAppear { sizer.size = geo.size } } )
             } else {
               Spacer()
@@ -479,16 +464,15 @@ struct CommentLinkContent: View {
           .id("\(data.id)-body\(forcedBodySize == nil ? "" : "-preview")")
         }
       }
-      .introspect(.listCell, on: .iOS(.v16, .v17)) { cell in
-        cell.layer.masksToBounds = false
-      }
       .background(Color.accentColor.opacity(highlight ? 0.2 : 0))
-      .background(showReplies && (data.depth ?? 0) != 0 ? theme.theme.bg().opacity(0.72) : .clear)
+      .background(showReplies ? theme.theme.bg() : .clear)
+      .commentSwipeActions(
+        comment: comment,
+        actionsSet: defSettings.swipeActions,
+        enabled: forcedBodySize == nil,
+        actionsArePresented: $swipeActionsPresented
+      )
       .onAppear {
-        let newCommentSwipeActions = Defaults[.CommentLinkDefSettings].swipeActions
-        if commentSwipeActions != newCommentSwipeActions {
-          commentSwipeActions = newCommentSwipeActions
-        }
         if !loggedBodyDiagnostics && data.body?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
           loggedBodyDiagnostics = true
           AppDiagnostics.asyncRecord(

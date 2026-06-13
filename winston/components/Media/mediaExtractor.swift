@@ -175,28 +175,43 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       }
       return nil
     }
-    recordMediaExtraction(data: data, kind: "gallery", compact: compact, contentWidth: contentWidth, size: CGSize(width: contentWidth, height: contentWidth), extra: ["items": "\(galleryArr.count)"])
-    return .imgs(galleryArr)
+    if !galleryArr.isEmpty {
+      recordMediaExtraction(data: data, kind: "gallery", compact: compact, contentWidth: contentWidth, size: CGSize(width: contentWidth, height: contentWidth), extra: ["items": "\(galleryArr.count)"])
+      return .imgs(galleryArr)
+    }
+    // All gallery items failed to adapt (missing metadata) — fall through to
+    // the other extractors instead of rendering an empty gallery.
+    recordMediaExtraction(data: data, kind: "gallery_empty", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["sourceItems": "\(galleryData.count)", "reason": "no gallery item had usable metadata"])
   }
   
-  if let videoPreview = data.preview?.reddit_video_preview, let url = videoPreview.hls_url, let videoURL = URL(string: url) {
+  if let videoPreview = data.preview?.reddit_video_preview {
+    // hls_url is preferred, but a missing one shouldn't kill the post —
+    // fall back to the progressive fallback_url before giving up.
+    let streamURL = videoPreview.hls_url.flatMap(URL.init(string:))
     let downloadURL = videoPreview.fallback_url.flatMap(URL.init(string:))
-    let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
-    let size = videoSize(from: data, width: cgFloat(videoPreview.width), height: cgFloat(videoPreview.height))
-    let posterURL = videoPosterURL(from: data)
-    recordMediaExtraction(data: data, kind: "reddit_video_preview", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size)
-    let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
-    return .video(video)
+    if let videoURL = streamURL ?? downloadURL {
+      let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
+      let size = videoSize(from: data, width: cgFloat(videoPreview.width), height: cgFloat(videoPreview.height))
+      let posterURL = videoPosterURL(from: data)
+      recordMediaExtraction(data: data, kind: "reddit_video_preview", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size, extra: ["usedFallbackURL": "\(streamURL == nil)"])
+      let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+      return .video(video)
+    }
+    recordMediaExtraction(data: data, kind: "reddit_video_preview_unusable", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["reason": "no hls_url or fallback_url"])
   }
-  
-  if let redditVideo = data.media?.reddit_video, let url = redditVideo.hls_url, let videoURL = URL(string: url) {
+
+  if let redditVideo = data.media?.reddit_video {
+    let streamURL = redditVideo.hls_url.flatMap(URL.init(string:))
     let downloadURL = redditVideo.fallback_url.flatMap(URL.init(string:))
-    let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
-    let size = videoSize(from: data, width: cgFloat(redditVideo.width), height: cgFloat(redditVideo.height))
-    let posterURL = videoPosterURL(from: data)
-    recordMediaExtraction(data: data, kind: "reddit_video", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size)
-    let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
-    return .video(video)
+    if let videoURL = streamURL ?? downloadURL {
+      let playbackURL = preferredInlineVideoPlaybackURL(streamURL: videoURL, downloadURL: downloadURL, postID: data.name, title: data.title)
+      let size = videoSize(from: data, width: cgFloat(redditVideo.width), height: cgFloat(redditVideo.height))
+      let posterURL = videoPosterURL(from: data)
+      recordMediaExtraction(data: data, kind: "reddit_video", compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size, extra: ["usedFallbackURL": "\(streamURL == nil)"])
+      let video = SharedVideo.get(url: playbackURL, size: size, downloadURL: downloadURL, posterURL: posterURL)
+      return .video(video)
+    }
+    recordMediaExtraction(data: data, kind: "reddit_video_unusable", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["reason": "no hls_url or fallback_url"])
   }
 
   if let hostedVideo = redditHostedVideoURL(from: data.url) {
@@ -208,13 +223,23 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     return .video(video)
   }
   
-  if data.media?.type == "youtube.com", let oembed = data.media?.oembed, let html = oembed.html, let ytID = extractYoutubeIdFromOEmbed(html), let width = oembed.width, let height = oembed.height, let author_name = oembed.author_name, let author_url = oembed.author_url, let authorURL = URL(string: author_url), let thumb = oembed.thumbnail_url, let thumbURL = URL(string: thumb) {
-    let thumbReq = ImageRequest(url: thumbURL, processors: [.resize(width: getPostContentWidth(contentWidth: contentWidth, theme: theme))], priority: .normal)
-    Post.prefetcher.startPrefetching(with: [thumbReq])
-    let size = CGSize(width: CGFloat(width), height: CGFloat(height))
-    recordMediaExtraction(data: data, kind: "youtube", compact: compact, contentWidth: contentWidth, playbackURL: thumbURL, posterURL: thumbURL, size: size)
-    let newExtracted = YTMediaExtracted(videoID: ytID, size: size, thumbnailURL: thumbURL, thumbnailRequest: thumbReq, player: YouTubePlayer(source: .video(id: ytID)), author: author_name, authorURL: authorURL)
-    return .yt(newExtracted)
+  if data.media?.type == "youtube.com", let oembed = data.media?.oembed, let html = oembed.html, let ytID = extractYoutubeIdFromOEmbed(html) {
+    // Only the video id is essential; everything else has sensible fallbacks.
+    // Requiring the full oEmbed payload silently dropped many YouTube posts.
+    let thumbURL = oembed.thumbnail_url.flatMap { URL(string: $0) } ?? URL(string: "https://i.ytimg.com/vi/\(ytID)/hqdefault.jpg")
+    if let thumbURL {
+      let width = oembed.width ?? 1920
+      let height = oembed.height ?? 1080
+      let author = oembed.author_name ?? ""
+      let authorURL = oembed.author_url.flatMap { URL(string: $0) } ?? URL(string: "https://www.youtube.com/watch?v=\(ytID)") ?? thumbURL
+      let thumbReq = ImageRequest(url: thumbURL, processors: [.resize(width: getPostContentWidth(contentWidth: contentWidth, theme: theme))], priority: .normal)
+      Post.prefetcher.startPrefetching(with: [thumbReq])
+      let size = CGSize(width: CGFloat(width), height: CGFloat(height))
+      recordMediaExtraction(data: data, kind: "youtube", compact: compact, contentWidth: contentWidth, playbackURL: thumbURL, posterURL: thumbURL, size: size)
+      let newExtracted = YTMediaExtracted(videoID: ytID, size: size, thumbnailURL: thumbURL, thumbnailRequest: thumbReq, player: YouTubePlayer(source: .video(id: ytID)), author: author, authorURL: authorURL)
+      return .yt(newExtracted)
+    }
+    recordMediaExtraction(data: data, kind: "youtube_unusable", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["reason": "no usable thumbnail URL", "ytID": ytID])
   }
   
   if let postEmbed = data.crosspost_parent_list?.first {
@@ -254,17 +279,25 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     return .imgs([imgExtracted])
   }
   
-  if let images = data.preview?.images, images.count > 0, let image = images[0].source, let src = image.url?.replacing("/preview.", with: "/i."), !src.contains("external-preview"), let imgURL = rootURL(src.escape), let width = image.width, let height = image.height {
-    
-    let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
-    let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
-    var thumbnail: ImageRequest.ThumbnailOptions?
-    if compact {
-      thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
+  // Preview images: external-preview URLs are intentionally skipped here so
+  // link posts keep falling through to the link-card branch; they're used as
+  // a last-resort image at the bottom of this function instead.
+  if let images = data.preview?.images, images.count > 0, let image = images[0].source, let rawSrc = image.url, !rawSrc.contains("external-preview"), let width = image.width, let height = image.height {
+    // Prefer the rewritten i.redd.it URL, but fall back to the raw preview
+    // URL when the rewrite produces something unparsable.
+    let rewritten = rawSrc.replacing("/preview.", with: "/i.")
+    if let imgURL = rootURL(rewritten.escape) ?? rootURL(rawSrc.escape) {
+      let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
+      let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
+      var thumbnail: ImageRequest.ThumbnailOptions?
+      if compact {
+        thumbnail = ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
+      }
+      let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: width, height: height), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
+      recordMediaExtraction(data: data, kind: "preview_image", compact: compact, contentWidth: contentWidth, playbackURL: imgURL, size: CGSize(width: width, height: height), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])
+      return .imgs([imgExtracted])
     }
-    let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: width, height: height), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
-    recordMediaExtraction(data: data, kind: "preview_image", compact: compact, contentWidth: contentWidth, playbackURL: imgURL, size: CGSize(width: width, height: height), extra: ["thumbnail": thumbnail == nil ? "nil" : "set"])
-    return .imgs([imgExtracted])
+    recordMediaExtraction(data: data, kind: "preview_image_unusable", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["reason": "preview URL unparsable", "rawSrc": rawSrc])
   }
   
   if VIDEOS_FORMATS.contains(where: { data.url.hasSuffix($0) }), let url = URL(string: data.url) {
@@ -302,37 +335,32 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       let subredditName = pathComponents[1]
       if pathComponents.count > 2 && pathComponents[2] == "comments" {
         let postId = pathComponents[3]
+        // Entities are returned with bare ids only; RedditMediaPost owns
+        // hydrating them (this function runs in the synchronous render path,
+        // so it must not kick off fetches).
         if pathComponents.count >= 6 {
           let commentId = pathComponents[5]
           let comment = Comment(id: commentId, typePrefix: Comment.prefix)
-          comment.fetchItself()
           let entityExtracted = EntityExtracted(subredditID: subredditName, postID: postId, commentID: commentId, entity: comment)
           recordEmbeddedRedditEntity(data: data, kind: "comment", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: commentId)
           return .comment(entityExtracted)
         }
         let post = Post(id: postId, subID: subredditName)
-        post.fetchItself()
         let entityExtracted = EntityExtracted(subredditID: subredditName, postID: postId, entity: post)
         recordEmbeddedRedditEntity(data: data, kind: "post", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: nil)
         return .post(entityExtracted)
-//        return .post(id: postId, subreddit: subredditName)
       }
       let sub = Subreddit(id: subredditName)
-      Task(priority: .background) {
-        await sub.refreshSubreddit()
-      }
       let entityExtracted = EntityExtracted(subredditID: subredditName, entity: sub)
       recordEmbeddedRedditEntity(data: data, kind: "subreddit", actualURL: actualURL, subredditID: subredditName, postID: nil, commentID: nil)
       return .subreddit(entityExtracted)
-      
+
     case "user", "u":
       let username = pathComponents[1]
       let user = User(id: username, typePrefix: User.prefix)
-      user.fetchItself()
       let entityExtracted = EntityExtracted(userID: username, entity: user)
       recordEmbeddedRedditEntity(data: data, kind: "user", actualURL: actualURL, subredditID: nil, postID: nil, commentID: nil, userID: username)
       return .user(entityExtracted)
-//      return .user(username: username)
       
     default:
       if !data.is_self, let linkURL = URL(string: data.url) {
@@ -345,7 +373,18 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     recordMediaExtraction(data: data, kind: "link", compact: compact, contentWidth: contentWidth, playbackURL: linkURL, size: .zero)
     return .link(PreviewModel.get(linkURL, compact: compact))
   }
-  
+
+  // Last resort: every dedicated branch passed on this post, but if Reddit
+  // gave us any preview image at all (including external-preview), showing it
+  // beats rendering nothing.
+  if let image = data.preview?.images?.first?.source, let rawSrc = image.url, let imgURL = rootURL(rawSrc.escape) {
+    let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
+    let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
+    let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: image.width ?? 0, height: image.height ?? 0), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: nil))
+    recordMediaExtraction(data: data, kind: "preview_image_fallback", compact: compact, contentWidth: contentWidth, playbackURL: imgURL, size: CGSize(width: image.width ?? 0, height: image.height ?? 0))
+    return .imgs([imgExtracted])
+  }
+
   recordMediaExtraction(data: data, kind: "none", compact: compact, contentWidth: contentWidth, size: .zero)
   return nil
 }

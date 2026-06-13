@@ -36,6 +36,8 @@ final class RedditWire: ObservableObject {
   /// Continuation cursors for "load more comments" stubs, keyed by stub id
   /// (the GraphQL comment tree exposes a cursor, not child id lists).
   var moreCursorByStubID: [String: String] = [:]
+  /// Monotonic suffix that keeps "load more" stub ids unique across pages.
+  var moreStubCounter = 0
 
   /// All connected accounts (mirrors `Defaults[.graphQLAccounts]`).
   @Published var accounts: [RedditAccount] = []
@@ -450,9 +452,22 @@ final class RedditWire: ObservableObject {
           "firstIDs": ids.prefix(8).joined(separator: ",")
         ]
       )
-      guard !ids.isEmpty else { return ([], nil) }
+      // A page can adapt to zero posts (ad-only page, filters, hydration
+      // failure) while more pages exist — keep the cursor so infinite scroll
+      // can continue. Only stop when the cursor fails to advance, which would
+      // otherwise refetch the same page forever.
+      let safeNextAfter = (nextAfter != nil && nextAfter == after) ? nil : nextAfter
+      if safeNextAfter == nil, nextAfter != nil {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "reddit.feed",
+          message: "Feed cursor did not advance; stopping pagination",
+          metadata: ["feed": isHome ? "home" : name, "cursor": nextAfter ?? "nil"]
+        )
+      }
+      guard !ids.isEmpty else { return ([], safeNextAfter) }
       let posts = await postData(forIDs: ids)
-      return (posts, posts.isEmpty ? nil : nextAfter)
+      return (posts, safeNextAfter)
     } catch {
       status = "feed failed: \(describe(error))"
       return ([], nil)
@@ -470,7 +485,10 @@ final class RedditWire: ObservableObject {
       let connectionPostIDs = postConnection?.postIDs ?? []
       let postIDs = connectionPostIDs.isEmpty ? rawData?.savedPostIDs() ?? [] : connectionPostIDs
       let posts = await postData(forIDs: postIDs)
-      let nextAfter = posts.isEmpty ? nil : normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
+      // Keep paginating past pages that adapt to zero posts; only a
+      // non-advancing cursor stops the stream.
+      let rawNextAfter = normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
+      let nextAfter = (rawNextAfter != nil && rawNextAfter == after) ? nil : rawNextAfter
       status = "saved posts → \(posts.count) posts, next \(nextAfter == nil ? "none" : "yes")"
       return (posts, nextAfter)
     } catch {
@@ -500,7 +518,10 @@ final class RedditWire: ObservableObject {
         )
       } ?? []
       let pageInfo = rawData?.firstPageInfo()
-      let nextAfter = comments.isEmpty ? nil : normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
+      // Keep paginating past pages that adapt to zero comments; only a
+      // non-advancing cursor stops the stream.
+      let rawNextAfter = normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
+      let nextAfter = (rawNextAfter != nil && rawNextAfter == after) ? nil : rawNextAfter
       status = "saved comments → \(comments.count) comments, next \(nextAfter == nil ? "none" : "yes")"
       return (comments, nextAfter)
     } catch {
@@ -611,7 +632,11 @@ final class RedditWire: ObservableObject {
   /// Adapt GraphQL comment trees into winston's flat ListingChild list. Trees
   /// with a node become "t1" children; trees without one (continuations)
   /// become "more" stubs whose cursor is remembered for `moreReplies`.
-  func adaptCommentTrees(_ trees: [CommentTree], postFullname: String) -> [ListingChild<CommentData>] {
+  ///
+  /// `repairOrphans` must be false for subtree fetches (`moreReplies`): there,
+  /// the batch's top nodes legitimately have parents outside the batch and
+  /// must not be re-rooted or dropped.
+  func adaptCommentTrees(_ trees: [CommentTree], postFullname: String, repairOrphans: Bool = true) -> [ListingChild<CommentData>] {
     var children = trees.compactMap { tree -> ListingChild<CommentData>? in
       if let node = tree.node {
         guard let nodeID = node.id, !nodeID.isEmpty else {
@@ -633,7 +658,11 @@ final class RedditWire: ObservableObject {
       }
       guard tree.more != nil || (tree.childCount ?? 0) > 0 else { return nil }
       let parentID = tree.parentId ?? postFullname
-      let stubID = "more-\(parentID)"
+      // Stub ids must be unique per continuation: the next page for the same
+      // parent returns a new stub, and reusing the parent-derived id made
+      // `moreReplies` filter that fresh stub out (pagination dead-ended).
+      moreStubCounter += 1
+      let stubID = "more-\(parentID)-\(moreStubCounter)"
       var cd = CommentData(id: stubID)
       cd.name = stubID
       cd.parent_id = parentID
@@ -645,13 +674,17 @@ final class RedditWire: ObservableObject {
       }
       return ListingChild<CommentData>(kind: "more", data: cd)
     }
-    repairOrphanCommentRoots(in: &children, postFullname: postFullname)
+    if repairOrphans {
+      repairOrphanCommentRoots(in: &children, postFullname: postFullname)
+    }
     return children
   }
 
   private func repairOrphanCommentRoots(in children: inout [ListingChild<CommentData>], postFullname: String) {
     let knownCommentIDs = Set(children.compactMap { $0.kind == "t1" ? $0.data?.name : nil })
     var repairedIDs: [String] = []
+    var droppedIDs: [String] = []
+    var droppedNames = Set<String>()
 
     for index in children.indices {
       guard
@@ -664,23 +697,65 @@ final class RedditWire: ObservableObject {
       let parentID = data.parent_id ?? ""
       guard parentID.isEmpty || !knownCommentIDs.contains(parentID) else { continue }
 
-      data.parent_id = postFullname
-      data.depth = 0
-      children[index].data = data
-      repairedIDs.append(name)
+      // Only shallow orphans become roots; promoting a deep reply to the top
+      // level rearranges the conversation worse than omitting it.
+      if (data.depth ?? 0) <= 1 {
+        data.parent_id = postFullname
+        data.depth = 0
+        children[index].data = data
+        repairedIDs.append(name)
+      } else {
+        droppedIDs.append(name)
+        droppedNames.insert(name)
+      }
     }
 
-    if !repairedIDs.isEmpty {
+    if !droppedNames.isEmpty {
+      children.removeAll { child in
+        guard let name = child.data?.name else { return false }
+        return droppedNames.contains(name)
+      }
+    }
+
+    if !repairedIDs.isEmpty || !droppedIDs.isEmpty {
       AppDiagnostics.asyncRecord(
         .warning,
         category: "reddit.comment",
-        message: "Repaired orphan comment roots",
+        message: "Handled orphan comments in root forest",
         metadata: [
           "postID": postFullname,
-          "count": "\(repairedIDs.count)",
-          "commentIDs": repairedIDs.prefix(8).joined(separator: ",")
+          "repairedCount": "\(repairedIDs.count)",
+          "repairedIDs": repairedIDs.prefix(8).joined(separator: ","),
+          "droppedCount": "\(droppedIDs.count)",
+          "droppedIDs": droppedIDs.prefix(8).joined(separator: ",")
         ]
       )
+    }
+  }
+
+  /// Fetch a single comment (e.g. for embedded comment links) and adapt it
+  /// into Winston's CommentData.
+  func commentData(forID id: String) async -> CommentData? {
+    let targetFullname = id.hasPrefix("t1_") ? id : "t1_\(id)"
+    do {
+      let resp = try await client.getCommentByIdResponse(id)
+      guard
+        let raw = resp.data?.rawData,
+        let comment = raw.savedComments().first(where: { $0.id == targetFullname })
+      else {
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "reddit.comment",
+          message: "Single comment fetch returned no target comment",
+          metadata: ["commentID": id]
+        )
+        return nil
+      }
+      let postFullname = comment.postInfo?.id ?? ""
+      return CommentData(graphQL: comment, depth: 0, parentID: postFullname, postFullname: postFullname)
+    } catch {
+      status = "comment fetch failed: \(describe(error))"
+      return nil
     }
   }
 

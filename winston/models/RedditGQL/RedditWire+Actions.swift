@@ -273,27 +273,44 @@ extension RedditWire {
       }
     }()
     do {
+      let consumedCursor = moreCursorByStubID[stub.id]
       let children: [ListingChild<CommentData>]
       if parentID.hasPrefix("t1_") {
-        let cursor = moreCursorByStubID[stub.id]
-        let resp = try await client.commentByIdWithChildrenResponse(commentID: parentID, sort: gqlSort, after: cursor)
+        let resp = try await client.commentByIdWithChildrenResponse(commentID: parentID, sort: gqlSort, after: consumedCursor)
         guard let commentById = resp.data?.commentById else { return nil }
         let postFullname = commentById.postInfo?.id ?? (postID.hasPrefix("t3_") ? postID : "t3_\(postID)")
-        children = adaptCommentTrees(commentById.children?.trees ?? [], postFullname: postFullname)
+        children = adaptCommentTrees(commentById.children?.trees ?? [], postFullname: postFullname, repairOrphans: false)
       } else {
         // Root-level continuation: PostComments does not expose `after` as a
         // typed argument yet, but the builder merges `extra` into variables.
         var extra: [String: JSONValue] = [:]
-        if let cursor = moreCursorByStubID[stub.id], !cursor.isEmpty {
-          extra["after"] = .string(cursor)
+        if let consumedCursor, !consumedCursor.isEmpty {
+          extra["after"] = .string(consumedCursor)
         }
         let resp = try await client.postCommentsResponse(postID: postID, sort: gqlSort, extra: extra)
         guard let post = resp.data?.postInfoById else { return nil }
-        children = adaptCommentTrees(post.commentForest?.trees ?? [], postFullname: post.id)
+        children = adaptCommentTrees(post.commentForest?.trees ?? [], postFullname: post.id, repairOrphans: false)
       }
+      moreCursorByStubID.removeValue(forKey: stub.id)
       let fresh = children.filter { child in
         guard let id = child.data?.id else { return false }
-        return !excluding.contains(id) && id != stub.id
+        if child.kind == "more" {
+          // Keep fresh continuation stubs so pagination can keep going, but
+          // drop one that would replay the cursor we just consumed — that
+          // would loop forever returning the same page.
+          if let consumedCursor, moreCursorByStubID[id] == consumedCursor {
+            moreCursorByStubID.removeValue(forKey: id)
+            AppDiagnostics.asyncRecord(
+              .warning,
+              category: "reddit.comment",
+              message: "Dropped repeated load-more continuation",
+              metadata: ["parentID": parentID, "stubID": id, "postID": postID]
+            )
+            return false
+          }
+          return id != stub.id
+        }
+        return !excluding.contains(id)
       }
       status = "moreReplies under \(parentID) → \(fresh.count) new"
       return fresh

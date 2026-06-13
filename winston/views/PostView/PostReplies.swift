@@ -9,104 +9,19 @@ import SwiftUI
 import Defaults
 
 struct PostReplies: View {
-  var update: Bool
+  var loading: Bool
   @ObservedObject var post: Post
   @ObservedObject var subreddit: Subreddit
   var ignoreSpecificComment: Bool
   var highlightID: String?
   var sort: CommentSortOption
-  var proxy: ScrollViewProxy
-  var geometryReader: GeometryProxy
+  /// Fetch is owned by PostView (deduplicated there); this view only requests it.
+  var fetch: (_ full: Bool) async -> Void
   @Environment(\.useTheme) private var selectedTheme
 
-  @State private var loading = true
   @State var seenComments : String?
 
-  // MARK: Properties related to comment skipper
-  @Binding var topVisibleCommentId: String?
-  @Binding var previousScrollTarget: String?
   @ObservedObject var comments: ObservableArray<Comment>
-
-  @Environment(\.globalLoaderDismiss) private var globalLoaderDismiss
-
-  func asyncFetch(_ full: Bool, _ altIgnoreSpecificComment: Bool? = nil) async {
-    let startedAt = Date()
-    let effectiveIgnoreSpecificComment = altIgnoreSpecificComment ?? ignoreSpecificComment
-    AppDiagnostics.asyncRecord(
-      .info,
-      category: "ui.commentTree",
-      message: "PostReplies fetch started",
-      metadata: commentTreeMetadata(
-        full: full,
-        ignoreSpecificComment: effectiveIgnoreSpecificComment,
-        extra: ["phase": "start"]
-      )
-    )
-    if let result = await post.refreshPost(commentID: (altIgnoreSpecificComment ?? ignoreSpecificComment) ? nil : highlightID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full), let newComments = result.0 {
-      AppDiagnostics.asyncRecord(
-        .info,
-        category: "ui.commentTree",
-        message: "PostReplies fetch completed",
-        metadata: commentTreeMetadata(
-          full: full,
-          ignoreSpecificComment: effectiveIgnoreSpecificComment,
-          extra: [
-            "phase": "success",
-            "rootComments": "\(newComments.count)",
-            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
-          ]
-        )
-      )
-      Task(priority: .background) {
-        await RedditWire.shared.updateCommentsWithAvatar(comments: newComments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
-      }
-      newComments.forEach { $0.parentWinston = comments }
-      await MainActor.run {
-        withAnimation {
-          comments.data = newComments
-          loading = false
-        }
-
-        if var specificID = highlightID {
-          specificID = specificID.hasPrefix("t1_") ? String(specificID.dropFirst(3)) : specificID
-          AppDiagnostics.asyncRecord(
-            .debug,
-            category: "ui.commentTree",
-            message: "PostReplies scheduling highlight scroll",
-            metadata: commentTreeMetadata(
-              full: full,
-              ignoreSpecificComment: effectiveIgnoreSpecificComment,
-              extra: ["specificID": specificID]
-            )
-          )
-          doThisAfter(0.1) {
-            withAnimation(spring) {
-              proxy.scrollTo("\(specificID)-body", anchor: .center)
-            }
-          }
-        }
-      }
-    } else {
-      await MainActor.run {
-        withAnimation {
-          loading = false
-        }
-      }
-      AppDiagnostics.asyncRecord(
-        .warning,
-        category: "ui.commentTree",
-        message: "PostReplies fetch returned no comments",
-        metadata: commentTreeMetadata(
-          full: full,
-          ignoreSpecificComment: effectiveIgnoreSpecificComment,
-          extra: [
-            "phase": "empty",
-            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
-          ]
-        )
-      )
-    }
-  }
 
   func commentTreeMetadata(full: Bool, ignoreSpecificComment: Bool, extra: [String: String] = [:]) -> [String: String] {
     [
@@ -129,46 +44,44 @@ struct PostReplies: View {
       let postFullname = post.data?.name ?? ""
       Group {
         ForEach(Array(comments.data.enumerated()), id: \.element.id) { i, comment in
+          // Each element below is its own List row: CommentLink's recursion flattens
+          // into one row per comment, so large threads stay virtualized. The rounded
+          // card look comes from the cap rows + per-row backgrounds in the rows
+          // themselves (CommentLinkContent/CommentLinkMore).
           Section {
-            VStack(spacing: 0) {
-              Color.clear
-                .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)
-                .id("\(comment.id)-top-spacer")
+            Color.clear
+              .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)
+              .id("\(comment.id)-top-spacer")
 
-              VStack(spacing: 0) {
-                Color.clear
-                  .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .top)
-                  .id("\(comment.id)-top-decoration")
+            Color.clear
+              .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius * 2, maxHeight: theme.theme.cornerRadius * 2, alignment: .top)
+              .background(CommentBG(cornerRadius: theme.theme.cornerRadius, pos: .top).fill(theme.theme.bg()))
+              .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .top)
+              .clipped()
+              .id("\(comment.id)-top-decoration")
 
-                if let commentWinstonData = comment.winstonData {
-                  CommentLink(highlightID: ignoreSpecificComment ? nil : highlightID, post: post, subreddit: subreddit, postFullname: postFullname, seenComments: seenComments, parentElement: .post(comments), comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
-                    .if(comments.data.firstIndex(of: comment) != nil) { view in
-                      view.anchorPreference(
-                        key: CommentUtils.AnchorsKey.self,
-                        value: .center
-                      ) { [comment.id: $0] }
-                    }
-                  }
+            if let commentWinstonData = comment.winstonData {
+              CommentLink(highlightID: ignoreSpecificComment ? nil : highlightID, post: post, subreddit: subreddit, postFullname: postFullname, seenComments: seenComments, parentElement: .post(comments), comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
+                .anchorPreference(
+                  key: CommentUtils.AnchorsKey.self,
+                  value: .center
+                ) { [comment.id: $0] }
+            }
 
-                Color.clear
-                  .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .bottom)
-                  .id("\(comment.id)-bot-decoration")
-              }
-              .background(
-                LiquidGlassCardBackground(
-                  cornerRadius: theme.theme.cornerRadius,
-                  fillColor: theme.theme.bg()
-                )
-              )
+            Color.clear
+              .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius * 2, maxHeight: theme.theme.cornerRadius * 2, alignment: .top)
+              .background(CommentBG(cornerRadius: theme.theme.cornerRadius, pos: .bottom).fill(theme.theme.bg()))
+              .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .bottom)
+              .clipped()
+              .id("\(comment.id)-bot-decoration")
 
-              Color.clear
-                .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)
-                .id("\(comment.id)-bot-spacer")
+            Color.clear
+              .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)
+              .id("\(comment.id)-bot-spacer")
 
-              if comments.data.count - 1 != i {
-                NiceDivider(divider: theme.divider)
-                  .id("\(comment.id)-bot-divider")
-              }
+            if comments.data.count - 1 != i {
+              NiceDivider(divider: theme.divider)
+                .id("\(comment.id)-bot-divider")
             }
           }
           .listRowBackground(Color.clear)
@@ -178,33 +91,8 @@ struct PostReplies: View {
           Spacer()
             .frame(height: 1)
             .listRowBackground(Color.clear)
-            .onChange(of: update) { _ in
-              AppDiagnostics.asyncRecord(
-                .debug,
-                category: "ui.commentTree",
-                message: "PostReplies update token changed",
-                metadata: commentTreeMetadata(full: true, ignoreSpecificComment: ignoreSpecificComment)
-              )
-              Task(priority: .background) {
-                await asyncFetch(true)
-              }
-            }
-            .onChange(of: ignoreSpecificComment) { val in
-              AppDiagnostics.asyncRecord(
-                .info,
-                category: "ui.commentTree",
-                message: "PostReplies ignoreSpecificComment changed",
-                metadata: commentTreeMetadata(full: post.data == nil, ignoreSpecificComment: val)
-              )
-              Task(priority: .background) {
-                await asyncFetch(post.data == nil, val)
-                globalLoaderDismiss()
-              }
-              if val {
-                withAnimation(spring) {
-                  proxy.scrollTo("post-content", anchor: .bottom)
-                }
-              }
+            .onAppear {
+              withAnimation { seenComments = post.winstonData?.seenComments }
             }
             .id("on-change-spacer")
         }
@@ -224,12 +112,13 @@ struct PostReplies: View {
               message: "PostReplies loading indicator appeared",
               metadata: commentTreeMetadata(full: post.data == nil, ignoreSpecificComment: ignoreSpecificComment)
             )
+            // Safety net: PostView.onAppear normally starts the fetch; this only
+            // fires if the replies section appears with nothing loaded.
             if comments.data.count == 0 || post.data == nil {
-              Task(priority: .background) {
-                await asyncFetch(post.data == nil)
+              Task {
+                await fetch(post.data == nil)
               }
             }
-            withAnimation { seenComments = post.winstonData?.seenComments }
           }
           .id("loading-comments")
       } else if comments.data.count == 0 {

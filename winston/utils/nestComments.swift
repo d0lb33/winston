@@ -10,7 +10,8 @@ import Foundation
 func nestComments(_ inputComments: [ListingChild<CommentData>], parentID: String) -> [Comment] {
   var rootComments: [Comment] = []
   var commentsMap: [String:Comment] = [:]
-  
+  var droppedOrphans: [String] = []
+
   inputComments.compactMap { x in
     if let data = x.data, let name = data.name, let commentParentID = data.parent_id, !name.hasSuffix(parentID) {
       let newComment = Comment(data: data, kind: x.kind)
@@ -25,7 +26,24 @@ func nestComments(_ inputComments: [ListingChild<CommentData>], parentID: String
   }.forEach { x in
     if let data = x.data, let parentName = data.parent_id, let parent = commentsMap[parentName] {
       parent.childrenWinston.data.append(x)
+    } else {
+      droppedOrphans.append(x.data?.name ?? x.id)
     }
+  }
+
+  if !droppedOrphans.isEmpty {
+    AppDiagnostics.asyncRecord(
+      .warning,
+      category: "ui.commentTree",
+      message: "Dropped orphan comments while nesting",
+      metadata: [
+        "parentID": parentID,
+        "input": "\(inputComments.count)",
+        "roots": "\(rootComments.count)",
+        "droppedCount": "\(droppedOrphans.count)",
+        "droppedIDs": droppedOrphans.prefix(8).joined(separator: ",")
+      ]
+    )
   }
   return rootComments
 }

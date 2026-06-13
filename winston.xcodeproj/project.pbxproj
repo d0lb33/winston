@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0A5302202FDCE10500CAC6F2 /* CommentSwipeActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53021F2FDCE10500CAC6F2 /* CommentSwipeActions.swift */; };
 		0AF2CAC92FDA38AE00944869 /* RedditGQLDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */; };
 		0AF2CACB2FDA434300944869 /* RedditGQLAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */; };
 		0AF2CACD2FDA48E500944869 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */; };
@@ -513,6 +514,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0A53021F2FDCE10500CAC6F2 /* CommentSwipeActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentSwipeActions.swift; sourceTree = "<group>"; };
 		0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLDebugView.swift; sourceTree = "<group>"; };
 		0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLAdapters.swift; sourceTree = "<group>"; };
 		0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
@@ -1098,6 +1100,7 @@
 				EC082F262A66132600BA2727 /* CommentLinkMore.swift */,
 				EC082F282A66134C00BA2727 /* CommentLinkFull.swift */,
 				EC0854182A4BFC4600E88389 /* CommentLink.swift */,
+				0A53021F2FDCE10500CAC6F2 /* CommentSwipeActions.swift */,
 			);
 			path = CommentLink;
 			sourceTree = "<group>";
@@ -2433,6 +2436,7 @@
 				EC3AC9D72AAD0E300078EC78 /* TagsOptionsCarousel.swift in Sources */,
 				65AA535D2A8BB27900275299 /* FAQPanel.swift in Sources */,
 				654559042B0E418B0080E27F /* UpsellCard.swift in Sources */,
+				0A5302202FDCE10500CAC6F2 /* CommentSwipeActions.swift in Sources */,
 				657643782ACF1D2100805641 /* FittiingScrollView.swift in Sources */,
 				ECBD8E2D2ABBCECC00C74E87 /* caches.swift in Sources */,
 				EC1E7B6A2A815BF300DB459A /* LightBoxOverlay.swift in Sources */,
