@@ -138,13 +138,13 @@ struct VideoPlayerPost: View, Equatable {
 
   /// Whether this inline player should be actively playing right now. In a gated feed
   /// (feedItemKey != nil) only the single centered video plays, and nothing plays while
-  /// scrolling. Outside a gated feed (feedItemKey == nil — e.g. post detail, comments)
-  /// behavior is unchanged: autoplay setting alone decides.
+  /// fast scrolling. Outside a gated feed (feedItemKey == nil — e.g. post detail,
+  /// comments) behavior is unchanged: autoplay setting alone decides.
   private var shouldPlayInline: Bool {
     guard autoPlayVideos, !fullscreen else { return false }
     guard let feedItemKey else { return true }
     let coordinator = InlineVideoCoordinator.shared
-    return !coordinator.isScrolling && coordinator.isActive(feedItemKey)
+    return !coordinator.isFastScrolling && coordinator.isActive(feedItemKey)
   }
 
   /// Whether to mount the live AVPlayer layer at all. Off-center feed videos render only
@@ -152,7 +152,14 @@ struct VideoPlayerPost: View, Equatable {
   /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
   /// video, the fullscreen one, and non-feed usages mount as before.
   private var shouldMountPlayer: Bool {
-    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey) || InlineVideoCoordinator.shared.isWarm(feedItemKey)
+    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey) || InlineVideoCoordinator.shared.isWarm(feedItemKey) || hasRenderedInlineFrame
+  }
+
+  /// Once a warmed/active inline player has replaced its poster with a real frame, keep
+  /// that player layer mounted while the row remains alive. Otherwise active/warm handoff
+  /// can briefly swap in the grey placeholder even though full-quality media is ready.
+  private var hasRenderedInlineFrame: Bool {
+    sharedVideo?.isPlayerLoaded == true && !showInlinePoster
   }
 
   init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil, feedItemKey: String? = nil) {
@@ -216,11 +223,13 @@ struct VideoPlayerPost: View, Equatable {
         .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
           applyInlinePlaybackState(sharedVideo)
         }
+        .onChange(of: InlineVideoCoordinator.shared.isFastScrolling) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
         .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
           applyInlinePlaybackState(sharedVideo)
         }
         .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
-          prepareForInlineDisplay(sharedVideo)
           applyInlinePlaybackState(sharedVideo)
         }
         .onDisappear() {
@@ -288,11 +297,13 @@ struct VideoPlayerPost: View, Equatable {
         .onChange(of: InlineVideoCoordinator.shared.isScrolling) { _, _ in
           applyInlinePlaybackState(sharedVideo)
         }
+        .onChange(of: InlineVideoCoordinator.shared.isFastScrolling) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
         .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
           applyInlinePlaybackState(sharedVideo)
         }
         .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
-          prepareForInlineDisplay(sharedVideo)
           applyInlinePlaybackState(sharedVideo)
         }
         .onDisappear() {
@@ -396,15 +407,15 @@ struct VideoPlayerPost: View, Equatable {
   func prepareForInlineDisplay(_ sharedVideo: SharedVideo) {
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
     recordVideoEvent(.debug, message: "Preparing inline video", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
-    if activeInlineVideoKey != cacheKey {
+    let identityChanged = activeInlineVideoKey != cacheKey
+    if identityChanged {
       activeInlineVideoKey = cacheKey
       posterLoaded = false
+      showInlinePoster = true
+      posterUnavailable = false
       posterHideGeneration = UUID()
       recordVideoEvent(.debug, message: "Inline video identity changed", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
     }
-
-    showInlinePoster = true
-    posterUnavailable = false
 
     // Off-center feed videos are poster-only: do NOT touch sharedVideo.player here, since
     // accessing it would create an AVPlayer (and load its HLS asset). Only the mounted
@@ -444,6 +455,13 @@ struct VideoPlayerPost: View, Equatable {
     guard !fullscreen else { return }
     if shouldPlayInline {
       sharedVideo.player.play()
+      if sharedVideo.posterURL == nil || posterLoaded {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo)
+      }
+    } else if shouldMountPlayer {
+      sharedVideo.player.isMuted = muteVideos
+      sharedVideo.player.currentItem?.preferredForwardBufferDuration = 1
+      sharedVideo.player.pause()
       if sharedVideo.posterURL == nil || posterLoaded {
         scheduleInlinePosterHide(sharedVideo: sharedVideo)
       }
@@ -514,7 +532,7 @@ struct VideoPlayerPost: View, Equatable {
     let hasAdvanced = currentTime.isFinite && currentTime > 0.05
     let itemReady = sharedVideo.player.currentItem?.status == .readyToPlay
     let isPlaying = sharedVideo.player.timeControlStatus == .playing || sharedVideo.player.rate > 0
-    return itemReady && isPlaying && hasAdvanced
+    return itemReady && (isPlaying ? hasAdvanced : shouldMountPlayer)
   }
 
   func handleInlineDisappear(_ sharedVideo: SharedVideo) {

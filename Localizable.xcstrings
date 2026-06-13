@@ -1192,9 +1192,6 @@
     "Done" : {
 
     },
-    "Download" : {
-
-    },
     "Drag Left" : {
       "localizations" : {
         "de" : {
@@ -3838,9 +3835,6 @@
         }
       }
     },
-    "Theme Store" : {
-
-    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3905,9 +3899,6 @@
           }
         }
       }
-    },
-    "There was an error importing this theme" : {
-
     },
     "This clears GraphQL account records and stored sessions. It does not reset themes or general preferences." : {
 
