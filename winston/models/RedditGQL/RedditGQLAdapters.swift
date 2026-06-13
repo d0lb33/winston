@@ -13,6 +13,20 @@
 import Foundation
 import RedditPOC
 
+func redditLoadableAvatarURL(_ urlString: String?) -> String? {
+  guard let urlString, !urlString.isEmpty else { return nil }
+  guard var components = URLComponents(string: urlString) else { return urlString }
+  
+  if components.host == "preview.redd.it", components.path.hasPrefix("/snoovatar/avatars/") {
+    components.host = "i.redd.it"
+    components.query = nil
+    components.fragment = nil
+    return components.url?.absoluteString ?? urlString
+  }
+  
+  return urlString
+}
+
 extension PostData {
   /// Build a `PostData` from a typed RedditPOC `SubredditPost`.
   init(graphQL p: SubredditPost) {
@@ -78,7 +92,7 @@ extension PostData {
     applyGraphQLMedia(from: p)
     AvatarRegistry.shared.register(
       fullname: p.authorInfo?.id,
-      url: p.authorInfo?.iconSmall?.url ?? p.authorInfo?.snoovatarIcon?.url
+      url: redditLoadableAvatarURL(p.authorInfo?.iconSmall?.url ?? p.authorInfo?.snoovatarIcon?.url)
     )
   }
 
@@ -256,7 +270,7 @@ extension CommentData {
     }
     AvatarRegistry.shared.register(
       fullname: node.authorInfo?.id,
-      url: node.authorInfo?.iconSmall?.url ?? node.authorInfo?.snoovatarIcon?.url
+      url: redditLoadableAvatarURL(node.authorInfo?.iconSmall?.url ?? node.authorInfo?.snoovatarIcon?.url)
     )
   }
 
@@ -328,7 +342,7 @@ extension UserData {
     if let k = a.postKarma { dict["link_karma"] = k }
     if let k = a.awardeeKarma { dict["awardee_karma"] = k }
     if let k = a.awarderKarma { dict["awarder_karma"] = k }
-    if let avatar = a.avatarURL { dict["snoovatar_img"] = avatar; dict["icon_img"] = avatar }
+    if let avatar = redditLoadableAvatarURL(a.avatarURL) { dict["snoovatar_img"] = avatar; dict["icon_img"] = avatar }
     if let gold = a.isGold ?? a.isPremium { dict["is_gold"] = gold }
     let created = PostData.epoch(fromISO8601: a.createdAt)
     if created > 0 { dict["created_utc"] = created; dict["created"] = created }
@@ -355,7 +369,7 @@ extension UserData {
     if let k = profile.karma?.fromPosts { dict["link_karma"] = k }
     if let k = profile.karma?.awardee { dict["awardee_karma"] = k }
     if let k = profile.karma?.awarder { dict["awarder_karma"] = k }
-    if let avatar = profile.snoovatarIcon?.url ?? profile.icon?.url {
+    if let avatar = redditLoadableAvatarURL(profile.snoovatarIcon?.url ?? profile.icon?.url) {
       dict["snoovatar_img"] = avatar
       dict["icon_img"] = avatar
     }
@@ -380,7 +394,7 @@ extension UserData {
         "url": "/user/\(username)/",
       ]
       if let banner = info.styles?.profileBanner?.url { subreddit["banner_img"] = banner }
-      if let icon = profile.icon?.url ?? profile.snoovatarIcon?.url { subreddit["icon_img"] = icon }
+      if let icon = redditLoadableAvatarURL(profile.icon?.url ?? profile.snoovatarIcon?.url) { subreddit["icon_img"] = icon }
       dict["subreddit"] = subreddit
     }
 

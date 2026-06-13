@@ -465,9 +465,7 @@ extension Post {
     var ids = Array<String>()
     
     if let children = comments?.children {
-      for i in 0...children.count - 1 {
-        let child = children[i]
-        
+      for child in children {
         if (child.kind == "more") { continue }
         
         if let commentId = child.data?.id {

@@ -21,6 +21,8 @@ struct UserView: View {
   @State private var lastActivities: [Either<Post, Comment>]?
   @State private var contentWidth: CGFloat = 0
   @State private var loadingOverview = true
+  @State private var loadingNextOverview = false
+  @State private var reachedEndOfOverview = false
   @State private var lastItemId: String? = nil
   @Environment(\.useTheme) private var selectedTheme
   
@@ -29,6 +31,10 @@ struct UserView: View {
   
   @ObservedObject var avatarCache = Caches.avatars
   //  @Environment(\.contentWidth) private var contentWidth
+
+  private var canPageOverview: Bool {
+    dataTypeFilter == "posts" || dataTypeFilter == "comments"
+  }
   
   func refresh() async {
     await user.refetchUser()
@@ -36,31 +42,54 @@ struct UserView: View {
       await MainActor.run {
         withAnimation {
           loadingOverview = false
+          loadingNextOverview = false
           lastActivities = data
+          reachedEndOfOverview = data.isEmpty || !canPageOverview
+          lastItemId = canPageOverview ? data.last.map { getItemId(for: $0) } : nil
         }
       }
       
       await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: data, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
-      
-      if let lastItem = data.last {
-        lastItemId = getItemId(for: lastItem)
+    } else {
+      await MainActor.run {
+        withAnimation {
+          loadingOverview = false
+          loadingNextOverview = false
+          reachedEndOfOverview = true
+          lastItemId = nil
+        }
       }
     }
   }
   
   func getNextData() {
+    guard canPageOverview, !loadingOverview, !loadingNextOverview, !reachedEndOfOverview, let lastId = lastItemId else { return }
+    loadingNextOverview = true
     Task {
-      if let lastId = lastItemId, let overviewData = await user.refetchOverview(dataTypeFilter, lastId) {
+      if let overviewData = await user.refetchOverview(dataTypeFilter, lastId) {
         await MainActor.run {
           withAnimation {
-            lastActivities?.append(contentsOf: overviewData)
+            if overviewData.isEmpty {
+              reachedEndOfOverview = true
+              lastItemId = nil
+            } else {
+              lastActivities?.append(contentsOf: overviewData)
+              lastItemId = overviewData.last.map { getItemId(for: $0) }
+            }
+            loadingNextOverview = false
           }
         }
         
-        await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
-        
-        if let lastItem = overviewData.last {
-          lastItemId = getItemId(for: lastItem)
+        if !overviewData.isEmpty {
+          await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+        }
+      } else {
+        await MainActor.run {
+          withAnimation {
+            loadingNextOverview = false
+            reachedEndOfOverview = true
+            lastItemId = nil
+          }
         }
       }
     }
@@ -178,7 +207,7 @@ struct UserView: View {
               Group {
                 MixedContentLink(content: item, theme: selectedTheme.postLinks)
                   .onAppear {
-                    if(lastActivities.count - 7 == i) {
+                    if i >= max(lastActivities.count - 7, 0) {
                       getNextData()
                     }
                   }
@@ -206,14 +235,22 @@ struct UserView: View {
                   .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
               }
             }
+
+            if lastActivities.isEmpty && !loadingOverview {
+              Text("No activity found")
+                .frame(maxWidth: .infinity, minHeight: 160)
+                .opacity(0.35)
+            }
           }
           
-          if lastItemId != nil || loadingOverview {
+          if loadingOverview || loadingNextOverview {
             ProgressView()
               .progressViewStyle(.circular)
               .frame(maxWidth: .infinity, minHeight: 100 )
               .id("user-loading")
               .id(UUID()) // spawns unique spinner, swiftui bug.
+          } else if reachedEndOfOverview && canPageOverview && lastActivities?.isEmpty == false {
+            EndOfFeedView()
           }
         }
         .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
@@ -241,6 +278,9 @@ struct UserView: View {
       withAnimation {
         lastActivities?.removeAll()
         loadingOverview = true
+        loadingNextOverview = false
+        reachedEndOfOverview = false
+        lastItemId = nil
       }
       
       Task {

@@ -167,21 +167,50 @@ struct PostLinkBG: View, Equatable {
           theme.theme.stickyPostBorderColor.color()
         }
       } else {
-        
-        if theme.theme.bg.blurry {
-          RR(theme.theme.cornerRadius, .ultraThinMaterial).equatable()
-        }
-        
-        RoundedRectangle(cornerRadius: theme.theme.cornerRadius, style: .continuous).fill(secondary ? .primary.opacity(0.06) : theme.theme.bg.color())
-        
-        if (stickied ?? false) {
-          RoundedRectangle(cornerRadius: theme.theme.cornerRadius, style: .continuous)
-            .stroke(theme.theme.stickyPostBorderColor.color(), lineWidth: theme.theme.stickyPostBorderColor.thickness)
-        }
-        
+        LiquidGlassCardBackground(
+          cornerRadius: theme.theme.cornerRadius,
+          fillColor: secondary ? .primary.opacity(0.06) : theme.theme.bg.color(),
+          strokeColor: (stickied ?? false) ? theme.theme.stickyPostBorderColor.color() : nil,
+          strokeWidth: (stickied ?? false) ? theme.theme.stickyPostBorderColor.thickness : 0
+        )
       }
     }
     .allowsHitTesting(false)
     .mask(RR(theme.theme.cornerRadius, Color.black).equatable())
+  }
+}
+
+struct LiquidGlassCardBackground: View {
+  let cornerRadius: CGFloat
+  let fillColor: Color
+  var strokeColor: Color? = nil
+  var strokeWidth: CGFloat = 0
+
+  var body: some View {
+    let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+    ZStack {
+      if #available(iOS 26.0, *) {
+        shape
+          .fill(fillColor.opacity(0.36))
+          .glassEffect(.regular, in: shape)
+      } else {
+        shape
+          .fill(.ultraThinMaterial)
+        shape
+          .fill(fillColor.opacity(0.78))
+      }
+
+      shape
+        .stroke(.white.opacity(0.18), lineWidth: 0.7)
+
+      shape
+        .stroke(.primary.opacity(0.06), lineWidth: 0.5)
+
+      if let strokeColor, strokeWidth > 0 {
+        shape
+          .stroke(strokeColor, lineWidth: strokeWidth)
+      }
+    }
   }
 }

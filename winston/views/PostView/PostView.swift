@@ -27,6 +27,7 @@ struct PostView: View, Equatable {
   @State private var hideElements = true
   @State private var sort: CommentSortOption
   @State private var update = false
+  @State private var isFetching = false
   
   @State private var topVisibleCommentId: String? = nil
   @State private var previousScrollTarget: String? = nil
@@ -44,7 +45,20 @@ struct PostView: View, Equatable {
     _sort = State(initialValue: defSettings.perPostSort ? (defSettings.postSorts[post.id] ?? commentsDefSettings.preferredSort) : commentsDefSettings.preferredSort);
   }
   
+  @MainActor
   func asyncFetch(_ full: Bool = true) async {
+    guard !isFetching else {
+      AppDiagnostics.asyncRecord(
+        .debug,
+        category: "ui.postDetail",
+        message: "PostView fetch skipped while already loading",
+        metadata: postDetailMetadata(full: full, extra: ["phase": "deduped"])
+      )
+      return
+    }
+    isFetching = true
+    defer { isFetching = false }
+
     let startedAt = Date()
     AppDiagnostics.asyncRecord(
       .info,
@@ -52,9 +66,6 @@ struct PostView: View, Equatable {
       message: "PostView fetch started",
       metadata: postDetailMetadata(full: full, extra: ["phase": "start"])
     )
-    if full {
-      update.toggle()
-    }
     if let result = await post.refreshPost(commentID: ignoreSpecificComment ? nil : highlightID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full), let newComments = result.0 {
       AppDiagnostics.asyncRecord(
         .info,
@@ -71,6 +82,11 @@ struct PostView: View, Equatable {
       )
       Task(priority: .background) {
         await RedditWire.shared.updateCommentsWithAvatar(comments: newComments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
+      }
+
+      newComments.forEach { $0.parentWinston = comments }
+      withAnimation {
+        comments.data = newComments
       }
       
       Task(priority: .background) {
@@ -108,7 +124,13 @@ struct PostView: View, Equatable {
   }
   
   func updatePost() {
-    Task(priority: .background) { await asyncFetch(true) }
+    Task { await asyncFetch(true) }
+  }
+
+  func ensurePostPresentationData() {
+    if let data = post.data, post.winstonData == nil || post.winstonData?.titleAttr == nil {
+      post.setupWinstonData(data: data, theme: selectedTheme, sub: subreddit)
+    }
   }
   
   var body: some View {
@@ -174,7 +196,6 @@ struct PostView: View, Equatable {
         .environment(\.defaultMinListRowHeight, 1)
         .listStyle(.plain)
         .refreshable {
-          withAnimation { update.toggle() }
           await asyncFetch(true)
         }
         .overlay(alignment: .bottomTrailing) {
@@ -194,6 +215,7 @@ struct PostView: View, Equatable {
           updatePost()
         }
         .onAppear {
+          ensurePostPresentationData()
           AppDiagnostics.asyncRecord(
             .debug,
             category: "ui.postDetail",

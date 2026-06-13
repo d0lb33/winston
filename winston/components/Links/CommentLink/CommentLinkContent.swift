@@ -9,6 +9,21 @@ import SwiftUI
 import Defaults
 import SwiftUIIntrospect
 import MarkdownUI
+import Nuke
+
+private enum CommentBodyPart: Identifiable, Equatable {
+  case text(String)
+  case media(URL)
+
+  var id: String {
+    switch self {
+    case .text(let value):
+      return "text-\(value.hashValue)"
+    case .media(let url):
+      return "media-\(url.absoluteString)"
+    }
+  }
+}
 
 private struct CommentBodyView: View {
   let markdown: String
@@ -16,27 +31,179 @@ private struct CommentBodyView: View {
   let selectable: Bool
   let fontSize: CGFloat
   let lineSpacing: CGFloat
+  let postTitle: String
+  let badgeKit: BadgeKit
+  let avatarImageRequest: ImageRequest?
+  let cornerRadius: Double
+  let maxMediaHeightScreenPercentage: CGFloat
+  let diagnosticContext: String
+  let forcedPreview: Bool
 
-  var bodyViewURL: URL? {
-    let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard trimmed.hasPrefix("![") else { return nil }
-    guard let openParen = trimmed.firstIndex(of: "("), let closeParen = trimmed.lastIndex(of: ")"), openParen < closeParen else { return nil }
-    let urlString = String(trimmed[trimmed.index(after: openParen)..<closeParen])
-      .trimmingCharacters(in: .whitespacesAndNewlines)
-    guard urlString.hasPrefix("http://") || urlString.hasPrefix("https://") else { return nil }
-    return URL(string: urlString)
-  }
+  @State private var postDimensions = PostDimensions.zero
+  @State private var contentWidth: CGFloat = .screenW
 
   var body: some View {
-    if let url = bodyViewURL {
-      URLImage(url: url)
-        .scaledToFit()
-        .frame(maxWidth: .infinity, minHeight: 120, maxHeight: 320, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-    } else {
-      Markdown(MarkdownUtil.formatForMarkdown(markdown, showSpoiler: showSpoiler))
-        .markdownTheme(.winstonMarkdown(fontSize: fontSize, lineSpacing: lineSpacing, textSelection: selectable))
+    let sourceMarkdown = CommentBodyView.spoilerProcessedMarkdown(markdown, showSpoiler: showSpoiler)
+    let parts = CommentBodyView.parts(from: sourceMarkdown, extractsMedia: !forcedPreview)
+
+    VStack(alignment: .leading, spacing: 8) {
+      ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
+        switch part {
+        case .text(let text):
+          markdownText(text)
+        case .media(let url):
+          if let media = mediaExtractor(url: url, compact: false, contentWidth: contentWidth, diagnosticContext: diagnosticContext) {
+            MediaPresenter(
+              postDimensions: $postDimensions,
+              controller: nil,
+              postTitle: postTitle,
+              badgeKit: badgeKit,
+              avatarImageRequest: avatarImageRequest,
+              markAsSeen: nil,
+              cornerRadius: cornerRadius,
+              blurPostLinkNSFW: false,
+              media: media,
+              compact: false,
+              contentWidth: contentWidth,
+              maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
+              resetVideo: { _ in },
+              diagnosticContext: diagnosticContext
+            )
+            .contentShape(Rectangle())
+          }
+        }
+      }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      GeometryReader { geo in
+        Color.clear
+          .onAppear { contentWidth = max(1, geo.size.width) }
+          .onChange(of: geo.size) { contentWidth = max(1, $0.width) }
+      }
+    )
+  }
+
+  private func markdownText(_ text: String) -> some View {
+    Markdown(MarkdownUtil.formatForMarkdown(text, showSpoiler: showSpoiler))
+      .markdownTheme(.winstonMarkdown(fontSize: fontSize, lineSpacing: lineSpacing, textSelection: selectable))
+      .fixedSize(horizontal: false, vertical: true)
+  }
+
+  private static func spoilerProcessedMarkdown(_ text: String, showSpoiler: Bool) -> String {
+    guard MarkdownUtil.containsSpoiler(text) else { return text }
+    if showSpoiler {
+      return text
+        .replacingOccurrences(of: "&gt;", with: ">")
+        .replacingOccurrences(of: "&lt;", with: "<")
+        .replacingOccurrences(of: ">!", with: "")
+        .replacingOccurrences(of: "!<", with: "")
+    }
+    return MarkdownUtil.formatForMarkdown(text, showSpoiler: false)
+  }
+
+  private static func parts(from markdown: String, extractsMedia: Bool) -> [CommentBodyPart] {
+    guard extractsMedia else { return [.text(markdown)] }
+
+    var mediaMatches = markdownImageMatches(in: markdown) + markdownLinkMatches(in: markdown) + bareURLMatches(in: markdown)
+    mediaMatches.sort { $0.range.location < $1.range.location }
+
+    var parts: [CommentBodyPart] = []
+    var currentLocation = 0
+    var consumedRanges: [NSRange] = []
+
+    for match in mediaMatches {
+      guard match.range.location >= currentLocation else { continue }
+      guard !consumedRanges.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
+
+      appendText(from: markdown, range: NSRange(location: currentLocation, length: match.range.location - currentLocation), to: &parts)
+
+      if let label = match.label, !label.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        appendText(label, to: &parts)
+      }
+
+      parts.append(.media(match.url))
+      consumedRanges.append(match.range)
+      currentLocation = match.range.location + match.range.length
+    }
+
+    appendText(from: markdown, range: NSRange(location: currentLocation, length: markdown.utf16.count - currentLocation), to: &parts)
+    return parts.isEmpty ? [.text(markdown)] : parts
+  }
+
+  private struct MediaMatch {
+    let range: NSRange
+    let url: URL
+    let label: String?
+  }
+
+  private static func markdownImageMatches(in text: String) -> [MediaMatch] {
+    regexMatches(pattern: "!\\[([^\\]]*)\\]\\((https?://[^\\s)]+)\\)", in: text).compactMap { match in
+      mediaMatch(match: match, text: text, urlGroup: 2, labelGroup: nil)
+    }
+  }
+
+  private static func markdownLinkMatches(in text: String) -> [MediaMatch] {
+    regexMatches(pattern: "(?<!!)\\[([^\\]]+)\\]\\((https?://[^\\s)]+)\\)", in: text).compactMap { match in
+      mediaMatch(match: match, text: text, urlGroup: 2, labelGroup: 1)
+    }
+  }
+
+  private static func bareURLMatches(in text: String) -> [MediaMatch] {
+    regexMatches(pattern: "(?<!\\]\\()\\bhttps?://[^\\s<>)]+", in: text).compactMap { match in
+      mediaMatch(match: match, text: text, urlGroup: 0, labelGroup: nil, trimTrailingPunctuation: true)
+    }
+  }
+
+  private static func regexMatches(pattern: String, in text: String) -> [NSTextCheckingResult] {
+    guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
+    return regex.matches(in: text, range: NSRange(location: 0, length: text.utf16.count))
+  }
+
+  private static func mediaMatch(match: NSTextCheckingResult, text: String, urlGroup: Int, labelGroup: Int?, trimTrailingPunctuation: Bool = false) -> MediaMatch? {
+    let urlRange = match.range(at: urlGroup)
+    guard let rawURL = string(in: text, range: urlRange) else { return nil }
+    let normalized = normalizedMediaURL(from: rawURL, trimTrailingPunctuation: trimTrailingPunctuation)
+    guard let url = normalized.url, isDirectMediaURL(url) else { return nil }
+
+    let label = labelGroup.flatMap { string(in: text, range: match.range(at: $0)) }
+    let range = trimTrailingPunctuation && normalized.removedUTF16Count > 0
+      ? NSRange(location: match.range.location, length: match.range.length - normalized.removedUTF16Count)
+      : match.range
+    return MediaMatch(range: range, url: url, label: label)
+  }
+
+  private static func normalizedMediaURL(from rawURL: String, trimTrailingPunctuation: Bool) -> (url: URL?, removedUTF16Count: Int) {
+    var urlString = rawURL.escape
+    var removedUTF16Count = 0
+    let trailingPunctuation = CharacterSet(charactersIn: ".,;:!?")
+
+    if trimTrailingPunctuation {
+      while let scalar = urlString.unicodeScalars.last, trailingPunctuation.contains(scalar) {
+        urlString.removeLast()
+        removedUTF16Count += String(scalar).utf16.count
+      }
+    }
+
+    guard let url = URL(string: urlString), ["http", "https"].contains(url.scheme?.lowercased()) else {
+      return (nil, removedUTF16Count)
+    }
+    return (url, removedUTF16Count)
+  }
+
+  private static func string(in text: String, range: NSRange) -> String? {
+    guard range.location != NSNotFound, let swiftRange = Range(range, in: text) else { return nil }
+    return String(text[swiftRange])
+  }
+
+  private static func appendText(from source: String, range: NSRange, to parts: inout [CommentBodyPart]) {
+    guard let text = string(in: source, range: range) else { return }
+    appendText(text, to: &parts)
+  }
+
+  private static func appendText(_ text: String, to parts: inout [CommentBodyPart]) {
+    guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    parts.append(.text(text))
   }
 }
 
@@ -262,7 +429,14 @@ struct CommentLinkContent: View {
                         showSpoiler: showSpoiler,
                         selectable: selectable,
                         fontSize: theme.theme.bodyText.size,
-                        lineSpacing: theme.theme.linespacing
+                        lineSpacing: theme.theme.linespacing,
+                        postTitle: post?.data?.title ?? data.link_title ?? "",
+                        badgeKit: data.badgeKit,
+                        avatarImageRequest: winstonData.avatarImageRequest,
+                        cornerRadius: theme.theme.cornerRadius,
+                        maxMediaHeightScreenPercentage: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
+                        diagnosticContext: "comment:\(data.id):\(String(body.prefix(80)))",
+                        forcedPreview: forcedBodySize != nil
                       )
                       
                       if MarkdownUtil.containsSpoiler(body) {
@@ -309,7 +483,7 @@ struct CommentLinkContent: View {
         cell.layer.masksToBounds = false
       }
       .background(Color.accentColor.opacity(highlight ? 0.2 : 0))
-      .background(showReplies ? theme.theme.bg() : .clear)
+      .background(showReplies && (data.depth ?? 0) != 0 ? theme.theme.bg().opacity(0.72) : .clear)
       .onAppear {
         let newCommentSwipeActions = Defaults[.CommentLinkDefSettings].swipeActions
         if commentSwipeActions != newCommentSwipeActions {

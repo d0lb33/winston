@@ -40,23 +40,23 @@ let defaultTheme = WinstonTheme(
   id: "default",
   postLinks: .init(
     theme: .init(
-      cornerRadius: 20,
-      mediaCornerRadius: 12,
-      innerPadding: .init(horizontal: 16, vertical: 14),
-      outerHPadding: 8,
+      cornerRadius: 24,
+      mediaCornerRadius: 18,
+      innerPadding: .init(horizontal: 14, vertical: 12),
+      outerHPadding: 10,
       stickyPostBorderColor: .init(thickness: 4, color: .init(light: .init(hex: "2FD058", alpha: 0.3), dark: .init(hex: "2FD058", alpha: 0.3))),
       titleText: .init(size: 16, color: themeFontPrimary, weight: .medium),
       bodyText: .init(size: 15, color: .init(light: ThemeColor(hex: "000000", alpha: 0.75), dark: .init(hex: "ffffff", alpha: 0.75))),
       linespacing: 0,
       badge: badgeTheme,
-      verticalElementsSpacing: 8,
+      verticalElementsSpacing: 7,
       bg: .init(blurry: false, color: listSectionBGTheme),
       unseenType: .dot(.init(light: .init(hex: "4FFF85"), dark: .init(hex: "4FFF85"))),
       unseenFadeOpacity : 0.6,
       compactSelftextPostLinkPlaceholderImg: .init(type: .winston, color: .init(light: .init(hex: "000000", alpha: 0.2), dark: .init(hex: "ffffff", alpha: 0.2))),
-      showDivider: true
+      showDivider: false
     ),
-    spacing: 16,
+    spacing: 10,
     divider: .init(style: .no, thickness: 6, color: listSectionBGTheme),
     bg: defaultThemeBG,
     stickyFilters: false,
@@ -69,7 +69,7 @@ let defaultTheme = WinstonTheme(
     spacing: 12,
     badge: badgeTheme,
     bg: defaultThemeBG,
-    commentsDistance: 16,
+    commentsDistance: 14,
     titleText: .init(size: 20, color: themeFontPrimary),
     bodyText: .init(size: 15, color: themeFontPrimary),
     linespacing: 0,
@@ -77,12 +77,12 @@ let defaultTheme = WinstonTheme(
   ),
   comments: .init(
     theme: .init(
-      innerPadding: .init(horizontal: 13, vertical: 2),
-      outerHPadding: 8,
-      repliesSpacing: 5,
+      innerPadding: .init(horizontal: 14, vertical: 5),
+      outerHPadding: 10,
+      repliesSpacing: 4,
       indentCurve: 12,
       indentColor: defaultThemeDividerColor,
-      cornerRadius: 10,
+      cornerRadius: 20,
       badge: badgeTheme,
       bodyText: .init(size: 15, color: themeFontPrimary),
       bodyAuthorSpacing: 6,
@@ -93,7 +93,7 @@ let defaultTheme = WinstonTheme(
       loadMoreBackground: defaultThemeDividerColor,
       unseenDot : .init(light: .init(hex: "0B84FE"), dark: .init(hex: "0B84FE"))
     ),
-    spacing: 12,
+    spacing: 10,
     divider: .init(style: .no, thickness: 1, color: defaultThemeDividerColor)
     //    bg: defaultThemeBG
   ),

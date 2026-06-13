@@ -98,6 +98,46 @@ extension MediaExtractedType {
   }
 }
 
+func isDirectMediaURL(_ rawURL: URL) -> Bool {
+  let url = rootURL(rawURL) ?? rawURL
+  let ext = url.pathExtension.lowercased()
+  let extWithDot = ext.isEmpty ? "" : ".\(ext)"
+  return IMAGES_FORMATS.contains(extWithDot)
+    || VIDEOS_FORMATS.contains(extWithDot)
+    || redditHostedVideoURL(from: url.absoluteString) != nil
+}
+
+func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = .screenW, diagnosticContext: String? = nil) -> MediaExtractedType? {
+  let url = rootURL(rawURL) ?? rawURL
+  let ext = url.pathExtension.lowercased()
+  let extWithDot = ext.isEmpty ? "" : ".\(ext)"
+
+  if IMAGES_FORMATS.contains(where: { $0 == extWithDot }) {
+    let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
+    let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
+    let thumbnail = compact && extWithDot != ".gif"
+      ? ImageRequest.ThumbnailOptions(size: .init(width: scaledCompactModeThumbSize(compact: compact), height: scaledCompactModeThumbSize(compact: compact)), unit: .points, contentMode: .aspectFill)
+      : nil
+    let imgExtracted = ImgExtracted(url: url, size: .zero, request: winstonImageRequest(url: url, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: thumbnail))
+    recordURLMediaExtraction(kind: "direct_image", compact: compact, contentWidth: contentWidth, playbackURL: url, size: .zero, diagnosticContext: diagnosticContext)
+    return .imgs([imgExtracted])
+  }
+
+  if let hostedVideo = redditHostedVideoURL(from: url.absoluteString) {
+    recordURLMediaExtraction(kind: "hosted_video", compact: compact, contentWidth: contentWidth, playbackURL: hostedVideo.playbackURL, downloadURL: hostedVideo.downloadURL, size: .zero, diagnosticContext: diagnosticContext)
+    let video = SharedVideo.get(url: hostedVideo.playbackURL, size: .zero, downloadURL: hostedVideo.downloadURL, posterURL: nil)
+    return .video(video)
+  }
+
+  if VIDEOS_FORMATS.contains(where: { $0 == extWithDot }) {
+    recordURLMediaExtraction(kind: "direct_video", compact: compact, contentWidth: contentWidth, playbackURL: url, downloadURL: url, size: .zero, diagnosticContext: diagnosticContext)
+    let video = SharedVideo.get(url: url, size: .zero, downloadURL: url, posterURL: nil)
+    return .video(video)
+  }
+
+  return nil
+}
+
 
 // ORDER MATTERS!
 func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
@@ -270,7 +310,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
           recordEmbeddedRedditEntity(data: data, kind: "comment", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: commentId)
           return .comment(entityExtracted)
         }
-        let post = Post(id: postId, typePrefix: Post.prefix)
+        let post = Post(id: postId, subID: subredditName)
         post.fetchItself()
         let entityExtracted = EntityExtracted(subredditID: subredditName, postID: postId, entity: post)
         recordEmbeddedRedditEntity(data: data, kind: "post", actualURL: actualURL, subredditID: subredditName, postID: postId, commentID: nil)
@@ -390,6 +430,31 @@ private func recordMediaExtraction(
     category: "ui.media.extract",
     message: "Media extracted",
     metadata: mediaExtractionMetadata(data: data, kind: kind, compact: compact, contentWidth: contentWidth, playbackURL: playbackURL, downloadURL: downloadURL, posterURL: posterURL, size: size, extra: extra)
+  )
+}
+
+private func recordURLMediaExtraction(
+  kind: String,
+  compact: Bool,
+  contentWidth: Double,
+  playbackURL: URL? = nil,
+  downloadURL: URL? = nil,
+  size: CGSize,
+  diagnosticContext: String?
+) {
+  AppDiagnostics.asyncRecord(
+    .debug,
+    category: "ui.media.extract",
+    message: "URL media extracted",
+    metadata: [
+      "kind": kind,
+      "compact": "\(compact)",
+      "contentWidth": "\(contentWidth)",
+      "playbackURL": playbackURL?.absoluteString ?? "nil",
+      "downloadURL": downloadURL?.absoluteString ?? "nil",
+      "size": "\(size.width)x\(size.height)",
+      "context": diagnosticContext ?? "nil"
+    ]
   )
 }
 

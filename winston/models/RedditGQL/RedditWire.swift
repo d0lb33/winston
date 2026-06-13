@@ -450,8 +450,9 @@ final class RedditWire: ObservableObject {
           "firstIDs": ids.prefix(8).joined(separator: ",")
         ]
       )
-      guard !ids.isEmpty else { return ([], nextAfter) }
-      return (await postData(forIDs: ids), nextAfter)
+      guard !ids.isEmpty else { return ([], nil) }
+      let posts = await postData(forIDs: ids)
+      return (posts, posts.isEmpty ? nil : nextAfter)
     } catch {
       status = "feed failed: \(describe(error))"
       return ([], nil)
@@ -468,8 +469,8 @@ final class RedditWire: ObservableObject {
       let postConnection = rawData?.firstFeedElementConnection()
       let connectionPostIDs = postConnection?.postIDs ?? []
       let postIDs = connectionPostIDs.isEmpty ? rawData?.savedPostIDs() ?? [] : connectionPostIDs
-      let nextAfter = normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
       let posts = await postData(forIDs: postIDs)
+      let nextAfter = posts.isEmpty ? nil : normalizedCursor((postConnection?.pageInfo?.hasNextPage == false) ? nil : postConnection?.pageInfo?.endCursor)
       status = "saved posts → \(posts.count) posts, next \(nextAfter == nil ? "none" : "yes")"
       return (posts, nextAfter)
     } catch {
@@ -499,7 +500,7 @@ final class RedditWire: ObservableObject {
         )
       } ?? []
       let pageInfo = rawData?.firstPageInfo()
-      let nextAfter = normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
+      let nextAfter = comments.isEmpty ? nil : normalizedCursor((pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor)
       status = "saved comments → \(comments.count) comments, next \(nextAfter == nil ? "none" : "yes")"
       return (comments, nextAfter)
     } catch {
@@ -588,6 +589,18 @@ final class RedditWire: ObservableObject {
       status = "postComments \(postFullname) → \(trees.count) comment nodes"
       let children = adaptCommentTrees(trees, postFullname: postFullname)
       logCommentFetchDiagnostics(postID: postFullname, commentID: nil, children: children)
+      if trees.isEmpty {
+        AppDiagnostics.asyncRecord(
+          .info,
+          category: "ui.commentTree",
+          message: "PostComments returned no comment tree",
+          metadata: [
+            "postID": postFullname,
+            "phase": "empty-tree"
+          ]
+        )
+        return (nil, children)
+      }
       return (PostData(graphQL: post), children)
     } catch {
       status = "postComments failed: \(describe(error))"
@@ -944,33 +957,31 @@ final class RedditWire: ObservableObject {
   func searchAll(_ query: String, contentWidth: CGFloat = .screenW) async -> RedditSearchResults {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .empty }
-    do {
-      let resp = try await client.dynamicSearchResponse(trimmed)
-      guard let raw = resp.data?.rawData else { return .empty }
-      let postDatas = (resp.data?.posts ?? []).map { PostData(graphQL: $0) }.deduped { $0.id }
-      let posts = Post.initMultiple(datas: postDatas, contentWidth: contentWidth)
-      let subs = raw.searchSubredditObjects
-        .compactMap(SubredditData.init(graphQLSearchObject:))
-        .deduped { ($0.display_name ?? $0.id).lowercased() }
-        .map(Subreddit.init(data:))
-      let users = raw.searchUserObjects
-        .compactMap(UserData.init(graphQLSearchObject:))
-        .deduped { $0.name.lowercased() }
-        .map(User.init(data:))
-      status = "search all '\(trimmed)' → \(posts.count) posts, \(subs.count) subs, \(users.count) users"
-      return RedditSearchResults(posts: posts, subreddits: subs, users: users)
-    } catch {
-      status = "search all failed: \(describe(error))"
-      return .empty
-    }
+    let posts = await searchPosts(trimmed, contentWidth: contentWidth, pageLimit: 2)
+    let subs = await searchSubreddits(trimmed, pageLimit: 2).map(Subreddit.init(data:))
+    let users = await searchUsers(trimmed, pageLimit: 2).map(User.init(data:))
+    status = "search all '\(trimmed)' → \(posts.count) posts, \(subs.count) subs, \(users.count) users"
+    return RedditSearchResults(posts: posts, subreddits: subs, users: users)
   }
 
-  func searchPosts(_ query: String, contentWidth: CGFloat = .screenW) async -> [Post] {
+  func searchPosts(_ query: String, contentWidth: CGFloat = .screenW, pageLimit: Int = 4) async -> [Post] {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }
     do {
-      let resp = try await client.dynamicSearchResponse(trimmed, pane: .posts)
-      let postDatas = (resp.data?.posts ?? []).map { PostData(graphQL: $0) }.deduped { $0.id }
+      var after: String?
+      var postDatas: [PostData] = []
+      for _ in 0..<pageLimit {
+        let resp = try await client.dynamicSearchResponse(trimmed, pane: .posts, after: after)
+        postDatas.append(contentsOf: (resp.data?.posts ?? []).map { PostData(graphQL: $0) })
+        guard
+          resp.data?.pageInfo?.hasNextPage == true,
+          let next = resp.data?.pageInfo?.endCursor,
+          !next.isEmpty,
+          next != after
+        else { break }
+        after = next
+      }
+      postDatas = postDatas.deduped { $0.id }
       let posts = Post.initMultiple(datas: postDatas, contentWidth: contentWidth)
       status = "search posts '\(trimmed)' → \(posts.count)"
       return posts
@@ -982,34 +993,66 @@ final class RedditWire: ObservableObject {
 
   /// Search typeahead over GraphQL. Kept for API compatibility; all-search is
   /// preferred because the live typeahead response can be layout-only.
-  func searchSubreddits(_ query: String) async -> [SubredditData] {
-    let raw = await dynamicSearchRaw(query, pane: .communities)
-    let subs = raw?.searchSubredditObjects
-      .compactMap(SubredditData.init(graphQLSearchObject:))
-      .deduped { ($0.display_name ?? $0.id).lowercased() } ?? []
+  func searchSubreddits(_ query: String, pageLimit: Int = 4) async -> [SubredditData] {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+    var subs: [SubredditData] = []
+    if isLikelyRedditIdentifier(trimmed), let exact = await subredditData(name: trimmed) {
+      subs.append(exact)
+    }
+    subs.append(contentsOf: await searchRawPages(trimmed, pane: .communities, pageLimit: pageLimit, disableSpellCorrection: isLikelyRedditIdentifier(trimmed)).flatMap {
+      $0.searchSubredditObjects.compactMap(SubredditData.init(graphQLSearchObject:))
+    })
+    subs = subs.deduped { ($0.display_name ?? $0.id).lowercased() }
     status = "search subreddits '\(query)' → \(subs.count)"
     return subs
   }
 
-  func searchUsers(_ query: String) async -> [UserData] {
-    let raw = await dynamicSearchRaw(query, pane: .people)
-    let users = raw?.searchUserObjects
-      .compactMap(UserData.init(graphQLSearchObject:))
-      .deduped { $0.name.lowercased() } ?? []
+  func searchUsers(_ query: String, pageLimit: Int = 4) async -> [UserData] {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+    var users: [UserData] = []
+    if isLikelyRedditIdentifier(trimmed), let exact = await userProfile(trimmed) {
+      users.append(exact)
+    }
+    users.append(contentsOf: await searchRawPages(trimmed, pane: .people, pageLimit: pageLimit, disableSpellCorrection: isLikelyRedditIdentifier(trimmed)).flatMap {
+      $0.searchUserObjects.compactMap(UserData.init(graphQLSearchObject:))
+    })
+    users = users.deduped { $0.name.lowercased() }
     status = "search users '\(query)' → \(users.count)"
     return users
   }
 
-  private func dynamicSearchRaw(_ query: String, pane: RedditSearchPane? = nil) async -> JSONValue? {
+  private func searchRawPages(_ query: String, pane: RedditSearchPane? = nil, pageLimit: Int, disableSpellCorrection: Bool = false) async -> [JSONValue] {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmed.isEmpty else { return nil }
+    guard !trimmed.isEmpty else { return [] }
     do {
-      let resp = try await client.dynamicSearchResponse(trimmed, pane: pane)
-      return resp.data?.rawData
+      var after: String?
+      var pages: [JSONValue] = []
+      for _ in 0..<pageLimit {
+        let resp = try await client.dynamicSearchResponse(trimmed, pane: pane, after: after, disableSpellCorrection: disableSpellCorrection)
+        guard let data = resp.data else { break }
+        pages.append(data.rawData)
+        guard
+          data.pageInfo?.hasNextPage == true,
+          let next = data.pageInfo?.endCursor,
+          !next.isEmpty,
+          next != after
+        else { break }
+        after = next
+      }
+      return pages
     } catch {
       status = "search failed: \(describe(error))"
-      return nil
+      return []
     }
+  }
+
+  private func isLikelyRedditIdentifier(_ value: String) -> Bool {
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, !trimmed.contains(where: { $0.isWhitespace }) else { return false }
+    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "_-"))
+    return trimmed.unicodeScalars.allSatisfy { allowed.contains($0) }
   }
 
   /// Load the Android About-page operation cluster and distill the raw GraphQL

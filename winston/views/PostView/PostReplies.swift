@@ -135,29 +135,31 @@ struct PostReplies: View {
                 .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)
                 .id("\(comment.id)-top-spacer")
 
-              Color.clear
-                .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius * 2, maxHeight: theme.theme.cornerRadius * 2, alignment: .top)
-                .background(CommentBG(cornerRadius: theme.theme.cornerRadius, pos: .top).fill(theme.theme.bg()))
-                .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .top)
-                .clipped()
-                .id("\(comment.id)-top-decoration")
+              VStack(spacing: 0) {
+                Color.clear
+                  .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .top)
+                  .id("\(comment.id)-top-decoration")
 
-              if let commentWinstonData = comment.winstonData {
-                CommentLink(highlightID: ignoreSpecificComment ? nil : highlightID, post: post, subreddit: subreddit, postFullname: postFullname, seenComments: seenComments, parentElement: .post(comments), comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
-                  .if(comments.data.firstIndex(of: comment) != nil) { view in
-                    view.anchorPreference(
-                      key: CommentUtils.AnchorsKey.self,
-                      value: .center
-                    ) { [comment.id: $0] }
+                if let commentWinstonData = comment.winstonData {
+                  CommentLink(highlightID: ignoreSpecificComment ? nil : highlightID, post: post, subreddit: subreddit, postFullname: postFullname, seenComments: seenComments, parentElement: .post(comments), comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
+                    .if(comments.data.firstIndex(of: comment) != nil) { view in
+                      view.anchorPreference(
+                        key: CommentUtils.AnchorsKey.self,
+                        value: .center
+                      ) { [comment.id: $0] }
+                    }
                   }
-              }
 
-              Color.clear
-                .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius * 2, maxHeight: theme.theme.cornerRadius * 2, alignment: .top)
-                .background(CommentBG(cornerRadius: theme.theme.cornerRadius, pos: .bottom).fill(theme.theme.bg()))
-                .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .bottom)
-                .clipped()
-                .id("\(comment.id)-bot-decoration")
+                Color.clear
+                  .frame(maxWidth: .infinity, minHeight: theme.theme.cornerRadius, maxHeight: theme.theme.cornerRadius, alignment: .bottom)
+                  .id("\(comment.id)-bot-decoration")
+              }
+              .background(
+                LiquidGlassCardBackground(
+                  cornerRadius: theme.theme.cornerRadius,
+                  fillColor: theme.theme.bg()
+                )
+              )
 
               Color.clear
                 .frame(maxWidth: .infinity, minHeight: theme.spacing / 2, maxHeight: theme.spacing / 2)

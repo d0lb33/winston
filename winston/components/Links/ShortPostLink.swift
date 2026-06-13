@@ -13,6 +13,20 @@ struct ShortPostLink: View {
   var post: Post
   @Environment(\.useTheme) private var selectedTheme
 
+  private func openPost(data: PostData) {
+    if post.winstonData == nil || post.winstonData?.titleAttr == nil || post.winstonData?.subreddit == nil {
+      post.setupWinstonData(data: data, theme: selectedTheme, sub: Subreddit(id: data.subreddit))
+    }
+
+    AppDiagnostics.asyncRecord(
+      .debug,
+      category: "ui.embeddedPost",
+      message: "ShortPostLink tapped",
+      metadata: diagnosticsMetadata(data: data)
+    )
+    Nav.to(.reddit(.post(post)))
+  }
+
   var body: some View {
     Group {
       if let data = post.data {
@@ -53,13 +67,7 @@ struct ShortPostLink: View {
           )
         }
         .onTapGesture {
-          AppDiagnostics.asyncRecord(
-            .debug,
-            category: "ui.embeddedPost",
-            message: "ShortPostLink tapped",
-            metadata: diagnosticsMetadata(data: data)
-          )
-          Nav.to(.reddit(.post(post)))
+          openPost(data: data)
         }
       } else {
         ProgressView()

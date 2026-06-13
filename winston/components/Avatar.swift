@@ -20,7 +20,28 @@ struct Avatar: View {
   
   var body: some View {
     let avatarSize = avatarSize ?? theme?.size ?? 0
-    AvatarRaw(saved: saved, avatarImgRequest: avatarRequest, userID: userID, fullname: fullname, theme: theme, avatarSize: avatarSize)
+    AvatarRaw(
+      saved: saved,
+      avatarImgRequest: avatarRequest ?? Self.makeAvatarRequest(urlString: url, avatarSize: avatarSize),
+      userID: userID,
+      fullname: fullname,
+      theme: theme,
+      avatarSize: avatarSize
+    )
+  }
+  
+  private static func makeAvatarRequest(urlString: String?, avatarSize: CGFloat) -> ImageRequest? {
+    guard
+      let urlString = redditLoadableAvatarURL(urlString),
+      let url = URL(string: String(urlString.split(separator: "?")[0]))
+    else { return nil }
+    
+    let thumbOpt = ImageRequest.ThumbnailOptions(
+      size: .init(width: avatarSize, height: avatarSize),
+      unit: .points,
+      contentMode: .aspectFill
+    )
+    return winstonImageRequest(url: url, processors: [ImageProcessors.ScaleFixer()], priority: .veryHigh, thumbnail: thumbOpt)
   }
 }
 

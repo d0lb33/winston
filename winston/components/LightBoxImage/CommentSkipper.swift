@@ -52,6 +52,12 @@ struct CommentSkipper: ViewModifier {
   }
   
   private func jumpToNextComment() {
+    guard !comments.data.isEmpty else {
+      topVisibleCommentId = nil
+      previousScrollTarget = nil
+      return
+    }
+
     if topVisibleCommentId == nil, let id = comments.data.first?.id {
       reader.scrollTo(id, anchor: .top)
       topVisibleCommentId = id

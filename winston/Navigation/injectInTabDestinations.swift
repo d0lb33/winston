@@ -28,15 +28,9 @@ extension View {
         case .reddit(let reddDest):
           switch reddDest {
           case .post(let (post)):
-            if let sub = post.winstonData?.subreddit {
-              PostView(post: post, subreddit: sub)
-                .diagnosticScreen("reddit.post.\(post.id)")
-            }
+            RedditPostDestination(post: post)
           case .postHighlighted(let post, let highlightID):
-            if let sub = post.winstonData?.subreddit {
-              PostView(post: post, subreddit: sub, highlightID: highlightID)
-                .diagnosticScreen("reddit.postHighlighted.\(post.id).\(highlightID)")
-            }
+            RedditPostDestination(post: post, highlightID: highlightID)
           case .subFeed(let sub):
             SubredditPosts(subreddit: sub).equatable()
               .diagnosticScreen("reddit.subFeed.\(sub.id)")
@@ -100,6 +94,37 @@ extension View {
           }
         }
       })
+  }
+}
+
+private struct RedditPostDestination: View {
+  @ObservedObject var post: Post
+  var highlightID: String?
+
+  private var subreddit: Subreddit? {
+    post.winstonData?.subreddit ?? post.data.map { Subreddit(id: $0.subreddit) }
+  }
+
+  var body: some View {
+    if let subreddit {
+      PostView(post: post, subreddit: subreddit, highlightID: highlightID)
+        .diagnosticScreen(diagnosticName)
+    } else {
+      ProgressView()
+        .progressViewStyle(.circular)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+          post.fetchItself()
+        }
+        .diagnosticScreen(diagnosticName)
+    }
+  }
+
+  private var diagnosticName: String {
+    if let highlightID {
+      return "reddit.postHighlighted.\(post.id).\(highlightID)"
+    }
+    return "reddit.post.\(post.id)"
   }
 }
 

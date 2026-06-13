@@ -2514,6 +2514,9 @@
     "No accounts yet" : {
 
     },
+    "No activity found" : {
+
+    },
     "No comments around..." : {
       "extractionState" : "stale",
       "localizations" : {
