@@ -23,14 +23,30 @@ final class InlineVideoCoordinator {
   /// The feed-item key (post id) of the single video allowed to autoplay inline.
   private(set) var activeVideoKey: String?
 
+  /// Nearby inline videos allowed to mount a paused AVPlayer so their first frame can
+  /// be ready before they become centered. This stays tiny and is cleared on fast scroll.
+  private(set) var warmVideoKeys: Set<String> = []
+
   /// True while the feed scroll view is interacting/decelerating. While true,
   /// inline playback is paused regardless of which video is active.
   private(set) var isScrolling: Bool = false
+
+  /// True when center updates indicate the feed is moving quickly enough that mounting
+  /// nearby paused players would likely hurt scroll smoothness more than it helps.
+  private(set) var isFastScrolling: Bool = false
 
   // Latest per-row centers and viewport height, updated as the feed reports geometry.
   // ObservationIgnored: written every frame during scroll — must not invalidate views.
   @ObservationIgnored private var latestCenters: [InlineVideoCenter] = []
   @ObservationIgnored var viewportHeight: CGFloat = .screenH
+  @ObservationIgnored private var lastCentersMeanY: CGFloat?
+  @ObservationIgnored private var lastCentersTimestamp: TimeInterval?
+  @ObservationIgnored private var lastScrollDeltaY: CGFloat = 0
+  @ObservationIgnored private var lastWarmUpdateTimestamp: TimeInterval = 0
+
+  private let warmAheadCount = 3
+  private let warmUpdateInterval: TimeInterval = 0.15
+  private let fastScrollVelocityThreshold: CGFloat = 2_200
 
   private init() {}
 
@@ -48,10 +64,21 @@ final class InlineVideoCoordinator {
     key != nil && key == activeVideoKey
   }
 
+  func isWarm(_ key: String?) -> Bool {
+    guard let key else { return false }
+    return warmVideoKeys.contains(key)
+  }
+
   /// Cheap per-frame sink for row centers. Does NOT elect (and does not invalidate
   /// views) — election is deferred to rest, since nothing plays while scrolling.
   func updateCenters(_ centers: [InlineVideoCenter]) {
-    latestCenters = centers
+    latestCenters = centers.sorted { $0.midY < $1.midY }
+    updateScrollVelocity(from: latestCenters)
+
+    let now = Date.timeIntervalSinceReferenceDate
+    guard !isScrolling || now - lastWarmUpdateTimestamp >= warmUpdateInterval else { return }
+    lastWarmUpdateTimestamp = now
+    updateWarmVideoKeys()
   }
 
   /// Pick the video nearest the viewport center and make it active. Called when the
@@ -60,6 +87,64 @@ final class InlineVideoCoordinator {
     let center = viewportHeight / 2
     let nearest = latestCenters.min(by: { abs($0.midY - center) < abs($1.midY - center) })?.key
     setActive(nearest)
+    isFastScrolling = false
+    updateWarmVideoKeys()
+  }
+
+  private func updateScrollVelocity(from centers: [InlineVideoCenter]) {
+    guard !centers.isEmpty else {
+      setFastScrolling(false)
+      return
+    }
+
+    let meanY = centers.reduce(CGFloat.zero) { $0 + $1.midY } / CGFloat(centers.count)
+    let now = Date.timeIntervalSinceReferenceDate
+    defer {
+      lastCentersMeanY = meanY
+      lastCentersTimestamp = now
+    }
+
+    guard isScrolling, let lastCentersMeanY, let lastCentersTimestamp else {
+      setFastScrolling(false)
+      return
+    }
+
+    let elapsed = max(now - lastCentersTimestamp, 0.001)
+    let delta = meanY - lastCentersMeanY
+    lastScrollDeltaY = delta
+    setFastScrolling(abs(delta) / elapsed > fastScrollVelocityThreshold)
+  }
+
+  private func setFastScrolling(_ fast: Bool) {
+    guard fast != isFastScrolling else { return }
+    isFastScrolling = fast
+    if fast {
+      updateWarmVideoKeys(forceEmpty: true)
+    }
+  }
+
+  private func updateWarmVideoKeys(forceEmpty: Bool = false) {
+    guard !forceEmpty, !isFastScrolling, !latestCenters.isEmpty else {
+      if !warmVideoKeys.isEmpty { warmVideoKeys = [] }
+      return
+    }
+
+    let center = viewportHeight / 2
+    let nearest = latestCenters.min(by: { abs($0.midY - center) < abs($1.midY - center) })
+    let movingTowardLaterPosts = lastScrollDeltaY <= 0
+    let ahead = movingTowardLaterPosts
+      ? latestCenters.filter { $0.midY >= center }
+      : Array(latestCenters.filter { $0.midY <= center }.reversed())
+
+    var keys = Array(ahead.prefix(warmAheadCount).map(\.key))
+    if let nearest, !keys.contains(nearest.key) {
+      keys.insert(nearest.key, at: 0)
+    }
+
+    let nextKeys = Set(keys.prefix(warmAheadCount + 1))
+    if nextKeys != warmVideoKeys {
+      warmVideoKeys = nextKeys
+    }
   }
 }
 

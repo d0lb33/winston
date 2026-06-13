@@ -152,7 +152,7 @@ struct VideoPlayerPost: View, Equatable {
   /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
   /// video, the fullscreen one, and non-feed usages mount as before.
   private var shouldMountPlayer: Bool {
-    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey)
+    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey) || InlineVideoCoordinator.shared.isWarm(feedItemKey)
   }
 
   init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil, feedItemKey: String? = nil) {
@@ -217,6 +217,10 @@ struct VideoPlayerPost: View, Equatable {
           applyInlinePlaybackState(sharedVideo)
         }
         .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
+        .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
+          prepareForInlineDisplay(sharedVideo)
           applyInlinePlaybackState(sharedVideo)
         }
         .onDisappear() {
@@ -285,6 +289,10 @@ struct VideoPlayerPost: View, Equatable {
           applyInlinePlaybackState(sharedVideo)
         }
         .onChange(of: InlineVideoCoordinator.shared.activeVideoKey) { _, _ in
+          applyInlinePlaybackState(sharedVideo)
+        }
+        .onChange(of: InlineVideoCoordinator.shared.warmVideoKeys) { _, _ in
+          prepareForInlineDisplay(sharedVideo)
           applyInlinePlaybackState(sharedVideo)
         }
         .onDisappear() {

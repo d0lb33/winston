@@ -40,6 +40,8 @@ struct SubredditPostsIPAD: View, Equatable {
   @Default(.SubredditFeedDefSettings) private var feedDefSettings
 	
 	func loadMorePosts() {
+    guard !loading, !reachedEndOfFeed, lastPostAfter != nil else { return }
+
     AppDiagnostics.asyncBreadcrumb(
       "Feed load-more requested",
       metadata: [
@@ -104,7 +106,7 @@ struct SubredditPostsIPAD: View, Equatable {
               .environmentObject(sub)
               .environmentObject(winstonData)
               .onAppear {
-                if i >= max(posts.count - 7, 0) && !isFiltered && !loading && !reachedEndOfFeed {
+                if i == posts.count - 1 && !isFiltered {
                   loadMorePosts()
                 }
               }

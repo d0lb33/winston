@@ -39,6 +39,8 @@ struct SubredditPostsIOS: View, Equatable {
   @Environment(\.contentWidth) private var contentWidth
   
   func loadMorePosts() {
+    guard !loading, !reachedEndOfFeed, lastPostAfter != nil else { return }
+
     AppDiagnostics.asyncBreadcrumb(
       "Feed load-more requested",
       metadata: [
@@ -89,7 +91,7 @@ struct SubredditPostsIOS: View, Equatable {
             .environmentObject(post)
             .environmentObject(winstonData)
             .task(priority: .background) {
-              if i >= max(posts.count - 7, 0) && !isFiltered && !loading && !reachedEndOfFeed {
+              if i == posts.count - 1 && !isFiltered {
                 loadMorePosts()
               }
             }

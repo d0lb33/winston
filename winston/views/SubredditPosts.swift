@@ -563,11 +563,7 @@ struct SubredditPosts: View, Equatable {
     .navigationTitle("\(isFeedsAndSuch ? subreddit.id.capitalized : "r/\(subreddit.data?.display_name ?? subreddit.id)")")
     .task(priority: .background) {
       if posts.data.count == 0 && (savedMixedMediaLinks?.count == 0 || savedMixedMediaLinks == nil) {
-        do {
-          try await asyncFetch()
-        } catch {
-          print(error)
-        }
+        fetch()
       }
     }
     .onChange(of: sort) { val in
