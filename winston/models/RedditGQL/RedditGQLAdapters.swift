@@ -249,9 +249,9 @@ extension CommentData {
     parent_id = parentID?.isEmpty == false ? parentID : postFullname
     link_id = postFullname
     self.depth = depth
-    body = CommentData.markdownBody(from: node.content)
+    body = CommentData.body(from: node)
     body_html = node.content?.html
-    author = node.authorInfo?.name ?? authorName
+    author = node.authorInfo?.name ?? authorName ?? (node.isRemoved == true ? "[deleted]" : nil)
     author_fullname = node.authorInfo?.id
     ups = node.score
     score = node.score
@@ -272,6 +272,14 @@ extension CommentData {
       fullname: node.authorInfo?.id,
       url: redditLoadableAvatarURL(node.authorInfo?.iconSmall?.url ?? node.authorInfo?.snoovatarIcon?.url)
     )
+  }
+
+  private static func body(from node: RedditPOC.Comment) -> String? {
+    let markdown = markdownBody(from: node.content)
+    if markdown?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false {
+      return markdown
+    }
+    return node.isRemoved == true ? "[removed]" : markdown
   }
 
   private static func markdownBody(from content: RedditContent?) -> String? {
