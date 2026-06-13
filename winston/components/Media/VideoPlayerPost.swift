@@ -130,7 +130,8 @@ struct VideoPlayerPost: View, Equatable {
   @State private var posterHideGeneration = UUID()
   @Default(.VideoDefSettings) private var videoDefSettings
   @Environment(\.scenePhase) private var scenePhase
-  
+  @Namespace private var videoNS
+
   private var autoPlayVideos: Bool { videoDefSettings.autoPlay }
   private var loopVideos: Bool { videoDefSettings.loop }
   private var muteVideos: Bool { videoDefSettings.mute }
@@ -192,23 +193,21 @@ struct VideoPlayerPost: View, Equatable {
       if let controller = controller {
         ZStack {
           inlineVideoPlaceholder()
-          if shouldMountPlayer {
-            AVPlayerRepresentable(fullscreen: $fullscreen, autoPlayVideos: autoPlayVideos, player: sharedVideo.player, aspect: .resizeAspectFill, controller: controller)
-              .allowsHitTesting(false)
-              .id(inlineVideoRefreshID)
-          }
+          inlineVideoLayer(sharedVideo: sharedVideo, videoSize: videoSize)
+            .id(inlineVideoRefreshID)
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .mask(RR(12, Color.black))
         .contentShape(Rectangle())
+        .matchedTransitionSource(id: "video", in: videoNS)
         .onTapGesture {
-          recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "controller"])
-          if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-          withAnimation {
-            fullscreen = true
-          }
+          openFullscreen(sharedVideo, branch: "controller")
+        }
+        .fullScreenCover(isPresented: $fullscreen) {
+          FullScreenVP(sharedVideo: sharedVideo)
+            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "controller", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
@@ -239,50 +238,24 @@ struct VideoPlayerPost: View, Equatable {
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
         }
-        .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
-        }
       } else {
         ZStack {
           inlineVideoPlaceholder()
 
-          Group {
-            if shouldMountPlayer && !fullscreen {
-              InlineAVPlayerLayerRepresentable(player: sharedVideo.player, videoGravity: .resizeAspectFill)
-                .id(inlineVideoRefreshID)
-            } else {
-              Color.clear
-            }
-          }
-          .frame(width: videoSize.width, height: videoSize.height)
-          .clipped()
-          .fixedSize()
-          .mask(RR(12, Color.black))
-          .allowsHitTesting(false)
-          .contentShape(Rectangle())
-          .highPriorityGesture(TapGesture().onEnded({ _ in
-            recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer-highPriority"])
-            if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-            withAnimation {
-              fullscreen = true
-            }
-          }))
-          .allowsHitTesting(false)
-          .mask(RR(12, Color.black))
-          .overlay(
-            Color.clear
-              .contentShape(Rectangle())
-              .onTapGesture {
-                recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer-overlay"])
-                if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
-                withAnimation {
-                  fullscreen = true
-                }
-              }
-          )
-          
+          inlineVideoLayer(sharedVideo: sharedVideo, videoSize: videoSize)
+            .id(inlineVideoRefreshID)
+
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
+        }
+        .contentShape(Rectangle())
+        .matchedTransitionSource(id: "video", in: videoNS)
+        .onTapGesture {
+          openFullscreen(sharedVideo, branch: "swiftuiVideoPlayer")
+        }
+        .fullScreenCover(isPresented: $fullscreen) {
+          FullScreenVP(sharedVideo: sharedVideo)
+            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
@@ -313,11 +286,34 @@ struct VideoPlayerPost: View, Equatable {
         .onChange(of: fullscreen) { val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
         }
-        .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
-        }
       }
     }
+  }
+
+  private func openFullscreen(_ sharedVideo: SharedVideo, branch: String) {
+    recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": branch])
+    if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
+    withAnimation { fullscreen = true }
+  }
+
+  /// Inline player layer bound to the shared `AVPlayer`. The fullscreen viewer renders its
+  /// own layer on the *same* player, so opening fullscreen never reloads the video — both
+  /// layers display one `AVPlayer`. Mounts only when the feed-gating allows it and we're not
+  /// already fullscreen (the cover owns the live layer then).
+  @ViewBuilder
+  func inlineVideoLayer(sharedVideo: SharedVideo, videoSize: CGSize) -> some View {
+    Group {
+      if shouldMountPlayer && !fullscreen {
+        InlineAVPlayerLayerRepresentable(player: sharedVideo.player, videoGravity: .resizeAspectFill)
+      } else {
+        Color.clear
+      }
+    }
+    .frame(width: videoSize.width, height: videoSize.height)
+    .clipped()
+    .fixedSize()
+    .mask(RR(12, Color.black))
+    .allowsHitTesting(false)
   }
 
   /// Neutral backdrop shown behind the poster for videos that aren't mounted (off-center
@@ -828,6 +824,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
 
 struct FullScreenVP: View {
   var sharedVideo: SharedVideo
+  var closeAction: (() -> Void)? = nil
   @Environment(\.dismiss) private var dismiss
   @Default(.VideoDefSettings) private var videoDefSettings
   @State private var cancelDrag: Bool?
@@ -945,10 +942,18 @@ struct FullScreenVP: View {
         withAnimation(.interpolatingSpring(stiffness: 200, damping: 20, initialVelocity: 0)) {
           drag = .zero
           if shouldClose {
-            dismiss()
+            closeViewer()
           }
         }
       }
+  }
+
+  private func closeViewer() {
+    if let closeAction {
+      closeAction()
+    } else {
+      dismiss()
+    }
   }
 
   private var videoDuration: TimeInterval {
