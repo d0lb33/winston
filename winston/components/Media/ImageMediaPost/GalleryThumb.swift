@@ -22,6 +22,9 @@ struct GalleryThumb: View, Equatable {
   var diagnosticContext: String? = nil
 
   private var resizeProcessors: [ImageProcessing] {
+    if url.pathExtension.lowercased() == "gif" {
+      return []
+    }
     guard let height, height > 0 else {
       return [.resize(width: width)]
     }

@@ -143,6 +143,7 @@
       }
     },
     "**u/%@** %@ in **r/%@**" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -272,6 +273,9 @@
           }
         }
       }
+    },
+    "%lld hitches/min" : {
+
     },
     "%lld/%lld" : {
       "localizations" : {
@@ -989,9 +993,6 @@
         }
       }
     },
-    "Default mute fullscreen videos" : {
-
-    },
     "Default post sorting" : {
       "localizations" : {
         "de" : {
@@ -1189,9 +1190,6 @@
       }
     },
     "Done" : {
-
-    },
-    "Download" : {
 
     },
     "Drag Left" : {
@@ -2462,6 +2460,9 @@
         }
       }
     },
+    "Mute video" : {
+
+    },
     "Navigation everywhere" : {
       "localizations" : {
         "de" : {
@@ -2477,6 +2478,12 @@
           }
         }
       }
+    },
+    "Network" : {
+
+    },
+    "Network Console" : {
+
     },
     "New filter" : {
 
@@ -2547,6 +2554,9 @@
 
     },
     "No filtered posts" : {
+
+    },
+    "No inbox notifications" : {
 
     },
     "No rules were returned for r/%@" : {
@@ -2781,6 +2791,9 @@
     "Pause background audio on fullscreen" : {
 
     },
+    "Pause video" : {
+
+    },
     "Placeholder image" : {
       "localizations" : {
         "de" : {
@@ -2796,6 +2809,9 @@
           }
         }
       }
+    },
+    "Play video" : {
+
     },
     "Please go into \"My Theme\" and create a new one if you want to edit it" : {
       "localizations" : {
@@ -3080,6 +3096,12 @@
 
     },
     "RedditPOC (experimental)" : {
+
+    },
+    "Replies, mentions, chat updates, and Reddit activity notifications will appear here." : {
+
+    },
+    "Requests Only" : {
 
     },
     "Reset" : {
@@ -3553,6 +3575,9 @@
         }
       }
     },
+    "Start videos muted" : {
+
+    },
     "Status:" : {
       "localizations" : {
         "de" : {
@@ -3810,9 +3835,6 @@
         }
       }
     },
-    "Theme Store" : {
-
-    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3877,9 +3899,6 @@
           }
         }
       }
-    },
-    "There was an error importing this theme" : {
-
     },
     "This clears GraphQL account records and stored sessions. It does not reset themes or general preferences." : {
 
@@ -4066,6 +4085,9 @@
           }
         }
       }
+    },
+    "Unmute video" : {
+
     },
     "Unseen type" : {
       "localizations" : {

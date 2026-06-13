@@ -317,6 +317,7 @@ struct VideoPlayerPost: View, Equatable {
   func prepareForInlineDisplay(_ sharedVideo: SharedVideo) {
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
     recordVideoEvent(.debug, message: "Preparing inline video", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
+    sharedVideo.player.isMuted = muteVideos
     if activeInlineVideoKey != cacheKey {
       activeInlineVideoKey = cacheKey
       posterLoaded = false
@@ -712,57 +713,336 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
 struct FullScreenVP: View {
   var sharedVideo: SharedVideo
   @Environment(\.dismiss) private var dismiss
+  @Default(.VideoDefSettings) private var videoDefSettings
   @State private var cancelDrag: Bool?
+  @State private var dragAxis: Axis?
+  @State private var dragOffset: CGSize?
   @State private var isPinching: Bool = false
   @State private var drag: CGSize = .zero
   @State private var scale: CGFloat = 1.0
   @State private var anchor: UnitPoint = .zero
   @State private var offset: CGSize = .zero
   @State private var altSize: CGSize = .zero
+  @State private var videoProgress: Double = 0
+  @State private var videoScrubStartProgress: Double?
+  @State private var wasPlayingBeforeScrub = false
+  @State private var timeObserver: Any?
+  @State private var isPlaying = false
+  @State private var isMuted = false
+
+  private enum Axis {
+    case horizontal
+    case vertical
+  }
+
   var body: some View {
     let interpolate = interpolatorBuilder([0, 100], value: abs(drag.height))
-    VideoPlayer(player: sharedVideo.player)
+    ZStack {
+      InlineAVPlayerLayerRepresentable(player: sharedVideo.player, videoGravity: .resizeAspect)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(Color.black)
+        .contentShape(Rectangle())
+
+      Color.clear
+        .contentShape(Rectangle())
+        .gesture(fullscreenDragGesture)
+
+      VideoLiquidControls(
+        progress: videoProgress,
+        isPlaying: isPlaying,
+        isMuted: isMuted,
+        togglePlay: togglePlayback,
+        toggleMute: toggleMute,
+        scrub: scrubTimeline,
+        finishScrub: finishVideoScrub
+      )
+    }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .background(Color.black)
       .background(
         sharedVideo.size != .zero
         ? nil
         : GeometryReader { geo in
           Color.clear
             .onAppear { altSize = geo.size }
-            .onChange(of: geo.size) { newValue in altSize = newValue }
+            .onChange(of: geo.size) { _, newValue in altSize = newValue }
         }
       )
     //      .pinchToZoom(size: sharedVideo.size == .zero ? altSize : sharedVideo.size, isPinching: $isPinching, scale: $scale, anchor: $anchor, offset: $offset)
       .scaleEffect(interpolate([1, 0.9], true))
       .offset(cancelDrag ?? false ? .zero : drag)
-      .gesture(
-        scale != 1.0
-        ? nil
-        : DragGesture(minimumDistance: 10)
-          .onChanged { val in
-            if cancelDrag == nil { cancelDrag = abs(val.translation.width) > abs(val.translation.height) }
-            if cancelDrag == nil || cancelDrag! { return }
-            var transaction = Transaction()
-            transaction.isContinuous = true
-            transaction.animation = .interpolatingSpring(stiffness: 1000, damping: 100, initialVelocity: 0)
-            
-            let endPos = val.translation
-            withTransaction(transaction) {
-              drag = endPos
-            }
+      .onAppear {
+        sharedVideo.player.isMuted = videoDefSettings.mute
+        isMuted = sharedVideo.player.isMuted
+        isPlaying = sharedVideo.player.rate != 0
+        installVideoTimeObserver()
+      }
+      .onDisappear {
+        removeVideoTimeObserver()
+      }
+  }
+
+  private var fullscreenDragGesture: some Gesture {
+    DragGesture(minimumDistance: 10)
+      .onChanged { val in
+        guard scale == 1.0 else { return }
+        if dragAxis == nil || dragOffset == nil {
+          dragOffset = val.translation
+          if abs(val.translation.width) > abs(val.translation.height) {
+            dragAxis = .horizontal
+            cancelDrag = true
+            startVideoScrub()
+          } else if abs(val.translation.height) > abs(val.translation.width) {
+            dragAxis = .vertical
+            cancelDrag = false
           }
-          .onEnded { val in
-            let prevCancelDrag = cancelDrag
-            cancelDrag = nil
-            if prevCancelDrag == nil || prevCancelDrag! { return }
-            let shouldClose = abs(val.translation.width) > 100 || abs(val.translation.height) > 100
-            withAnimation(.interpolatingSpring(stiffness: 200, damping: 20, initialVelocity: 0)) {
-              drag = .zero
-              if shouldClose {
-                dismiss()
-              }
-            }
+        }
+
+        guard let dragAxis else { return }
+
+        if dragAxis == .horizontal {
+          updateVideoScrub(translationWidth: val.translation.width)
+        } else {
+          var transaction = Transaction()
+          transaction.isContinuous = true
+          transaction.animation = .interpolatingSpring(stiffness: 1000, damping: 100, initialVelocity: 0)
+
+          let endPos = val.translation
+          withTransaction(transaction) {
+            drag = endPos
+          }
+        }
+      }
+      .onEnded { val in
+        let prevCancelDrag = cancelDrag
+        cancelDrag = nil
+        dragAxis = nil
+        dragOffset = nil
+
+        if prevCancelDrag == true {
+          finishVideoScrub()
+          return
+        }
+
+        if prevCancelDrag == nil { return }
+        let shouldClose = abs(val.translation.width) > 100 || abs(val.translation.height) > 100
+        withAnimation(.interpolatingSpring(stiffness: 200, damping: 20, initialVelocity: 0)) {
+          drag = .zero
+          if shouldClose {
+            dismiss()
+          }
+        }
+      }
+  }
+
+  private var videoDuration: TimeInterval {
+    guard let duration = sharedVideo.player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else {
+      return 0
+    }
+    return duration
+  }
+
+  private var currentVideoProgress: Double {
+    let duration = videoDuration
+    guard duration > 0 else { return 0 }
+    let currentTime = sharedVideo.player.currentTime().seconds
+    guard currentTime.isFinite else { return 0 }
+    return min(max(currentTime / duration, 0), 1)
+  }
+
+  private func startVideoScrub() {
+    guard videoDuration > 0, videoScrubStartProgress == nil else { return }
+    videoScrubStartProgress = currentVideoProgress
+    videoProgress = videoScrubStartProgress ?? videoProgress
+    wasPlayingBeforeScrub = sharedVideo.player.rate != 0
+    sharedVideo.player.pause()
+    isPlaying = false
+  }
+
+  private func updateVideoScrub(translationWidth: CGFloat) {
+    guard videoDuration > 0 else { return }
+    let startProgress = videoScrubStartProgress ?? currentVideoProgress
+    videoScrubStartProgress = startProgress
+    seekVideo(to: min(max(startProgress + Double(translationWidth / max(.screenW, 1)), 0), 1), interactive: true)
+  }
+
+  private func finishVideoScrub() {
+    videoScrubStartProgress = nil
+    if wasPlayingBeforeScrub {
+      sharedVideo.player.play()
+      isPlaying = true
+    }
+    wasPlayingBeforeScrub = false
+  }
+
+  private func scrubTimeline(_ progress: Double) {
+    if videoScrubStartProgress == nil {
+      startVideoScrub()
+    }
+    seekVideo(to: progress, interactive: true)
+  }
+
+  private func togglePlayback() {
+    if sharedVideo.player.rate == 0 {
+      sharedVideo.player.play()
+      isPlaying = true
+    } else {
+      sharedVideo.player.pause()
+      isPlaying = false
+    }
+  }
+
+  private func toggleMute() {
+    sharedVideo.player.isMuted.toggle()
+    isMuted = sharedVideo.player.isMuted
+  }
+
+  private func seekVideo(to progress: Double, interactive: Bool = false) {
+    let duration = videoDuration
+    guard duration > 0 else { return }
+    let clampedProgress = min(max(progress, 0), 1)
+    videoProgress = clampedProgress
+    let seconds = clampedProgress * duration
+    let tolerance = interactive ? CMTime(seconds: 1.0 / 30.0, preferredTimescale: 600) : CMTime.zero
+    sharedVideo.player.currentItem?.cancelPendingSeeks()
+    sharedVideo.player.seek(
+      to: CMTime(seconds: seconds, preferredTimescale: 600),
+      toleranceBefore: tolerance,
+      toleranceAfter: tolerance
+    )
+  }
+
+  private func installVideoTimeObserver() {
+    removeVideoTimeObserver()
+    videoProgress = currentVideoProgress
+    timeObserver = sharedVideo.player.addPeriodicTimeObserver(
+      forInterval: CMTime(seconds: 0.05, preferredTimescale: 600),
+      queue: .main
+    ) { _ in
+      if videoScrubStartProgress == nil {
+        videoProgress = currentVideoProgress
+      }
+      isPlaying = sharedVideo.player.rate != 0
+      isMuted = sharedVideo.player.isMuted
+    }
+  }
+
+  private func removeVideoTimeObserver() {
+    if let timeObserver {
+      sharedVideo.player.removeTimeObserver(timeObserver)
+      self.timeObserver = nil
+    }
+  }
+}
+
+private struct VideoLiquidControls: View {
+  let progress: Double
+  let isPlaying: Bool
+  let isMuted: Bool
+  let togglePlay: () -> Void
+  let toggleMute: () -> Void
+  let scrub: (Double) -> Void
+  let finishScrub: () -> Void
+
+  var body: some View {
+    VStack {
+      Spacer()
+
+      HStack(spacing: 14) {
+        VideoLiquidButton(icon: isPlaying ? "pause.fill" : "play.fill", accessibilityLabel: isPlaying ? "Pause video" : "Play video", action: togglePlay)
+
+        VideoTimelineScrubber(progress: progress, scrub: scrub, finishScrub: finishScrub)
+          .frame(height: 44)
+
+        AirPlayRoutePicker()
+          .frame(width: 44, height: 44)
+          .background(Circle().fill(.ultraThinMaterial))
+          .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+
+        VideoLiquidButton(icon: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill", accessibilityLabel: isMuted ? "Unmute video" : "Mute video", action: toggleMute)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 10)
+      .background(
+        Capsule(style: .continuous)
+          .fill(.ultraThinMaterial)
+          .overlay(Capsule(style: .continuous).stroke(.white.opacity(0.18), lineWidth: 1))
+          .shadow(color: .black.opacity(0.35), radius: 22, y: 10)
+      )
+      .padding(.horizontal, 16)
+      .padding(.bottom, 36)
+    }
+    .foregroundStyle(.white)
+  }
+}
+
+private struct VideoLiquidButton: View {
+  let icon: String
+  let accessibilityLabel: LocalizedStringKey
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: icon)
+        .fontSize(17, .semibold)
+        .frame(width: 44, height: 44)
+        .background(Circle().fill(.white.opacity(0.12)))
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(accessibilityLabel)
+  }
+}
+
+private struct VideoTimelineScrubber: View {
+  let progress: Double
+  let scrub: (Double) -> Void
+  let finishScrub: () -> Void
+
+  var body: some View {
+    GeometryReader { proxy in
+      let clampedProgress = min(max(progress, 0), 1)
+      ZStack(alignment: .leading) {
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.18))
+          .frame(height: 6)
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.92))
+          .frame(width: max(6, proxy.size.width * clampedProgress), height: 6)
+        Circle()
+          .fill(.white)
+          .frame(width: 16, height: 16)
+          .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+          .offset(x: min(max(proxy.size.width * clampedProgress - 8, 0), max(proxy.size.width - 16, 0)))
+      }
+      .frame(maxWidth: .infinity, maxHeight: .infinity)
+      .contentShape(Rectangle())
+      .gesture(
+        DragGesture(minimumDistance: 0)
+          .onChanged { val in
+            scrub(min(max(Double(val.location.x / max(proxy.size.width, 1)), 0), 1))
+          }
+          .onEnded { _ in
+            finishScrub()
           }
       )
+    }
+  }
+}
+
+private struct AirPlayRoutePicker: UIViewRepresentable {
+  func makeUIView(context: Context) -> AVRoutePickerView {
+    let routePicker = AVRoutePickerView()
+    routePicker.prioritizesVideoDevices = true
+    routePicker.tintColor = .white
+    routePicker.activeTintColor = .white
+    routePicker.backgroundColor = .clear
+    return routePicker
+  }
+
+  func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+    uiView.tintColor = .white
+    uiView.activeTintColor = .white
   }
 }
 

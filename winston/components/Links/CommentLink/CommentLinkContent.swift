@@ -274,7 +274,10 @@ struct CommentLinkContent: View {
     }
   }
   
-  var body: some View {    
+  var body: some View {
+    #if DEBUG
+    let _ = RenderDiagnostics.logIfEnabled { Self._printChanges() }
+    #endif
     let theme = selectedTheme.comments
     let selectable = (comment.data?.winstonSelecting ?? false)
     let horPad = theme.theme.innerPadding.horizontal

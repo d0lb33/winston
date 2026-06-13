@@ -58,7 +58,10 @@ final class RedditWire: ObservableObject {
 
   private init() {
     let config = RedditPOCConfiguration(transport: .managedAndroid, tokenStore: store)
-    client = RedditPOCClient(configuration: config)
+    // All client traffic (GraphQL + token exchange, which shares the
+    // transport) is mirrored into the Pulse network console with credential
+    // headers/bodies redacted.
+    client = RedditPOCClient(configuration: config, httpTransport: PulseNetworking.makeTransport())
     accounts = Defaults[.graphQLAccounts]
     AppDiagnostics.shared.record(.info, category: "reddit.init", message: "RedditWire initialized", metadata: ["accounts": "\(accounts.count)"])
     Task { await restore() }

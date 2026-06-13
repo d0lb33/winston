@@ -33,10 +33,33 @@ struct LightBoxImage: View {
   @State private var isPinching: Bool = false
   @State private var isZoomed: Bool = false
   @State private var scale: CGFloat = 1.0
+  @State private var gifPlaybackState: GIFPlaybackState?
+  @State private var isGifScrubbing = false
+  @State private var gifScrubStartProgress: Double?
+  @State private var gifScrubProgressRequest: Double?
   
   private enum Axis {
     case horizontal
     case vertical
+  }
+
+  private var activeImageURL: URL? {
+    guard imagesArr.indices.contains(activeIndex) else { return nil }
+    return imagesArr[activeIndex].url
+  }
+
+  private var activeGIFPlaybackState: GIFPlaybackState? {
+    guard
+      isActiveImageGIF,
+      gifPlaybackState?.url == activeImageURL
+    else {
+      return nil
+    }
+    return gifPlaybackState
+  }
+
+  private var isActiveImageGIF: Bool {
+    activeImageURL?.pathExtension.lowercased() == "gif"
   }
   
   func toggleOverlay() {
@@ -55,7 +78,18 @@ struct LightBoxImage: View {
         HStack(spacing: SPACING) {
           ForEach(Array(imagesArr.enumerated()), id: \.element.id) { index, img in
             let selected = index == activeIndex
-            LightBoxElementView(el: img, onTap: toggleOverlay, doLiveText: doLiveText, isPinching: $isPinching, isZoomed: $isZoomed, zoomScale: $scale)
+            LightBoxElementView(
+              el: img,
+              onTap: toggleOverlay,
+              doLiveText: doLiveText,
+              isActive: selected,
+              isPinching: $isPinching,
+              isZoomed: $isZoomed,
+              zoomScale: $scale,
+              gifPlaybackState: $gifPlaybackState,
+              isGifScrubbing: $isGifScrubbing,
+              gifScrubProgressRequest: selected ? gifScrubProgressRequest : nil
+            )
               .allowsHitTesting(selected)
               .scaleEffect(!selected ? 1 : interpolate([1, 0.9], true))
               .blur(radius: selected && loading ? 24 : 0)
@@ -68,7 +102,64 @@ struct LightBoxImage: View {
     .offset(x: xPos + (dragAxis == .horizontal ? drag.width : 0))
     .frame(maxWidth: .screenW, maxHeight: .screenH, alignment: .leading)
     .highPriorityGesture(
-      isZoomed || scale > 1.01
+      isActiveImageGIF && !isZoomed && scale <= 1.01
+      ? DragGesture(minimumDistance: 10)
+        .onChanged { val in
+          if dragAxis == nil || dragOffset == nil {
+            dragOffset = val.translation
+            if abs(val.translation.width) > abs(val.translation.height) {
+              dragAxis = .horizontal
+            } else if abs(val.translation.height) > abs(val.translation.width) {
+              dragAxis = .vertical
+            }
+          }
+
+          guard let dragAxis else { return }
+
+          if dragAxis == .horizontal {
+            let startProgress = gifScrubStartProgress ?? activeGIFPlaybackState?.progress ?? 0
+            gifScrubStartProgress = startProgress
+            isGifScrubbing = true
+            gifScrubProgressRequest = min(max(startProgress + Double(val.translation.width / max(.screenW, 1)), 0), 1)
+          } else if let dragOffset {
+            var transaction = Transaction()
+            transaction.isContinuous = true
+            transaction.animation = .interpolatingSpring(stiffness: 1000, damping: 100, initialVelocity: 0)
+            withTransaction(transaction) {
+              drag = val.translation - dragOffset
+            }
+          }
+        }
+        .onEnded { val in
+          if dragAxis == .vertical {
+            let shouldClose = abs(val.translation.width) > 100 || abs(val.translation.height) > 100
+
+            if shouldClose {
+              withAnimation(.easeOut) {
+                appearBlack = false
+              }
+            }
+            withAnimation(.interpolatingSpring(stiffness: 200, damping: 20, initialVelocity: 0)) {
+              drag = .zero
+              dragAxis = nil
+              dragOffset = nil
+              if shouldClose {
+                dismiss()
+              }
+            }
+          } else {
+            dragAxis = nil
+            dragOffset = nil
+          }
+
+          isGifScrubbing = false
+          gifScrubStartProgress = nil
+          gifScrubProgressRequest = nil
+        }
+      : nil
+    )
+    .highPriorityGesture(
+      isZoomed || scale > 1.01 || isActiveImageGIF || isGifScrubbing
       ? nil
       : DragGesture(minimumDistance: 20)
         .onChanged { val in
@@ -137,6 +228,15 @@ struct LightBoxImage: View {
         LightBoxOverlay(postTitle: postTitle, badgeKit: badgeKit, avatarImageRequest: avatarImageRequest, opacity: !showOverlay || isPinching ? 0 : interpolate([1, 0], false), imagesArr: imagesArr, activeIndex: activeIndex, loading: $loading, done: $done)
       }
     }
+    .overlay(alignment: .bottom) {
+      if let activeGIFPlaybackState {
+        GIFPlaybackProgressView(state: activeGIFPlaybackState)
+          .padding(.horizontal, 24)
+          .padding(.bottom, 96)
+          .opacity(isPinching ? 0 : 1)
+          .transition(.opacity)
+      }
+    }
     .background(
       !appearBlack
       ? nil
@@ -169,8 +269,8 @@ struct LightBoxImage: View {
     .ignoresSafeArea(edges: .all)
     .compositingGroup()
     .opacity(appearContent ? 1 : 0)
-    .onChange(of: done) { val in
-      if val {
+    .onChange(of: done) { _, newValue in
+      if newValue {
         doThisAfter(0.5) {
           withAnimation(spring) {
             done = false
@@ -178,6 +278,12 @@ struct LightBoxImage: View {
           }
         }
       }
+    }
+    .onChange(of: activeIndex) {
+      gifPlaybackState = nil
+      isGifScrubbing = false
+      gifScrubStartProgress = nil
+      gifScrubProgressRequest = nil
     }
     .onAppear {
       if let markAsSeen { Task(priority: .background) { await markAsSeen() } }
@@ -192,5 +298,26 @@ struct LightBoxImage: View {
       }
     }
     .transition(.opacity)
+  }
+}
+
+private struct GIFPlaybackProgressView: View {
+  let state: GIFPlaybackState
+
+  var body: some View {
+    GeometryReader { proxy in
+      ZStack(alignment: .leading) {
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.24))
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.92))
+          .frame(width: max(6, proxy.size.width * min(max(state.progress, 0), 1)))
+      }
+    }
+    .frame(height: 5)
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .background(Capsule(style: .continuous).fill(.black.opacity(0.45)))
+    .allowsHitTesting(false)
   }
 }

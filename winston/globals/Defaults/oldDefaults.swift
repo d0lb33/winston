@@ -60,7 +60,7 @@ extension Defaults.Keys {
   static let _hideReadPosts = Key<Bool>("hideReadPosts", default: false)
   static let _enableSwipeAnywhere = Key<Bool>("enableSwipeAnywhere", default: false)
   static let _autoPlayVideos = Key<Bool>("autoPlayVideos", default: true)
-  static let _muteVideos = Key<Bool>("muteVideos", default: false)
+  static let _muteVideos = Key<Bool>("muteVideos", default: true)
   static let _pauseBackgroundAudioOnFullscreen = Key<Bool>("pauseBackgroundAudioOnFullscreen", default: true)
   static let _loopVideos = Key<Bool>("loopVideos", default: true)
   static let _showSubsAtTop = Key<Bool>("showSubsAtTop", default: false)

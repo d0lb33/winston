@@ -8,6 +8,42 @@
 import Foundation
 import SwiftUI
 
+struct InboxNotification: Identifiable, Equatable {
+  let id: String
+  let title: String
+  let body: String?
+  let authorName: String?
+  let subredditName: String?
+  let avatarURL: String?
+  let deeplinkURL: String?
+  let sentAt: Date?
+  let sentAtRaw: String?
+  let readAt: String?
+  let messageType: String?
+  let contextType: String?
+  let postID: String?
+  let commentID: String?
+  let parentCommentID: String?
+  let postTitle: String?
+  
+  var isUnread: Bool { readAt == nil }
+  
+  var postBareID: String? {
+    guard let postID else { return nil }
+    return postID.hasPrefix("t3_") ? String(postID.dropFirst(3)) : postID
+  }
+  
+  var commentFullname: String? {
+    guard let commentID else { return nil }
+    return commentID.hasPrefix("t1_") ? commentID : "t1_\(commentID)"
+  }
+  
+  var displaySource: String? {
+    if let subredditName, !subredditName.isEmpty { return "r/\(subredditName)" }
+    return messageType?.replacingOccurrences(of: "_", with: " ").capitalized
+  }
+}
+
 typealias Message = GenericRedditEntity<MessageData, AnyHashable>
 
 extension Message {

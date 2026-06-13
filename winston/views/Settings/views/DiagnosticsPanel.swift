@@ -7,6 +7,8 @@
 
 import SwiftUI
 import UIKit
+import Pulse
+import PulseUI
 
 struct DiagnosticsPanel: View {
   @ObservedObject private var diagnostics = AppDiagnostics.shared
@@ -19,6 +21,7 @@ struct DiagnosticsPanel: View {
   @State private var snapshotText = ""
   @State private var showClearAlert = false
   @State private var showResetGraphQLAlert = false
+  @AppStorage(RenderDiagnostics.defaultsKey) private var printRenderChanges = false
 
   var body: some View {
     List {
@@ -29,6 +32,22 @@ struct DiagnosticsPanel: View {
         DiagnosticRow(label: "Account", value: wire.account.map { "u/\($0.username)" } ?? "none")
         DiagnosticRow(label: "Accounts", value: "\(wire.accounts.count)")
         Toggle("Debug HUD", isOn: $diagnostics.overlayEnabled)
+        #if DEBUG
+        Toggle("Log SwiftUI Render Causes", isOn: $printRenderChanges)
+        #endif
+      }
+
+      Section("Network") {
+        NavigationLink {
+          ConsoleView(store: .shared)
+        } label: {
+          Label("Network Console", systemImage: "network")
+        }
+        NavigationLink {
+          ConsoleView(store: .shared, mode: .network)
+        } label: {
+          Label("Requests Only", systemImage: "arrow.up.arrow.down")
+        }
       }
 
       Section("Export") {
@@ -174,12 +193,18 @@ private struct DiagnosticRow: View {
 struct DiagnosticsHUD: View {
   @ObservedObject private var diagnostics = AppDiagnostics.shared
   @ObservedObject private var wire = RedditWire.shared
+  @ObservedObject private var hitchMonitor = FrameHitchMonitor.shared
 
   var body: some View {
     if diagnostics.overlayEnabled {
       VStack(alignment: .leading, spacing: 4) {
-        Text("Diagnostics")
-          .fontSize(11, .bold)
+        HStack(spacing: 6) {
+          Text("Diagnostics")
+            .fontSize(11, .bold)
+          Text("\(hitchMonitor.hitchesPerMinute) hitches/min")
+            .fontSize(10, .semibold)
+            .foregroundStyle(hitchMonitor.hitchesPerMinute > 10 ? .red : hitchMonitor.hitchesPerMinute > 3 ? .orange : .secondary)
+        }
         Text(wire.status)
           .lineLimit(2)
           .fontSize(11, .medium)
@@ -199,6 +224,8 @@ struct DiagnosticsHUD: View {
       .padding(.leading, 8)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .allowsHitTesting(false)
+      .onAppear { FrameHitchMonitor.shared.start() }
+      .onDisappear { FrameHitchMonitor.shared.stop() }
     }
   }
 }

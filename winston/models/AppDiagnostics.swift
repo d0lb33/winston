@@ -11,6 +11,7 @@ import Zip
 import Darwin
 import Defaults
 import SwiftUI
+import Pulse
 
 enum DiagnosticLevel: String, Codable, CaseIterable {
   case debug
@@ -166,6 +167,27 @@ final class AppDiagnostics: ObservableObject {
       entries.removeFirst(entries.count - 300)
     }
     appendToLog(entry)
+    mirrorToPulse(entry)
+  }
+
+  /// Mirror app events into the Pulse store so the Network Console shows app
+  /// activity interleaved with network traffic. The JSONL log stays the
+  /// crash-safe source of truth.
+  private func mirrorToPulse(_ entry: DiagnosticEntry) {
+    let level: LoggerStore.Level
+    switch entry.level {
+    case .debug: level = .debug
+    case .info: level = .info
+    case .warning: level = .warning
+    case .error: level = .error
+    case .fault: level = .critical
+    }
+    LoggerStore.shared.storeMessage(
+      label: entry.category,
+      level: level,
+      message: entry.message,
+      metadata: entry.metadata.mapValues { .string($0) }
+    )
   }
 
   func breadcrumb(_ message: String, metadata: [String: String] = [:]) {
@@ -216,6 +238,26 @@ final class AppDiagnostics: ObservableObject {
       }.joined(separator: "\n")
       try recentText.write(to: recentURL, atomically: true, encoding: .utf8)
       files.append(recentURL)
+
+      // Pulse store (network console) — credentials are redacted at capture
+      // time, so the archive is safe to share.
+      let pulseURL = exportDirectory.appendingPathComponent("network-logs.pulse")
+      do {
+        try await LoggerStore.shared.export(to: pulseURL)
+        files.append(pulseURL)
+      } catch {
+        record(.warning, category: "diagnostics.export", message: "Pulse store export failed: \(error.localizedDescription)")
+      }
+
+      // MetricKit payloads captured alongside the logs.
+      if let contents = try? FileManager.default.contentsOfDirectory(at: diagnosticsDirectory, includingPropertiesForKeys: nil) {
+        for url in contents where url.lastPathComponent.hasPrefix("metrickit-") {
+          let dest = exportDirectory.appendingPathComponent(url.lastPathComponent)
+          if (try? FileManager.default.copyItem(at: url, to: dest)) != nil {
+            files.append(dest)
+          }
+        }
+      }
 
       try Zip.zipFiles(paths: files, zipFilePath: zipURL, password: nil, progress: nil)
       record(.info, category: "diagnostics", message: "Exported diagnostics bundle", metadata: ["file": zipURL.lastPathComponent])

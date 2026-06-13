@@ -49,10 +49,14 @@ struct URLImage: View, Equatable {
   var body: some View {
     if url.pathExtension.lowercased() == "gif" {
       LazyImage(url: url) { state in
-        let phase = imagePhase(hasImage: state.imageContainer?.data != nil, error: state.error)
+        let phase = imagePhase(hasImage: state.imageContainer?.data != nil || state.image != nil, error: state.error)
         Group {
           if let imageData = state.imageContainer?.data {
             GIFImage(data: imageData, size: size)
+              .scaledToFill()
+          } else if let image = state.image {
+            image
+              .resizable()
               .scaledToFill()
           } else if state.error != nil {
             URLImageFailureView()

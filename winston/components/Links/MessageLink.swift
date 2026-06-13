@@ -8,53 +8,143 @@
 import SwiftUI
 import Defaults
 
-struct MessageLink: View {
+struct InboxNotificationLink: View {
   @State private var pressed = false
-  @ObservedObject var message: Message
+  @Environment(\.openURL) private var openURL
+  
+  let notification: InboxNotification
+  let markRead: () async -> Void
   
   var body: some View {
-    if let data = message.data, let author = data.author, let subreddit = data.subreddit {
-      HStack(alignment: .top) {
-        Image(systemName: data.type == "post_reply" ? "message.circle.fill" : "arrowshape.turn.up.left.circle.fill")
-          .fontSize(24, .bold)
-          .foregroundColor(data.type == "post_reply" ? Color.accentColor : .green)
-        VStack(alignment: .leading, spacing: 2) {
-          Text("**u/\(author)** \(data.type == "post_reply" ? "commented on your post" : "replied to your comment") in **r/\(subreddit)**")
-          //            CommentLink(lineLimit: 2, showReplies: false, comment: comment)
-          Text((data.body ?? "").md()).lineLimit(2).fontSize(15).opacity(0.75)
-        }
-      }
+    InboxNotificationRow(notification: notification)
       .padding(.horizontal, 16)
       .padding(.vertical, 12)
       .frame(maxWidth: .infinity, alignment: .topLeading)
       .themedListRowLikeBG()
       .mask(RR(20, .black))
-      .allowsHitTesting(false)
       .compositingGroup()
-      .opacity(!(data.new ?? false) ? 0.65 : 1)
+      .opacity(notification.isUnread ? 1 : 0.65)
       .swipyActions(pressing: $pressed, onTap: {
-        if let context = data.context, let postID = getPostId(from: context) {
-          let post = Post(id: postID, subID: subreddit)
-          if let highlightID = data.highlightID {
+        Task(priority: .background) {
+          await markRead()
+        }
+        if let postID = notification.postBareID {
+          let post = notification.subredditName.map { Post(id: postID, subID: $0) } ?? Post(id: postID)
+          if let highlightID = notification.commentFullname {
             Nav.to(.reddit(.postHighlighted(post, highlightID)))
           } else {
             Nav.to(.reddit(.post(post)))
           }
+        } else if let urlString = notification.deeplinkURL, let url = URL(string: urlString) {
+          openURL(url)
         }
-      }, rightActionIcon: !(data.new ?? false) ? "eye.slash.fill" : "eye.fill", rightActionHandler: {
+      }, rightActionIcon: notification.isUnread ? "eye.fill" : "eye.slash.fill", rightActionHandler: {
         Task(priority: .background) {
-          await message.toggleRead()
+          await markRead()
         }
       })
+  }
+}
+
+private struct InboxNotificationRow: View {
+  let notification: InboxNotification
+  
+  var body: some View {
+    HStack(alignment: .top, spacing: 12) {
+      InboxNotificationAvatar(notification: notification)
+      
+      VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+          Text(notification.title)
+            .fontSize(16, .semibold)
+            .lineLimit(2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+          if notification.isUnread {
+            Circle()
+              .fill(Color.accentColor)
+              .frame(width: 8, height: 8)
+          }
+        }
+        
+        if let body = notification.body, !body.isEmpty {
+          Text(body.md())
+            .lineLimit(3)
+            .fontSize(15)
+            .opacity(0.75)
+        }
+        
+        HStack(spacing: 8) {
+          Label {
+            Text(notification.displaySource ?? "Reddit")
+              .lineLimit(1)
+          } icon: {
+            Image(systemName: notification.kindIcon)
+          }
+          if let sentAt = notification.sentAt {
+            Text(timeSince(Int(sentAt.timeIntervalSince1970)))
+          }
+        }
+        .fontSize(12, .medium)
+        .opacity(0.55)
+      }
     }
   }
 }
 
-private extension MessageData {
-  var highlightID: String? {
-    if let parent_id, parent_id.hasPrefix("t1_") { return parent_id }
-    if let name, name.hasPrefix("t1_") { return name }
-    return nil
+private struct InboxNotificationAvatar: View {
+  let notification: InboxNotification
+  
+  var body: some View {
+    ZStack(alignment: .bottomTrailing) {
+      Avatar(
+        url: notification.avatarURL,
+        userID: notification.authorName ?? notification.messageType ?? "reddit",
+        avatarSize: 42
+      )
+      Image(systemName: notification.kindIcon)
+        .fontSize(11, .bold)
+        .foregroundColor(.white)
+        .frame(width: 18, height: 18)
+        .background(Circle().fill(notification.kindColor))
+        .offset(x: 3, y: 3)
+    }
+    .frame(width: 48, height: 48, alignment: .topLeading)
+  }
+}
+
+private extension InboxNotification {
+  var kindIcon: String {
+    switch messageType {
+    case "POST_REPLY":
+      return "message.circle.fill"
+    case "COMMENT_REPLY", "USERNAME_MENTION":
+      return "arrowshape.turn.up.left.circle.fill"
+    case "CHAT_ACCEPT_INVITE":
+      return "bubble.left.and.bubble.right.fill"
+    case "GAMIFICATION_ACHIEVEMENT_UNLOCKED":
+      return "trophy.fill"
+    case "GAMIFICATION_REMINDER":
+      return "flame.fill"
+    case "POST_MATCH":
+      return "person.3.fill"
+    default:
+      return postID == nil ? "bell.fill" : "message.circle.fill"
+    }
+  }
+  
+  var kindColor: Color {
+    switch messageType {
+    case "POST_REPLY":
+      return .accentColor
+    case "COMMENT_REPLY", "USERNAME_MENTION":
+      return .green
+    case "CHAT_ACCEPT_INVITE":
+      return .blue
+    case "GAMIFICATION_ACHIEVEMENT_UNLOCKED", "GAMIFICATION_REMINDER":
+      return .orange
+    default:
+      return .secondary
+    }
   }
 }
 

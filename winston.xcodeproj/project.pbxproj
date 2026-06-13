@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		0A5302202FDCE10500CAC6F2 /* CommentSwipeActions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53021F2FDCE10500CAC6F2 /* CommentSwipeActions.swift */; };
+		0A5302222FDCEFEA00CAC6F2 /* PulseNetworking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302212FDCEFEA00CAC6F2 /* PulseNetworking.swift */; };
+		0A5302242FDCF00700CAC6F2 /* PerformanceDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302232FDCF00700CAC6F2 /* PerformanceDiagnostics.swift */; };
 		0AF2CAC92FDA38AE00944869 /* RedditGQLDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */; };
 		0AF2CACB2FDA434300944869 /* RedditGQLAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */; };
 		0AF2CACD2FDA48E500944869 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */; };
@@ -76,6 +78,8 @@
 		BEEF0101000000000000000F /* AccountsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF0101000000000000000E /* AccountsPanel.swift */; };
 		BEEF02010000000000000002 /* AppDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02010000000000000001 /* AppDiagnostics.swift */; };
 		BEEF02010000000000000004 /* DiagnosticsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02010000000000000003 /* DiagnosticsPanel.swift */; };
+		CAFE000000000000000000B1 /* Pulse in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE000000000000000000A2 /* Pulse */; };
+		CAFE000000000000000000B2 /* PulseUI in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE000000000000000000A3 /* PulseUI */; };
 		CE0EC5D82B1A9E9600C6E210 /* SubredditFilters.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE0EC5D72B1A9E9600C6E210 /* SubredditFilters.swift */; };
 		CECA71EB2B1E358700852DAD /* CustomFilterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CECA71EA2B1E358700852DAD /* CustomFilterView.swift */; };
 		EC051C472ACAF2DC00E9D9ED /* themeFileIcon.png in Resources */ = {isa = PBXBuildFile; fileRef = EC051C462ACAF2DC00E9D9ED /* themeFileIcon.png */; };
@@ -515,6 +519,8 @@
 
 /* Begin PBXFileReference section */
 		0A53021F2FDCE10500CAC6F2 /* CommentSwipeActions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentSwipeActions.swift; sourceTree = "<group>"; };
+		0A5302212FDCEFEA00CAC6F2 /* PulseNetworking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PulseNetworking.swift; sourceTree = "<group>"; };
+		0A5302232FDCF00700CAC6F2 /* PerformanceDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PerformanceDiagnostics.swift; sourceTree = "<group>"; };
 		0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLDebugView.swift; sourceTree = "<group>"; };
 		0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLAdapters.swift; sourceTree = "<group>"; };
 		0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
@@ -1004,6 +1010,8 @@
 				EC9BB1C42A8B05AA0070CD97 /* NukeUI in Frameworks */,
 				ECE449742A67648E00E2A3B7 /* Popovers in Frameworks */,
 				EC593B002A47AFC1002D6454 /* Defaults in Frameworks */,
+				CAFE000000000000000000B1 /* Pulse in Frameworks */,
+				CAFE000000000000000000B2 /* PulseUI in Frameworks */,
 				EC08543D2A4CFE1C00E88389 /* SwiftUIIntrospect in Frameworks */,
 				EC9BB1C02A8B05AA0070CD97 /* Nuke in Frameworks */,
 				EC2D72B32AC5335E002601E0 /* CHTCollectionViewWaterfallLayout in Frameworks */,
@@ -1037,6 +1045,7 @@
 				BEEF0101000000000000000A /* RedditWire+Actions.swift */,
 				0AF2CAD02FDA4A1900944869 /* RedditLoginWebView.swift */,
 				0AF2CAD22FDA5F2100944869 /* RedditAccount.swift */,
+				0A5302212FDCEFEA00CAC6F2 /* PulseNetworking.swift */,
 			);
 			path = RedditGQL;
 			sourceTree = "<group>";
@@ -1452,6 +1461,7 @@
 				EC4C7CB32B2E17D00007A4DA /* Hap.swift */,
 				EC982A332B4A436600FFE582 /* TimerHolder.swift */,
 				0AF2CAC32FDA383F00944869 /* RedditGQL */,
+				0A5302232FDCF00700CAC6F2 /* PerformanceDiagnostics.swift */,
 			);
 			path = models;
 			sourceTree = "<group>";
@@ -2227,6 +2237,7 @@
 			packageReferences = (
 				BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */,
 				EC593AFE2A47AFC1002D6454 /* XCRemoteSwiftPackageReference "Defaults" */,
+				CAFE000000000000000000A1 /* XCRemoteSwiftPackageReference "Pulse" */,
 				EC593B072A47B42D002D6454 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
 				EC593B0A2A47B801002D6454 /* XCRemoteSwiftPackageReference "Alamofire" */,
 				EC08543B2A4CFE1C00E88389 /* XCRemoteSwiftPackageReference "swiftui-introspect" */,
@@ -2421,6 +2432,7 @@
 				65CDA3642ACB0F140001EC44 /* ShareSheet.swift in Sources */,
 				EC31881C2A92BBFB00CB3738 /* Multi.swift in Sources */,
 				65840EE82AE11BFD000315E1 /* exportImportSettings.swift in Sources */,
+				0A5302242FDCF00700CAC6F2 /* PerformanceDiagnostics.swift in Sources */,
 				ECC2C7B22AAB48D1000E196C /* ThemesPanel.swift in Sources */,
 				ECAA8B892A764A3C00D9D636 /* YTMediaPost.swift in Sources */,
 				EC2A39152AC20155001E5354 /* PostLinkTitle.swift in Sources */,
@@ -2567,6 +2579,7 @@
 				EC4C7CA02B2C547E0007A4DA /* CommentLinkDefSettings.swift in Sources */,
 				ECDBA8C72A4A83DB00FB42DB /* SubredditPosts.swift in Sources */,
 				EC982A342B4A436600FFE582 /* TimerHolder.swift in Sources */,
+				0A5302222FDCEFEA00CAC6F2 /* PulseNetworking.swift in Sources */,
 				ECE08B802AA9F9BA00F84DC9 /* defaultTheme.swift in Sources */,
 				EC77EC0B2B2549AA0053B966 /* GlobalDestinationsProvider.swift in Sources */,
 				EC2D275E2A4FC512006444D6 /* TappableView.swift in Sources */,
@@ -3142,6 +3155,14 @@
 				minimumVersion = 2.3.0;
 			};
 		};
+		CAFE000000000000000000A1 /* XCRemoteSwiftPackageReference "Pulse" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/kean/Pulse";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.0.0;
+			};
+		};
 		EC08543B2A4CFE1C00E88389 /* XCRemoteSwiftPackageReference "swiftui-introspect" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/siteline/swiftui-introspect";
@@ -3348,6 +3369,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */;
 			productName = RedditPOC;
+		};
+		CAFE000000000000000000A2 /* Pulse */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE000000000000000000A1 /* XCRemoteSwiftPackageReference "Pulse" */;
+			productName = Pulse;
+		};
+		CAFE000000000000000000A3 /* PulseUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CAFE000000000000000000A1 /* XCRemoteSwiftPackageReference "Pulse" */;
+			productName = PulseUI;
 		};
 		EC08543C2A4CFE1C00E88389 /* SwiftUIIntrospect */ = {
 			isa = XCSwiftPackageProductDependency;

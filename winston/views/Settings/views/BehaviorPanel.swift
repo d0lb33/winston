@@ -84,7 +84,7 @@ struct BehaviorPanel: View {
           WSNavigationLink(.setting(.postSwipe), "Posts swipe settings")
           Toggle("Loop videos", isOn: $videoDefSettings.loop)
           Toggle("Autoplay videos (muted)", isOn: $videoDefSettings.autoPlay)
-          Toggle("Default mute fullscreen videos", isOn: $videoDefSettings.mute)
+          Toggle("Start videos muted", isOn: $videoDefSettings.mute)
           Toggle("Pause background audio on fullscreen", isOn: $videoDefSettings.pauseBGAudioOnFullscreen)
           Toggle("Read on preview media", isOn: $postLinkDefSettings.lightboxReadsPost)
           Toggle("Read on scroll", isOn: $postLinkDefSettings.readOnScroll)

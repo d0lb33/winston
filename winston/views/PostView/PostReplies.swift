@@ -38,6 +38,9 @@ struct PostReplies: View {
   }
 
   var body: some View {
+    #if DEBUG
+    let _ = RenderDiagnostics.logIfEnabled { Self._printChanges() }
+    #endif
     let theme = selectedTheme.comments
     let horPad = theme.theme.outerHPadding
     Group {

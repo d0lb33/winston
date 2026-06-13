@@ -108,8 +108,9 @@ func isDirectMediaURL(_ rawURL: URL) -> Bool {
 }
 
 func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = .screenW, diagnosticContext: String? = nil) -> MediaExtractedType? {
-  let url = rootURL(rawURL) ?? rawURL
-  let ext = url.pathExtension.lowercased()
+  let typeURL = rootURL(rawURL) ?? rawURL
+  let url = loadableMediaURL(rawURL)
+  let ext = typeURL.pathExtension.lowercased()
   let extWithDot = ext.isEmpty ? "" : ".\(ext)"
 
   if IMAGES_FORMATS.contains(where: { $0 == extWithDot }) {
@@ -260,7 +261,8 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     return .repost(Post(data: postEmbed, contentWidth: contentWidth, secondary: true, theme: theme))
   }
   
-  if IMAGES_FORMATS.contains(where: { data.url.hasSuffix($0) }), let url = rootURL(data.url) {
+  if let rawImageURL = URL(string: data.url.escape), IMAGES_FORMATS.contains(where: { ".\(rawImageURL.pathExtension.lowercased())" == $0 }) {
+    let url = loadableMediaURL(rawImageURL)
     var actualWidth = 0
     var actualHeight = 0
     if let images = data.preview?.images, images.count > 0, let image = images[0].source, let width = image.width, let height = image.height {
@@ -286,7 +288,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
     // Prefer the rewritten i.redd.it URL, but fall back to the raw preview
     // URL when the rewrite produces something unparsable.
     let rewritten = rawSrc.replacing("/preview.", with: "/i.")
-    if let imgURL = rootURL(rewritten.escape) ?? rootURL(rawSrc.escape) {
+    if let imgURL = loadableMediaURL(rewritten.escape) ?? loadableMediaURL(rawSrc.escape) {
       let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
       let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
       var thumbnail: ImageRequest.ThumbnailOptions?
@@ -377,7 +379,7 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   // Last resort: every dedicated branch passed on this post, but if Reddit
   // gave us any preview image at all (including external-preview), showing it
   // beats rendering nothing.
-  if let image = data.preview?.images?.first?.source, let rawSrc = image.url, let imgURL = rootURL(rawSrc.escape) {
+  if let image = data.preview?.images?.first?.source, let rawSrc = image.url, let imgURL = loadableMediaURL(rawSrc.escape) {
     let size = compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth
     let processors: [ImageProcessing] = contentWidth == 0 ? [] : [ImageProcessors.Resize(size: CGSize(width: size, height: size), unit: .points, contentMode: .aspectFill, crop: false, upscale: true)]
     let imgExtracted = ImgExtracted(url: imgURL, size: CGSize(width: image.width ?? 0, height: image.height ?? 0), request: winstonImageRequest(url: imgURL, processors: processors + [ImageProcessors.ScaleFixer()], priority: .high, thumbnail: nil))
@@ -387,6 +389,26 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
 
   recordMediaExtraction(data: data, kind: "none", compact: compact, contentWidth: contentWidth, size: .zero)
   return nil
+}
+
+private func loadableMediaURL(_ rawURL: URL) -> URL {
+  if preservesRedditMediaQuery(rawURL) {
+    return rawURL
+  }
+  return rootURL(rawURL) ?? rawURL
+}
+
+private func loadableMediaURL(_ rawURLString: String) -> URL? {
+  guard let rawURL = URL(string: rawURLString) else { return nil }
+  return loadableMediaURL(rawURL)
+}
+
+private func preservesRedditMediaQuery(_ url: URL) -> Bool {
+  guard url.query?.isEmpty == false, let host = url.host?.lowercased() else { return false }
+  return host == "external-preview.redd.it"
+    || host == "preview.redd.it"
+    || host.hasSuffix(".thumbs.redditmedia.com")
+    || host.hasSuffix(".redditmedia.com")
 }
 
 private func recordEmbeddedRedditEntity(

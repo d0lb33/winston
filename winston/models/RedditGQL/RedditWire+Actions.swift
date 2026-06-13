@@ -187,14 +187,14 @@ extension RedditWire {
 // MARK: - Replies, edits, deletes
 
 extension RedditWire {
-  /// Reply to a post (`t3_`) or comment (`t1_`). For comment replies Reddit's
-  /// CreateComment wants the post id too when we have it.
-  func newReply(_ text: String, to fullname: String, postFullname: String? = nil) async -> Bool {
+  /// Reply to a post (`t3_`) or comment (`t1_`). The captured Reddit
+  /// CreateComment shape requires exactly one of postId or parentId.
+  func newReply(_ text: String, to fullname: String, postFullname _: String? = nil) async -> Bool {
     do {
       _ = try await client.createTextComment(
         targetID: fullname,
         markdown: text,
-        postID: fullname.hasPrefix("t1_") ? postFullname : nil,
+        postID: nil,
         allowSideEffects: true
       )
       status = "reply to \(fullname) ✅"
@@ -465,30 +465,32 @@ extension MultiData {
 // MARK: - Inbox (notifications)
 
 extension RedditWire {
-  /// Load one page of the notification inbox, adapted into winston's
-  /// MessageData. Reddit's GraphQL inbox is the notification feed (comment
-  /// replies, mentions, etc.); classic private messages are not part of it.
-  func inbox(after: String? = nil) async -> ([MessageData], String?) {
+  /// Load one page of Reddit's current notification inbox. This feed includes
+  /// comment/post replies plus activity notifications such as chat, achievements,
+  /// recommendations, and community prompts.
+  func inboxNotifications(after: String? = nil) async -> ([InboxNotification], String?) {
     do {
       let resp = try await client.getInboxNotificationFeedResponse(pageSize: 25, after: after)
       guard let raw = resp.data?.rawData else { return ([], nil) }
-      var notifications: [[String: JSONValue]] = []
-      raw.collectObjects(named: "notification", typeName: nil, into: &notifications)
-      if notifications.isEmpty {
-        notifications = raw.objectsContainingKeys(["sentAt", "deeplinkUrl"])
-      }
       var seen = Set<String>()
-      let messages = notifications.compactMap { obj -> MessageData? in
-        Self.messageData(fromNotification: obj, dedup: &seen)
+      let notifications = Self.inboxNotificationNodes(in: raw).compactMap { obj -> InboxNotification? in
+        Self.inboxNotification(from: obj, dedup: &seen)
       }
       let pageInfo = Self.firstPageInfoObject(in: raw)
       let nextAfter = (pageInfo?.hasNextPage == false) ? nil : pageInfo?.endCursor
-      status = "inbox → \(messages.count) notifications"
-      return (messages, nextAfter)
+      status = "inbox → \(notifications.count) notifications"
+      return (notifications, nextAfter)
     } catch {
       status = "inbox failed: \(describeError(error))"
       return ([], nil)
     }
+  }
+  
+  /// Back-compat adapter for older callers that still expect REST-shaped
+  /// MessageData. New UI should use `inboxNotifications(after:)`.
+  func inbox(after: String? = nil) async -> ([MessageData], String?) {
+    let (notifications, nextAfter) = await inboxNotifications(after: after)
+    return (notifications.map(Self.messageData), nextAfter)
   }
 
   /// Mark the whole inbox as seen up to `lastSentAt` (ISO8601 from the newest
@@ -505,43 +507,83 @@ extension RedditWire {
     }
   }
 
-  private static func messageData(fromNotification obj: [String: JSONValue], dedup: inout Set<String>) -> MessageData? {
+  private static func inboxNotificationNodes(in raw: JSONValue) -> [[String: JSONValue]] {
+    if
+      let root = raw.objectValue,
+      let inbox = root["notificationInbox"]?.objectValue,
+      let elements = inbox["elements"]?.objectValue,
+      let edges = elements["edges"]?.arrayValue {
+      return edges.compactMap { edge in
+        edge.objectValue?["node"]?.objectValue
+      }
+    }
+    
+    var nodes: [[String: JSONValue]] = []
+    raw.collectObjects(named: "node", typeName: "InboxNotification", into: &nodes)
+    if nodes.isEmpty {
+      nodes = raw.objectsContainingKeys(["sentAt", "deeplinkUrl"])
+    }
+    return nodes
+  }
+
+  private static func inboxNotification(from obj: [String: JSONValue], dedup: inout Set<String>) -> InboxNotification? {
     guard let id = obj["id"]?.stringValue, dedup.insert(id).inserted else { return nil }
     let sentAtStr = obj["sentAt"]?.stringValue
-    let sentAt = sentAtStr.flatMap(Self.isoDate(from:))?.timeIntervalSince1970
+    let context = obj["context"]?.objectValue
+    let deeplink = obj["deeplinkUrl"]?.stringValue
     let title = obj["title"]?.stringValue
     let body = obj["body"]?.stringValue ?? obj["bodyText"]?.stringValue
-    let deeplink = obj["deeplinkUrl"]?.stringValue
-    let isCommentReply = (obj["__typename"]?.stringValue?.contains("Comment") == true)
-      || (title?.localizedCaseInsensitiveContains("repl") == true)
-      || (deeplink?.contains("/comments/") == true)
-    let author = obj["authorInfo"]?.objectValue?["name"]?.stringValue
-      ?? obj["avatar"]?.objectValue?["name"]?.stringValue
-    let isRead = obj["isRead"]?.boolValue ?? (obj["readAt"]?.stringValue != nil)
     let relativePermalink = deeplink.flatMap(Self.relativePermalink(from:))
-    let subreddit = obj["subredditName"]?.stringValue ?? relativePermalink.flatMap(Self.subredditName(fromPermalink:))
-    let commentFullname = relativePermalink.flatMap(Self.commentFullname(fromPermalink:))
-    let postFullname = relativePermalink.flatMap(Self.postFullname(fromPermalink:))
-    return MessageData(
-      subreddit: subreddit,
-      author_fullname: obj["authorInfo"]?.objectValue?["id"]?.stringValue,
+    let postID = context?["post"]?.objectValue?["id"]?.stringValue
+      ?? relativePermalink.flatMap(Self.postFullname(fromPermalink:))
+    let commentID = relativePermalink.flatMap(Self.commentFullname(fromPermalink:))
+    let parentCommentID = context?["comment"]?.objectValue?["parent"]?.objectValue?["id"]?.stringValue
+    let subreddit = obj["subredditName"]?.stringValue
+      ?? relativePermalink.flatMap(Self.subredditName(fromPermalink:))
+      ?? title.flatMap(Self.subredditName(fromTitle:))
+    return InboxNotification(
       id: id,
-      subject: title,
-      author: author,
-      author_flair_text: nil,
-      parent_id: commentFullname ?? postFullname,
-      subreddit_name_prefixed: subreddit.map { "r/\($0)" },
-      new: !isRead,
-      type: isCommentReply ? "comment_reply" : "unknown",
+      title: title ?? body ?? "Notification",
       body: body,
-      link_title: title,
+      authorName: obj["authorInfo"]?.objectValue?["name"]?.stringValue ?? Self.authorName(fromTitle: title),
+      subredditName: subreddit,
+      avatarURL: obj["avatar"]?.objectValue?["url"]?.stringValue,
+      deeplinkURL: deeplink,
+      sentAt: sentAtStr.flatMap(Self.isoDate(from:)),
+      sentAtRaw: sentAtStr,
+      readAt: obj["readAt"]?.stringValue,
+      messageType: context?["messageType"]?.stringValue,
+      contextType: context?["__typename"]?.stringValue,
+      postID: postID,
+      commentID: commentID,
+      parentCommentID: parentCommentID,
+      postTitle: context?["post"]?.objectValue?["title"]?.stringValue
+    )
+  }
+  
+  private static func messageData(from notification: InboxNotification) -> MessageData {
+    let sentAt = notification.sentAt?.timeIntervalSince1970
+    let isReply = notification.messageType == "POST_REPLY" || notification.messageType == "COMMENT_REPLY"
+    return MessageData(
+      subreddit: notification.subredditName,
+      author_fullname: nil,
+      id: notification.id,
+      subject: notification.title,
+      author: notification.authorName,
+      author_flair_text: nil,
+      parent_id: notification.commentFullname ?? notification.postID,
+      subreddit_name_prefixed: notification.subredditName.map { "r/\($0)" },
+      new: notification.isUnread,
+      type: notification.messageType == "POST_REPLY" ? "post_reply" : (isReply ? "comment_reply" : "unknown"),
+      body: notification.body,
+      link_title: notification.postTitle ?? notification.title,
       dest: nil,
-      was_comment: isCommentReply,
+      was_comment: isReply,
       body_html: nil,
-      name: commentFullname ?? id,
+      name: notification.commentFullname ?? notification.id,
       created: sentAt,
       created_utc: sentAt,
-      context: relativePermalink
+      context: notification.deeplinkURL.flatMap(Self.relativePermalink(from:))
     )
   }
 
@@ -571,6 +613,18 @@ extension RedditWire {
     guard let commentsIndex = parts.firstIndex(of: "comments"), parts.indices.contains(commentsIndex + 3) else { return nil }
     return parts[commentsIndex + 3]
   }
+  
+  private static func authorName(fromTitle title: String?) -> String? {
+    guard let title else { return nil }
+    guard let range = title.range(of: #"u/[A-Za-z0-9_-]+"#, options: .regularExpression) else { return nil }
+    return String(title[range]).replacingOccurrences(of: "u/", with: "")
+  }
+  
+  private static func subredditName(fromTitle title: String?) -> String? {
+    guard let title else { return nil }
+    guard let range = title.range(of: #"r/[A-Za-z0-9_]+"#, options: .regularExpression) else { return nil }
+    return String(title[range]).replacingOccurrences(of: "r/", with: "")
+  }
 
   private static func relativePermalink(from link: String) -> String? {
     guard let url = URL(string: link) else { return nil }
@@ -583,7 +637,14 @@ extension RedditWire {
     fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     if let d = fractional.date(from: str) { return d }
     let plain = ISO8601DateFormatter()
-    return plain.date(from: str)
+    if let d = plain.date(from: str) { return d }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = TimeZone(identifier: "UTC")
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSSZ"
+    if let d = formatter.date(from: str) { return d }
+    formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+    return formatter.date(from: str)
   }
 }
 
