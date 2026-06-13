@@ -40,7 +40,10 @@ private struct CommentBodyView: View {
   let forcedPreview: Bool
 
   @State private var postDimensions = PostDimensions.zero
-  @State private var contentWidth: CGFloat = .screenW
+  // Starts at 0 so media waits for the row's real width; seeding this with
+  // the screen width let images render wider than the indented row and lock
+  // the geometry feedback loop at full width.
+  @State private var contentWidth: CGFloat = 0
 
   var body: some View {
     let sourceMarkdown = CommentBodyView.spoilerProcessedMarkdown(markdown, showSpoiler: showSpoiler)
@@ -52,7 +55,7 @@ private struct CommentBodyView: View {
         case .text(let text):
           markdownText(text)
         case .media(let url):
-          if let media = mediaExtractor(url: url, compact: false, contentWidth: contentWidth, diagnosticContext: diagnosticContext) {
+          if contentWidth >= 1, let media = mediaExtractor(url: url, compact: false, contentWidth: contentWidth, diagnosticContext: diagnosticContext) {
             MediaPresenter(
               postDimensions: $postDimensions,
               controller: nil,

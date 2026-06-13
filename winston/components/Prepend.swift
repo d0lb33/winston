@@ -31,8 +31,7 @@ func createTitleTagsAttrString(titleTheme: ThemeText, postData: PostData, textCo
   }
   
   if titleTagsImages.count > 0 { attrTitle.append(NSAttributedString(string: " ")) }
-  
-  attrTitle.append(NSAttributedString(string: "\n\n\n\n\n\n\n"))
+
   return attrTitle
 
   func createTagImage(withTitle title: String, textColor: UIColor, backgroundColor: UIColor, font: UIFont) -> UIImage? {
