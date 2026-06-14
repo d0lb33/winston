@@ -20,6 +20,9 @@ struct CommentRowView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
+  let swipeAnywhere: Bool
+  /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
+  let maxMediaHeightPct: CGFloat
 
   @State private var swipePresented = false
   @State private var loadingMore = false
@@ -40,6 +43,7 @@ struct CommentRowView: View {
       comment: comment,
       actionsSet: swipeActions,
       enabled: row.kind == .comment,
+      swipeAnywhere: swipeAnywhere,
       actionsArePresented: $swipePresented
     )
     .contextMenu { if row.kind == .comment { contextMenuContent } }
@@ -64,7 +68,9 @@ struct CommentRowView: View {
 
   private func toggleCollapse() {
     guard !swipePresented else { return }
-    withAnimation(.snappy(duration: 0.28)) { model.toggleCollapse(row.id) }
+    // The model decides whether to animate (small deltas) or snap (large subtrees that would
+    // otherwise hang the main thread), so don't wrap it in withAnimation here.
+    model.toggleCollapse(row.id)
   }
 
   @ViewBuilder private var commentRow: some View {
@@ -86,7 +92,7 @@ struct CommentRowView: View {
             badgeKit: data.badgeKit,
             avatarImageRequest: comment.winstonData?.avatarImageRequest,
             cornerRadius: 12,
-            maxMediaHeightScreenPercentage: min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45),
+            maxMediaHeightScreenPercentage: maxMediaHeightPct,
             diagnosticContext: "commentNative:\(data.id)"
           )
           .contentShape(Rectangle())
@@ -102,52 +108,71 @@ struct CommentRowView: View {
     }
   }
 
+  // The header is kept structurally data-INDEPENDENT: the author tap is always attached
+  // (gated internally), OP/flair render through a ForEach over chips, and the time is always
+  // emitted. The row's opaque type therefore doesn't vary per comment (OP vs not, flair vs
+  // not, has-time vs not). Previously each distinct shape was a distinct generic
+  // specialization, so the Swift runtime had to instantiate fresh type metadata
+  // (swift_getTypeByMangledName) for each as rows scrolled in — the dominant scroll hitch.
   private func header(_ data: CommentData) -> some View {
     let isOP = (data.is_submitter ?? false) || (opAuthor != nil && data.author == opAuthor)
     return HStack(spacing: 6) {
-      Group {
-        if row.isCollapsed {
-          // Collapsed: let the header tap handle expand; don't capture the name.
-          Text(displayAuthor)
-        } else {
-          // Expanded: tapping the name opens the profile. As the innermost tap
-          // target it wins over the header's collapse tap (legacy pattern).
-          Text(displayAuthor)
-            .onTapGesture {
-              if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
-                Nav.to(.reddit(.user(User(id: author))))
-              }
-            }
-            .accessibilityAddTraits(.isButton)
-            .accessibilityHint("Opens profile")
+      Text(displayAuthor)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(isOP ? Color.accentColor : (row.isCollapsed ? Color.secondary : Color.primary))
+        .onTapGesture {
+          // Collapsed: behave like the rest of the header (expand). Expanded: open profile.
+          if row.isCollapsed {
+            toggleCollapse()
+          } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
+            Nav.to(.reddit(.user(User(id: author))))
+          }
         }
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint(row.isCollapsed ? "" : "Opens profile")
+
+      ForEach(headerChips(data, isOP: isOP)) { chip in
+        chipView(chip)
       }
-      .font(.subheadline.weight(.semibold))
-      .foregroundStyle(isOP ? Color.accentColor : (row.isCollapsed ? .secondary : .primary))
-      if isOP {
-        Text("OP")
-          .font(.caption2.weight(.bold))
-          .foregroundStyle(Color.accentColor)
-          .padding(.horizontal, 5).padding(.vertical, 1)
-          .background(Color.accentColor.opacity(0.15), in: Capsule())
-      }
-      if let flair = data.author_flair_text, !flair.isEmpty, !row.isCollapsed {
-        Text(flair)
-          .font(.caption2)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .padding(.horizontal, 5).padding(.vertical, 1)
-          .background(.quaternary, in: Capsule())
-      }
+
       Spacer(minLength: 6)
-      if row.isCollapsed {
-        collapsedAccessory(data)
-      } else {
-        if !row.relativeTime.isEmpty {
-          Text(row.relativeTime)
-            .font(.footnote)
-            .foregroundStyle(.secondary)
-        }
+
+      trailingAccessory(data)
+    }
+  }
+
+  private struct HeaderChip: Identifiable {
+    let id: String
+    let text: String
+    let isOP: Bool
+  }
+
+  private func headerChips(_ data: CommentData, isOP: Bool) -> [HeaderChip] {
+    var chips: [HeaderChip] = []
+    if isOP { chips.append(HeaderChip(id: "op", text: "OP", isOP: true)) }
+    if !row.isCollapsed, let flair = data.author_flair_text, !flair.isEmpty {
+      chips.append(HeaderChip(id: "flair", text: flair, isOP: false))
+    }
+    return chips
+  }
+
+  private func chipView(_ chip: HeaderChip) -> some View {
+    Text(chip.text)
+      .font(chip.isOP ? .caption2.weight(.bold) : .caption2)
+      .foregroundStyle(chip.isOP ? Color.accentColor : Color.secondary)
+      .lineLimit(1)
+      .padding(.horizontal, 5).padding(.vertical, 1)
+      .background(chip.isOP ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.quaternary), in: Capsule())
+  }
+
+  @ViewBuilder private func trailingAccessory(_ data: CommentData) -> some View {
+    if row.isCollapsed {
+      collapsedAccessory(data)
+    } else {
+      HStack(spacing: 6) {
+        Text(row.relativeTime)
+          .font(.footnote)
+          .foregroundStyle(.secondary)
         NativeVoteControl(
           likes: data.likes,
           score: data.ups ?? 0,

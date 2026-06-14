@@ -21,6 +21,8 @@ struct CommentsTreeView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
+  let swipeAnywhere: Bool
+  let maxMediaHeightPct: CGFloat
 
   var body: some View {
     if loading && model.rows.isEmpty {
@@ -49,7 +51,9 @@ struct CommentsTreeView: View {
           post: post,
           postFullname: postFullname,
           opAuthor: opAuthor,
-          swipeActions: swipeActions
+          swipeActions: swipeActions,
+          swipeAnywhere: swipeAnywhere,
+          maxMediaHeightPct: maxMediaHeightPct
         )
       }
     }

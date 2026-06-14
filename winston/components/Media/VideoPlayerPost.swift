@@ -589,9 +589,16 @@ struct VideoPlayerPost: View, Equatable {
       category: "ui.videoPoster",
       extra: [
         "reason": reason,
-        "url": url.absoluteString
+        "url": url.absoluteString,
+        "playerReadyForDisplay": "\(playerReadyForDisplay)"
       ]
     )
+    // The poster is cosmetic. If the live AVPlayerLayer has already composited a real
+    // frame, the video is on screen and dropping the poster needs no surface work —
+    // refreshing here (which bumps inlineVideoRefreshID → tears down/rebuilds the layer)
+    // just thrashes a playing player (playerLayerMake/Update hitches). Only kick the
+    // surface when no real frame has shown yet, so a poster→grey gap can't persist.
+    guard !playerReadyForDisplay else { return }
     refreshInlineVideoSurface(reason: "poster-\(reason)", sharedVideo: sharedVideo)
   }
 

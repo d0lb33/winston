@@ -23,6 +23,7 @@ struct PostHeaderNative: View {
   var body: some View {
     let data = post.data ?? emptyPostData
     let over18 = data.over_18 ?? false
+    let maxMediaHeightPct = Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage
     VStack(alignment: .leading, spacing: 12) {
       Text(data.title)
         .font(.title3.weight(.semibold))
@@ -61,6 +62,7 @@ struct PostHeaderNative: View {
             media: extractedMedia,
             over18: over18,
             blurNSFW: defSettings.blurNSFW,
+            maxMediaHeightPct: maxMediaHeightPct,
             dimensions: $winstonData.postDimensionsForcedNormal
           )
           .equatable()
@@ -91,6 +93,9 @@ private struct PostMediaNative: View, Equatable {
   let media: MediaExtractedType
   let over18: Bool
   let blurNSFW: Bool
+  /// Passed in (decoded once by the caller) so this equatable body never JSON-decodes
+  /// PostLinkDefSettings when it re-evaluates on a video-surface refresh.
+  let maxMediaHeightPct: CGFloat
   @Binding var dimensions: PostDimensions
 
   var body: some View {
@@ -107,7 +112,7 @@ private struct PostMediaNative: View, Equatable {
       over18: over18,
       compact: false,
       contentWidth: dimensions.mediaSize?.width ?? 0,
-      maxMediaHeightScreenPercentage: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
+      maxMediaHeightScreenPercentage: maxMediaHeightPct,
       resetVideo: nil,
       diagnosticContext: "postDetailNative:\(postID)"
     )
@@ -153,6 +158,7 @@ struct CrosspostCardNative: View {
             media: media,
             over18: data.over_18 ?? false,
             blurNSFW: defSettings.blurNSFW,
+            maxMediaHeightPct: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
             dimensions: $winstonData.postDimensionsForcedNormal
           )
           .equatable()

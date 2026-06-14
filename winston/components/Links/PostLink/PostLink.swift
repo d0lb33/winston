@@ -29,8 +29,12 @@ struct PostLink: View, Equatable, Identifiable {
   let postStyleOverride: PostLinkDisplayStyle?
   let contentWidth: CGFloat
   var defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings]
+  /// When this PostLink is an embedded crosspost, the inline video's feed-gating key is
+  /// forced to the OUTER post id (the one the feed actually tracks for center election),
+  /// so the embedded player autoplays with the rest of the feed instead of never matching.
+  var inlineVideoKeyOverride: String? = nil
 
-  init(id: String, controller: UIViewController? = nil, repostAvatarRequest: ImageRequest? = nil, theme: SubPostsListTheme, showSub: Bool = false, secondary: Bool = false, compactPerSubreddit: Bool?, postStyleOverride: PostLinkDisplayStyle? = nil, contentWidth: CGFloat, defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings]) {
+  init(id: String, controller: UIViewController? = nil, repostAvatarRequest: ImageRequest? = nil, theme: SubPostsListTheme, showSub: Bool = false, secondary: Bool = false, compactPerSubreddit: Bool?, postStyleOverride: PostLinkDisplayStyle? = nil, contentWidth: CGFloat, defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings], inlineVideoKeyOverride: String? = nil) {
     self.id = id
     self.controller = controller
     self.repostAvatarRequest = repostAvatarRequest
@@ -41,6 +45,7 @@ struct PostLink: View, Equatable, Identifiable {
     self.postStyleOverride = postStyleOverride
     self.contentWidth = contentWidth
     self.defSettings = defSettings
+    self.inlineVideoKeyOverride = inlineVideoKeyOverride
   }
 
   var body: some View {
@@ -67,7 +72,8 @@ struct PostLink: View, Equatable, Identifiable {
           showSub: showSub,
           secondary: secondary,
           contentWidth: contentWidth,
-          defSettings: defSettings
+          defSettings: defSettings,
+          inlineVideoKeyOverride: inlineVideoKeyOverride
         )
         .equatable()
       case .clean:
@@ -78,7 +84,8 @@ struct PostLink: View, Equatable, Identifiable {
           showSub: showSub,
           secondary: secondary,
           contentWidth: contentWidth,
-          defSettings: defSettings
+          defSettings: defSettings,
+          inlineVideoKeyOverride: inlineVideoKeyOverride
         )
         .equatable()
       }

@@ -73,7 +73,12 @@ final class CommentTreeModel {
   @ObservationIgnored private var collapsed: Set<String> = []
   @ObservationIgnored private var didSeedCollapse = false
   @ObservationIgnored private var treeCancellable: AnyCancellable?
-  @ObservationIgnored private var rebuildScheduled = false
+  @ObservationIgnored private let rebuildContext = "commentTreeRebuild-\(UUID().uuidString)"
+  /// Relative-time strings are expensive to produce (RelativeDateTimeFormatter goes through
+  /// ICU). Cache per comment id so a flatten — which runs on EVERY collapse/expand — reuses
+  /// the string instead of reformatting the whole tree each time (that was a main-thread hang
+  /// big enough to trip the watchdog when collapsing/expanding many comments).
+  @ObservationIgnored private var relativeTimeCache: [String: String] = [:]
 
   @ObservationIgnored private static let relativeFormatter: RelativeDateTimeFormatter = {
     let formatter = RelativeDateTimeFormatter()
@@ -85,6 +90,7 @@ final class CommentTreeModel {
   func setRoots(_ comments: [Comment]) {
     comments.forEach { $0.parentWinston = rootArray }
     rootArray.data = comments
+    relativeTimeCache.removeAll(keepingCapacity: true)
     seedInitialCollapseIfNeeded()
     observeTree()
     rebuild(force: true)
@@ -98,19 +104,33 @@ final class CommentTreeModel {
     } else {
       collapsed.insert(id)
     }
-    rebuild(force: true)
+    let out = computeRows()
+    // Animating a huge insert/remove (collapsing/expanding a deep subtree is hundreds of
+    // rows) blocks the main thread long enough to hang. Animate only modest changes; snap
+    // large ones — which also looks better than a mass of simultaneous row transitions.
+    let delta = abs(out.count - rows.count)
+    if delta <= 30 {
+      withAnimation(.snappy(duration: 0.28)) { rows = out }
+    } else {
+      rows = out
+    }
   }
 
   /// Recompute the flattened visible rows. With `force == false`, the result is
   /// only published when the layout signature changed (cheap no-op on content
   /// changes such as votes).
   func rebuild(force: Bool = false) {
-    var out: [CommentRow] = []
-    out.reserveCapacity(max(rows.count, 8))
-    flatten(rootArray.data, depth: 0, parent: nil, into: &out)
+    let out = computeRows()
     if force || !Self.layoutEqual(out, rows) {
       rows = out
     }
+  }
+
+  private func computeRows() -> [CommentRow] {
+    var out: [CommentRow] = []
+    out.reserveCapacity(max(rows.count, 8))
+    flatten(rootArray.data, depth: 0, parent: nil, into: &out)
+    return out
   }
 
   // MARK: - Tree observation
@@ -125,12 +145,14 @@ final class CommentTreeModel {
   }
 
   private func scheduleStructuralRebuild() {
-    guard !rebuildScheduled else { return }
-    rebuildScheduled = true
-    DispatchQueue.main.async { [weak self] in
-      guard let self else { return }
-      self.rebuildScheduled = false
-      self.rebuild()
+    // Child changes fire roughly one-per-runloop during scroll — each comment's vote /
+    // seen / avatar (winstonData) update bubbles up through ObservableArray. Debounce so a
+    // burst collapses into ONE flatten after it settles, instead of re-flattening the whole
+    // tree on the main thread on every tick. Real structural edits (reply / delete /
+    // load-more) call rebuild() directly, so this path is only a backstop and the small
+    // delay is invisible.
+    DispatchQueue.main.debounce(delay: 0.12, context: rebuildContext) { [weak self] in
+      self?.rebuild()
     }
   }
 
@@ -179,7 +201,7 @@ final class CommentTreeModel {
           kind: kind,
           isLastChild: i == count - 1,
           parent: parentElement,
-          relativeTime: kind == .comment ? relativeString(data.created) : ""
+          relativeTime: kind == .comment ? cachedRelative(node.id, data.created) : ""
         )
       )
       if !isColl && !children.isEmpty {
@@ -194,6 +216,16 @@ final class CommentTreeModel {
       total += 1 + descendantCount(node.childrenWinston.data)
     }
     return total
+  }
+
+  /// Cached relative-time lookup. Computed once per comment id (the value drifts only by
+  /// minutes over a viewing session, so reusing it is fine) — keeps the expensive formatter
+  /// off the per-collapse rebuild path.
+  private func cachedRelative(_ id: String, _ created: Double?) -> String {
+    if let cached = relativeTimeCache[id] { return cached }
+    let value = relativeString(created)
+    relativeTimeCache[id] = value
+    return value
   }
 
   private func relativeString(_ created: Double?) -> String {

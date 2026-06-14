@@ -40,6 +40,12 @@ struct PostLinkClean: View, Equatable, Identifiable {
   var secondary = false
   let contentWidth: CGFloat
   let defSettings: PostLinkDefSettings
+  /// Set on an embedded crosspost so its inline video gates on the OUTER post id (the key
+  /// the feed tracks), letting it autoplay with the feed. nil for normal feed rows.
+  var inlineVideoKeyOverride: String? = nil
+
+  /// The feed-gating key for this row's inline video — the outer post id when embedded.
+  var inlineVideoFeedKey: String { inlineVideoKeyOverride ?? id }
 
   func markAsRead() async {
     Task(priority: .background) { await post.toggleSeen(true) }
@@ -71,7 +77,7 @@ struct PostLinkClean: View, Equatable, Identifiable {
   func mediaComponentCall() -> some View {
     if let data = post.data {
       if let extractedMedia = winstonData.extractedMedia {
-        MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, media: extractedMedia, over18: over18, compact: false, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post-clean:\(id):\(String(data.title.prefix(80)))", feedItemKey: id)
+        MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, media: extractedMedia, over18: over18, compact: false, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post-clean:\(id):\(String(data.title.prefix(80)))", feedItemKey: inlineVideoFeedKey)
           .allowsHitTesting(defSettings.isMediaTappable || extractedMedia.alwaysAllowsInlineNavigation)
 
         if case .repost(let repost) = extractedMedia {
@@ -85,7 +91,9 @@ struct PostLinkClean: View, Equatable, Identifiable {
               compactPerSubreddit: false,
               postStyleOverride: .clean,
               contentWidth: contentWidth,
-              defSettings: defSettings
+              defSettings: defSettings,
+              // Embedded video gates on the OUTER post id so it autoplays with the feed.
+              inlineVideoKeyOverride: inlineVideoFeedKey
             )
             .background(Color.primary.opacity(0.05))
             .cornerRadius(theme.theme.mediaCornerRadius)
@@ -219,6 +227,12 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   var secondary = false
   let contentWidth: CGFloat
   let defSettings: PostLinkDefSettings
+  /// Set on an embedded crosspost so its inline video gates on the OUTER post id (the key
+  /// the feed tracks), letting it autoplay with the feed. nil for normal feed rows.
+  var inlineVideoKeyOverride: String? = nil
+
+  /// The feed-gating key for this row's inline video — the outer post id when embedded.
+  var inlineVideoFeedKey: String { inlineVideoKeyOverride ?? id }
 
   func markAsRead() async {
     Task(priority: .background) { await post.toggleSeen(true) }
@@ -259,7 +273,7 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   func mediaComponentCall() -> some View {
     if let data = post.data {
       if let extractedMedia = winstonData.extractedMedia {
-        MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, media: extractedMedia, over18: over18, compact: false, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post:\(id):\(String(data.title.prefix(80)))", feedItemKey: id)
+        MediaPresenter(postDimensions: $winstonData.postDimensions, controller: controller, postTitle: data.title, badgeKit: data.badgeKit, avatarImageRequest: winstonData.avatarImageRequest, markAsSeen: !defSettings.lightboxReadsPost ? nil : markAsRead, cornerRadius: theme.theme.mediaCornerRadius, blurPostLinkNSFW: defSettings.blurNSFW, media: extractedMedia, over18: over18, compact: false, contentWidth: winstonData.postDimensions.mediaSize?.width ?? 0, maxMediaHeightScreenPercentage: defSettings.maxMediaHeightScreenPercentage, resetVideo: resetVideo, diagnosticContext: "post:\(id):\(String(data.title.prefix(80)))", feedItemKey: inlineVideoFeedKey)
           .allowsHitTesting(defSettings.isMediaTappable || extractedMedia.alwaysAllowsInlineNavigation)
 
         if case .repost(let repost) = extractedMedia {
@@ -273,7 +287,9 @@ struct PostLinkNormal: View, Equatable, Identifiable {
               compactPerSubreddit: false,
               postStyleOverride: .classic,
               contentWidth: contentWidth,
-              defSettings: defSettings
+              defSettings: defSettings,
+              // Embedded video gates on the OUTER post id so it autoplays with the feed.
+              inlineVideoKeyOverride: inlineVideoFeedKey
             )
             .background(Color.primary.opacity(0.05))
             .cornerRadius(theme.theme.mediaCornerRadius)

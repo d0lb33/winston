@@ -25,12 +25,18 @@ class ObservableArray<T: ObservableObject>: ObservableObject {
     cancellables.forEach { cancelable in
       cancelable.cancel()
     }
+    cancellables.removeAll()
+    // `[weak self]` is REQUIRED: the sink's AnyCancellable is stored in `self.cancellables`,
+    // and the closure captures self — a strong capture is a retain cycle, so the
+    // ObservableArray (and everything it holds: the whole comment tree, the post header's
+    // AVPlayer, etc.) would never deinit. Leaking an AVPlayer per post visit accumulates
+    // media-decoder resources across a session → escalating hangs / watchdog kills.
     data.forEach({
-      self.cancellables.append($0.objectWillChange.sink(receiveValue: { _ in
-        self.objectWillChange.send()
+      self.cancellables.append($0.objectWillChange.sink(receiveValue: { [weak self] _ in
+        self?.objectWillChange.send()
       }))
       if let comment = $0 as? GenericRedditEntity<CommentData, CommentWinstonData>, let wd = comment.winstonData {
-        self.cancellables.append(wd.objectWillChange.sink(receiveValue: { _ in self.objectWillChange.send() }))
+        self.cancellables.append(wd.objectWillChange.sink(receiveValue: { [weak self] _ in self?.objectWillChange.send() }))
       }
     })
   }
