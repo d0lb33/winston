@@ -30,7 +30,7 @@ struct AuroraSubFeedScreen: View {
   var body: some View {
     AuroraFeed(
       model: model,
-      title: subreddit.data?.display_name_prefixed ?? "r/\(subreddit.id)",
+      title: subreddit.displayTitle,
       community: isCommunity ? subreddit : nil,
       selectedPostID: $selectedPostID,
       sort: $sort

@@ -80,9 +80,7 @@ struct AuroraRoot: View {
   }
 
   private var feedTitle: String {
-    let sub = model.subreddit
-    if feedsAndSuch.contains(sub.id) { return sub.id.capitalized }
-    return sub.data?.display_name_prefixed ?? "r/\(sub.id)"
+    model.subreddit.displayTitle
   }
 
   private var selectedPost: Post? {

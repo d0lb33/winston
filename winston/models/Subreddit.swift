@@ -16,6 +16,29 @@ typealias Subreddit = GenericRedditEntity<SubredditData, SubredditWinstonData>
 extension Subreddit {
   static var prefix = "t5"
   var selfPrefix: String { Self.prefix }
+  var displayTitle: String {
+    if let prefixed = data?.display_name_prefixed?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !prefixed.isEmpty {
+      return prefixed
+    }
+    if let displayName = data?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines),
+       !displayName.isEmpty {
+      return displayName.hasPrefix("r/") ? displayName : "r/\(displayName)"
+    }
+
+    switch id {
+    case "home":
+      return "Home"
+    case "popular":
+      return "Popular"
+    case "saved":
+      return "Saved"
+    case "all":
+      return "All"
+    default:
+      return id.hasPrefix("r/") ? id : "r/\(id)"
+    }
+  }
   
   convenience init(data: T) {
     self.init(data: data, typePrefix: "\(Subreddit.prefix)_")
@@ -571,6 +594,9 @@ struct SubredditData: Codable, GenericRedditEntityDataType, Defaults.Serializabl
     self.banner_img = x.banner_img
     self.community_icon = x.community_icon
     self.display_name = x.display_name
+    if let displayName = x.display_name, !displayName.isEmpty {
+      self.display_name_prefixed = displayName.hasPrefix("r/") ? displayName : "r/\(displayName)"
+    }
     self.header_img = x.header_img
     self.icon_img = x.icon_img
     self.key_color = x.key_color

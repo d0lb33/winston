@@ -184,7 +184,7 @@ struct AuroraCommunityHeader: View {
       HStack(spacing: 12) {
         AuroraSubIcon(name: sub.data?.display_name ?? sub.id, size: 44)
         VStack(alignment: .leading, spacing: 2) {
-          Text(sub.data?.display_name_prefixed ?? "r/\(sub.id)").font(.title3.weight(.bold))
+          Text(sub.displayTitle).font(.title3.weight(.bold))
           if let members = sub.data?.subscribers {
             Text("\(formatBigNumber(members)) members")
               .font(.caption).foregroundStyle(.secondary)
