@@ -2,62 +2,65 @@
 //  DesignLabConcept.swift
 //  winston
 //
-//  Design Lab — the three design concepts surfaced in the gallery.
+//  Design Lab — the Aurora family: one UX (adaptive 3-pane glass split), three moods.
 //
 
 import SwiftUI
 
 enum DesignLabConcept: String, Identifiable, CaseIterable {
-  case aurora, press, deck
+  case aurora, solstice, eclipse
 
   var id: String { rawValue }
 
   var title: String {
     switch self {
-    case .aurora: "Aurora"
-    case .press:  "Press"
-    case .deck:   "Deck"
+    case .aurora:   "Aurora"
+    case .solstice: "Solstice"
+    case .eclipse:  "Eclipse"
     }
   }
 
   var tagline: String {
     switch self {
-    case .aurora: "Liquid Glass · adaptive split"
-    case .press:  "Editorial · the daily read"
-    case .deck:   "Spatial · swipe the deck"
+    case .aurora:   "Midnight · glacial glass"
+    case .solstice: "Daybreak · warm & light"
+    case .eclipse:  "After dark · electric serif"
     }
   }
 
   var blurb: String {
     switch self {
-    case .aurora: "Translucent glass panes float over a living gradient. Unfold to reveal subreddits, feed and conversation side by side."
-    case .press:  "A magazine for your feed. A serif cover story, a masonry of stories, and a calm reading column for comments."
-    case .deck:   "Flick through posts like a deck of cards. Tap to zoom in, drag the comments up. Unfold to browse and read at once."
+    case .aurora:   "The original. A calm midnight gradient, glacial-cyan accents and translucent panes that float as the screen unfolds."
+    case .solstice: "Aurora at sunrise. A warm peach-and-coral wash, soft rounded type and frosted glass — the same UX, lighter on its feet."
+    case .eclipse:  "Aurora after dark. True-black canvas, electric-violet accents and a serif edge. Crisper corners, higher contrast, more drama."
     }
   }
 
   var symbol: String {
     switch self {
-    case .aurora: "sparkles.rectangle.stack.fill"
-    case .press:  "newspaper.fill"
-    case .deck:   "rectangle.portrait.on.rectangle.portrait.angled.fill"
+    case .aurora:   "sparkles.rectangle.stack.fill"
+    case .solstice: "sun.horizon.fill"
+    case .eclipse:  "moon.stars.fill"
     }
   }
 
-  /// Signature accent for the gallery card. Each design defines its own internal palette too.
-  var accent: Color {
+  var auroraTheme: AuroraTheme {
     switch self {
-    case .aurora: Color(red: 0.36, green: 0.78, blue: 0.98)   // glacial cyan
-    case .press:  Color(red: 0.85, green: 0.26, blue: 0.18)   // vermillion ink
-    case .deck:   Color(red: 0.62, green: 0.94, blue: 0.27)   // electric lime
+    case .aurora:   .midnight
+    case .solstice: .dawn
+    case .eclipse:  .eclipse
     }
   }
 
+  /// Light gallery card → dark text.
+  var prefersDarkText: Bool { self == .solstice }
+
+  var accent: Color { auroraTheme.accent }
+  var fontDesign: Font.Design { auroraTheme.fontDesign }
+
+  /// A representative gradient sampled from the theme's mesh for the gallery card.
   var galleryGradient: [Color] {
-    switch self {
-    case .aurora: [Color(red: 0.13, green: 0.20, blue: 0.40), Color(red: 0.20, green: 0.52, blue: 0.66), Color(red: 0.42, green: 0.30, blue: 0.62)]
-    case .press:  [Color(red: 0.96, green: 0.94, blue: 0.89), Color(red: 0.90, green: 0.86, blue: 0.78)]
-    case .deck:   [Color(red: 0.06, green: 0.06, blue: 0.09), Color(red: 0.14, green: 0.16, blue: 0.10)]
-    }
+    let mesh = auroraTheme.meshColors
+    return [mesh[0], mesh[4], mesh[8]]
   }
 }

@@ -286,12 +286,6 @@
     "%lld hitches/min" : {
 
     },
-    "%lld PHOTOS" : {
-
-    },
-    "%lld STORIES" : {
-
-    },
     "%lld/%lld" : {
       "localizations" : {
         "de" : {
@@ -361,9 +355,6 @@
           }
         }
       }
-    },
-    "▲ %@" : {
-
     },
     "🥳" : {
       "extractionState" : "stale",
@@ -576,12 +567,6 @@
         }
       }
     },
-    "Aurora" : {
-
-    },
-    "AUTHOR" : {
-
-    },
     "Autoplay videos (muted)" : {
       "localizations" : {
         "de" : {
@@ -719,16 +704,6 @@
         }
       }
     },
-    "By %@   ·   %@   ·   %@ comments" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "By %1$@   ·   %2$@   ·   %3$@ comments"
-          }
-        }
-      }
-    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -849,9 +824,6 @@
           }
         }
       }
-    },
-    "Coming soon" : {
-
     },
     "Comment skipper button" : {
 
@@ -1941,9 +1913,6 @@
         }
       }
     },
-    "In progress" : {
-
-    },
     "IN USE" : {
 
     },
@@ -2111,9 +2080,6 @@
       }
     },
     "Joined" : {
-
-    },
-    "Jump to a community" : {
 
     },
     "Jump to Next Comment" : {
@@ -2525,9 +2491,6 @@
         }
       }
     },
-    "Mockups built for foldables and iOS 27. Each has its own navigation and adapts as the screen folds, unfolds and resizes. All data is fake — explore freely." : {
-
-    },
     "more" : {
       "localizations" : {
         "de" : {
@@ -2759,6 +2722,9 @@
         }
       }
     },
+    "One UX built for foldables and iOS 27 — an adaptive three-pane glass split that folds down to a single column. Three moods to react to. All data is fake; explore freely." : {
+
+    },
     "oops" : {
       "localizations" : {
         "de" : {
@@ -2795,9 +2761,6 @@
 
     },
     "Open" : {
-
-    },
-    "Open a post here and keep flicking through the deck on the left." : {
 
     },
     "Open feed tools" : {
@@ -2879,9 +2842,6 @@
       }
     },
     "Original Winston post layout." : {
-
-    },
-    "P" : {
 
     },
     "Paste here the app ID" : {
@@ -3171,9 +3131,6 @@
     "Preparing Export..." : {
 
     },
-    "Press" : {
-
-    },
     "r/%@" : {
       "localizations" : {
         "de" : {
@@ -3442,9 +3399,6 @@
           }
         }
       }
-    },
-    "SENSITIVE" : {
-
     },
     "Sensitive media" : {
 
@@ -3725,9 +3679,6 @@
     "Spoiler" : {
 
     },
-    "SPOILER" : {
-
-    },
     "Start by duplicating the" : {
 
     },
@@ -3902,9 +3853,6 @@
     "t3_…" : {
 
     },
-    "Tap a card" : {
-
-    },
     "Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar." : {
 
     },
@@ -4001,7 +3949,7 @@
         }
       }
     },
-    "THE CONVERSATION" : {
+    "The Aurora family" : {
 
     },
     "The theme was imported successfully. Enable it in \"Themes\" section in the Settings tab." : {
@@ -4155,9 +4103,6 @@
           }
         }
       }
-    },
-    "Three ways to read Reddit" : {
-
     },
     "Thumbnail Position" : {
       "localizations" : {
@@ -4381,9 +4326,6 @@
           }
         }
       }
-    },
-    "VOL. XXVII — TODAY’S EDITION" : {
-
     },
     "Voting Buttons Position" : {
       "localizations" : {

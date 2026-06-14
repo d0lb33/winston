@@ -2,38 +2,23 @@
 //  AuroraComponents.swift
 //  winston
 //
-//  Design Lab · Aurora — Liquid Glass building blocks.
-//  Aesthetic: translucent surfaces floating over a living mesh gradient.
+//  Design Lab · Aurora family — shared Liquid Glass building blocks, driven by
+//  `AuroraTheme` from the environment so the same views render as midnight / dawn / eclipse.
 //
-//  PERFORMANCE: real `.glassEffect` (live blur) is reserved for a handful of *chrome*
-//  elements (vote pills, sort bar, composer, close). Scrolling feed cards use a cheap
-//  translucent fill instead — live-blur materials re-blurred against the animating mesh
-//  on every scroll frame overwhelm the render server and hang the UI.
+//  PERFORMANCE: real `.glassEffect` (live blur) is reserved for a few *chrome* elements
+//  (vote pills, sort bar, composer, close). Scrolling feed cards use a cheap translucent
+//  fill — live-blur materials re-blurred against the animating mesh on every scroll frame
+//  overwhelm the render server and hang the UI.
 //
 
 import SwiftUI
-
-// MARK: - Palette
-
-enum AuroraPalette {
-  static let accent = Color(red: 0.40, green: 0.80, blue: 0.99)
-  static let downvote = Color(red: 0.62, green: 0.52, blue: 0.98)
-  /// Cheap translucent card fill (NOT a live-blur material) for scrolling content.
-  static let cardFill = Color.white.opacity(0.07)
-  static let chipFill = Color.white.opacity(0.10)
-  static let hairline = Color.white.opacity(0.12)
-  static let mesh: [Color] = [
-    Color(red: 0.07, green: 0.09, blue: 0.22), Color(red: 0.10, green: 0.22, blue: 0.42), Color(red: 0.18, green: 0.13, blue: 0.38),
-    Color(red: 0.12, green: 0.28, blue: 0.48), Color(red: 0.20, green: 0.46, blue: 0.60), Color(red: 0.28, green: 0.20, blue: 0.50),
-    Color(red: 0.08, green: 0.16, blue: 0.34), Color(red: 0.16, green: 0.36, blue: 0.54), Color(red: 0.30, green: 0.24, blue: 0.55),
-  ]
-}
 
 // MARK: - Living mesh backdrop
 
 /// A slow, state-driven aurora. Animated as a single GPU mesh layer (no per-frame
 /// TimelineView redraw, no live-blur surfaces in front) so it stays smooth under scroll.
-struct MeshBackdrop: View {
+struct AuroraBackdrop: View {
+  let theme: AuroraTheme
   @State private var drift: CGFloat = 0
 
   var body: some View {
@@ -48,10 +33,11 @@ struct MeshBackdrop: View {
         .init(0, 0.5), .init(0.5 + dx, 0.5 + dy), .init(1, 0.5),
         .init(0, 1), .init(0.5 + dx2, 1), .init(1, 1),
       ],
-      colors: AuroraPalette.mesh
+      colors: theme.meshColors
     )
     .overlay(
-      RadialGradient(colors: [.clear, .black.opacity(0.22)], center: .center, startRadius: 280, endRadius: 900)
+      RadialGradient(colors: [.clear, theme.vignette.opacity(theme.vignetteStrength)],
+                     center: .center, startRadius: 280, endRadius: 900)
     )
     .ignoresSafeArea()
     .onAppear {
@@ -115,20 +101,21 @@ struct AuroraFlair: View {
 struct GlassVotePill: View {
   let score: Int
   var compact: Bool = false
+  @Environment(\.auroraTheme) private var theme
   @State private var vote = 0
 
   private var shown: Int { score + vote }
 
   var body: some View {
     HStack(spacing: compact ? 8 : 11) {
-      voteButton("arrow.up", active: vote == 1, color: AuroraPalette.accent) {
+      voteButton("arrow.up", active: vote == 1, color: theme.accent) {
         withAnimation(.snappy) { vote = vote == 1 ? 0 : 1 }
       }
       Text(MockFormatting.compactNumber(shown))
         .font(.subheadline.weight(.semibold)).monospacedDigit()
-        .foregroundStyle(vote == 1 ? AuroraPalette.accent : vote == -1 ? AuroraPalette.downvote : .primary)
+        .foregroundStyle(vote == 1 ? theme.accent : vote == -1 ? theme.downvote : .primary)
         .contentTransition(.numericText())
-      voteButton("arrow.down", active: vote == -1, color: AuroraPalette.downvote) {
+      voteButton("arrow.down", active: vote == -1, color: theme.downvote) {
         withAnimation(.snappy) { vote = vote == -1 ? 0 : -1 }
       }
     }
@@ -153,6 +140,7 @@ struct AuroraMedia: View {
   let post: MockPost
   let media: MockMediaSeed
   var maxHeight: CGFloat = 300
+  @Environment(\.auroraTheme) private var theme
   @State private var revealed = false
 
   private var blurred: Bool { (post.isNSFW || post.isSpoiler) && !revealed }
@@ -167,7 +155,7 @@ struct AuroraMedia: View {
     .frame(maxWidth: .infinity)
     .aspectRatio(media.aspect, contentMode: .fit)
     .frame(maxHeight: maxHeight)
-    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    .clipShape(RoundedRectangle(cornerRadius: theme.mediaRadius, style: .continuous))
     .overlay(alignment: .topTrailing) {
       if media.count > 1 {
         Label("1/\(media.count)", systemImage: "square.on.square")
@@ -198,11 +186,12 @@ struct AuroraMedia: View {
 
 struct AuroraLinkChip: View {
   let domain: String
+  @Environment(\.auroraTheme) private var theme
   var body: some View {
     Label(domain, systemImage: "safari.fill")
       .font(.caption.weight(.semibold))
       .padding(.horizontal, 10).padding(.vertical, 6)
-      .background(AuroraPalette.chipFill, in: .capsule)
+      .background(theme.chipFill, in: .capsule)
       .foregroundStyle(.secondary)
   }
 }
@@ -211,6 +200,7 @@ struct AuroraLinkChip: View {
 
 struct AuroraCommunityHeader: View {
   let sub: MockSubreddit
+  @Environment(\.auroraTheme) private var theme
   @State private var joined = false
 
   var body: some View {
@@ -228,9 +218,9 @@ struct AuroraCommunityHeader: View {
         } label: {
           Text(joined ? "Joined" : "Join")
             .font(.subheadline.weight(.bold))
-            .foregroundStyle(joined ? AuroraPalette.accent : .black)
+            .foregroundStyle(joined ? theme.accent : (theme.isDark ? .black : .white))
             .padding(.horizontal, 16).padding(.vertical, 8)
-            .background(joined ? AuroraPalette.chipFill : AuroraPalette.accent, in: .capsule)
+            .background(joined ? theme.chipFill : theme.accent, in: .capsule)
         }
         .buttonStyle(.plain)
       }
@@ -239,9 +229,9 @@ struct AuroraCommunityHeader: View {
         .fixedSize(horizontal: false, vertical: true)
     }
     .padding(16)
-    .background(AuroraPalette.cardFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(AuroraPalette.hairline, lineWidth: 0.7)
+      RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous).stroke(theme.hairline, lineWidth: 0.7)
     )
   }
 }
@@ -251,6 +241,7 @@ struct AuroraCommunityHeader: View {
 struct AuroraCard: View {
   let post: MockPost
   var isSelected: Bool = false
+  @Environment(\.auroraTheme) private var theme
 
   var body: some View {
     VStack(alignment: .leading, spacing: 11) {
@@ -261,7 +252,7 @@ struct AuroraCard: View {
           .font(.caption).foregroundStyle(.secondary)
         Spacer()
         if post.isPinned {
-          Image(systemName: "pin.fill").font(.caption2).foregroundStyle(AuroraPalette.accent)
+          Image(systemName: "pin.fill").font(.caption2).foregroundStyle(theme.accent)
         }
       }
 
@@ -292,11 +283,11 @@ struct AuroraCard: View {
       .foregroundStyle(.secondary)
     }
     .padding(16)
-    .background(AuroraPalette.cardFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .stroke(isSelected ? AuroraPalette.accent.opacity(0.9) : AuroraPalette.hairline,
-                lineWidth: isSelected ? 1.6 : 0.7)
+      RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+        .stroke(isSelected ? theme.accent.opacity(0.9) : theme.hairline,
+                lineWidth: isSelected ? 1.8 : 0.7)
     )
   }
 }

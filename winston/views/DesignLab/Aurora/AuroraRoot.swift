@@ -2,17 +2,20 @@
 //  AuroraRoot.swift
 //  winston
 //
-//  Design Lab · Aurora — Liquid Glass, adaptive split.
+//  Design Lab · Aurora family — the shared experience, parameterised by AuroraTheme.
 //
 //  Navigation system: NavigationSplitView (sidebar | feed | post+comments).
 //  Resize behaviour: collapses to a single stack on compact width (fold closed),
 //  expands to 2–3 panes when wide (fold open / iPad / Stage Manager). The same
-//  value-based selections drive both layouts.
+//  value-based selections drive both layouts. Midnight / Dawn / Eclipse are the same
+//  views with a different theme injected through the environment.
 //
 
 import SwiftUI
 
 struct AuroraRoot: View {
+  var theme: AuroraTheme = .midnight
+  var displayName: String = "Aurora"
   var onClose: () -> Void = {}
 
   static let popularID = "__popular__"
@@ -55,7 +58,8 @@ struct AuroraRoot: View {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
-      AuroraFeed(posts: posts, title: feedTitle, community: selectedCommunity, selectedPostID: $selectedPostID, sort: $sort)
+      AuroraFeed(posts: posts, title: feedTitle, community: selectedCommunity,
+                 selectedPostID: $selectedPostID, sort: $sort)
         .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
       if let selectedPost {
@@ -65,13 +69,15 @@ struct AuroraRoot: View {
       }
     }
     .navigationSplitViewStyle(.balanced)
-    .tint(AuroraPalette.accent)
-    .preferredColorScheme(.dark)
-    .background { MeshBackdrop() }
+    .environment(\.auroraTheme, theme)
+    .tint(theme.accent)
+    .fontDesign(theme.fontDesign)
+    .preferredColorScheme(theme.colorScheme)
+    .background { AuroraBackdrop(theme: theme) }
     .toolbarBackground(.hidden, for: .navigationBar)
     .designLabImageSession()
     .overlay(alignment: .topTrailing) {
-      DesignLabClose(tint: .white) { onClose() }
+      DesignLabClose(tint: theme.onGlass) { onClose() }
         .padding(.top, 8)
         .padding(.trailing, 14)
     }
@@ -109,16 +115,17 @@ struct AuroraRoot: View {
     }
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
-    .navigationTitle("Aurora")
+    .navigationTitle(displayName)
   }
 }
 
 struct AuroraDetailPlaceholder: View {
+  @Environment(\.auroraTheme) private var theme
   var body: some View {
     VStack(spacing: 14) {
       Image(systemName: "rectangle.split.2x1")
         .font(.system(size: 46, weight: .light))
-        .foregroundStyle(AuroraPalette.accent)
+        .foregroundStyle(theme.accent)
       Text("Pick a post").font(.title3.weight(.semibold))
       Text("Open it here while the feed stays in view — the quiet luxury of the big screen.")
         .font(.subheadline)
@@ -131,6 +138,14 @@ struct AuroraDetailPlaceholder: View {
   }
 }
 
-#Preview("Aurora") {
-  AuroraRoot()
+#Preview("Aurora · Midnight") {
+  AuroraRoot(theme: .midnight, displayName: "Aurora")
+}
+
+#Preview("Solstice · Dawn") {
+  AuroraRoot(theme: .dawn, displayName: "Solstice")
+}
+
+#Preview("Eclipse") {
+  AuroraRoot(theme: .eclipse, displayName: "Eclipse")
 }

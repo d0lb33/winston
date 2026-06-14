@@ -2,15 +2,16 @@
 //  AuroraPostDetail.swift
 //  winston
 //
-//  Design Lab · Aurora — the trailing (detail) column: post + threaded comments.
-//  Glass chrome (vote pill + actions) batched in a GlassEffectContainer; depth-tinted
-//  thread rails; real collapse via a set of collapsed comment IDs.
+//  Design Lab · Aurora family — the trailing (detail) column: post + threaded comments.
+//  Glass chrome (vote pill + actions + composer) batched in a GlassEffectContainer;
+//  depth-tinted thread rails; real collapse via a set of collapsed comment IDs.
 //
 
 import SwiftUI
 
 struct AuroraPostDetail: View {
   let post: MockPost
+  @Environment(\.auroraTheme) private var theme
   @State private var collapsed: Set<String> = []
 
   private var rows: [(comment: MockComment, depth: Int, isCollapsed: Bool)] {
@@ -44,22 +45,18 @@ struct AuroraPostDetail: View {
         }
         .padding(.top, 4)
 
-        Divider().overlay(.white.opacity(0.12))
+        Divider().overlay(theme.hairline)
 
         LazyVStack(alignment: .leading, spacing: 0) {
           ForEach(rows, id: \.comment.id) { row in
-            AuroraCommentRow(
-              comment: row.comment,
-              depth: row.depth,
-              isCollapsed: row.isCollapsed
-            )
-            .contentShape(Rectangle())
-            .onTapGesture {
-              withAnimation(.snappy) {
-                if collapsed.contains(row.comment.id) { collapsed.remove(row.comment.id) }
-                else { collapsed.insert(row.comment.id) }
+            AuroraCommentRow(comment: row.comment, depth: row.depth, isCollapsed: row.isCollapsed)
+              .contentShape(Rectangle())
+              .onTapGesture {
+                withAnimation(.snappy) {
+                  if collapsed.contains(row.comment.id) { collapsed.remove(row.comment.id) }
+                  else { collapsed.insert(row.comment.id) }
+                }
               }
-            }
           }
         }
       }
@@ -80,7 +77,7 @@ struct AuroraPostDetail: View {
       Spacer()
       Image(systemName: "paperplane.fill")
         .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(AuroraPalette.accent)
+        .foregroundStyle(theme.accent)
     }
     .padding(.horizontal, 16).padding(.vertical, 11)
     .glassEffect(.regular.interactive(), in: .capsule)
@@ -129,14 +126,13 @@ struct AuroraCommentRow: View {
   let comment: MockComment
   let depth: Int
   let isCollapsed: Bool
-
-  private static let rail: [Color] = [AuroraPalette.accent, .teal, .green, .orange, .pink, .purple]
+  @Environment(\.auroraTheme) private var theme
 
   var body: some View {
     HStack(alignment: .top, spacing: 8) {
       ForEach(0..<depth, id: \.self) { lvl in
         Capsule()
-          .fill(Self.rail[lvl % Self.rail.count].opacity(0.55))
+          .fill(theme.railColors[lvl % theme.railColors.count].opacity(0.55))
           .frame(width: 2.5)
       }
 
@@ -146,8 +142,8 @@ struct AuroraCommentRow: View {
           if comment.isOP {
             Text("OP").font(.caption2.weight(.bold))
               .padding(.horizontal, 6).padding(.vertical, 2)
-              .background(AuroraPalette.accent.opacity(0.25), in: .capsule)
-              .foregroundStyle(AuroraPalette.accent)
+              .background(theme.accent.opacity(0.25), in: .capsule)
+              .foregroundStyle(theme.accent)
           }
           Text("· \(MockFormatting.relativeTime(comment.createdOffset))")
             .font(.caption).foregroundStyle(.secondary)
@@ -156,7 +152,7 @@ struct AuroraCommentRow: View {
             Text("+\(comment.descendantCount)")
               .font(.caption2.weight(.bold))
               .padding(.horizontal, 7).padding(.vertical, 2)
-              .background(.white.opacity(0.12), in: .capsule)
+              .background(theme.chipFill, in: .capsule)
               .foregroundStyle(.secondary)
           }
           Label(MockFormatting.compactNumber(comment.score), systemImage: "arrow.up")
@@ -174,7 +170,7 @@ struct AuroraCommentRow: View {
     }
     .padding(.vertical, 9)
     .overlay(alignment: .bottom) {
-      if depth == 0 { Divider().overlay(.white.opacity(0.08)) }
+      if depth == 0 { Divider().overlay(theme.hairline) }
     }
   }
 }

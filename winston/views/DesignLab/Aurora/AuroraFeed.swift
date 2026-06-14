@@ -2,7 +2,7 @@
 //  AuroraFeed.swift
 //  winston
 //
-//  Design Lab · Aurora — the middle (content) column.
+//  Design Lab · Aurora family — the middle (content) column.
 //  A selection-driven List: in compact width the NavigationSplitView collapses to a
 //  stack and selecting a card pushes the detail; in regular width the same selection
 //  populates the third (detail) pane. One code path, two behaviours.
@@ -60,6 +60,7 @@ struct AuroraFeed: View {
 
 struct AuroraSortBar: View {
   @Binding var sort: AuroraSort
+  @Environment(\.auroraTheme) private var theme
 
   var body: some View {
     HStack {
@@ -72,8 +73,8 @@ struct AuroraSortBar: View {
             Label(s.label, systemImage: s.symbol)
               .font(.caption.weight(.semibold))
               .padding(.horizontal, 13).padding(.vertical, 8)
-              .foregroundStyle(sort == s ? Color.black : Color.primary)
-              .background { if sort == s { Capsule().fill(AuroraPalette.accent) } }
+              .foregroundStyle(sort == s ? (theme.isDark ? Color.black : Color.white) : Color.primary)
+              .background { if sort == s { Capsule().fill(theme.accent) } }
           }
           .buttonStyle(.plain)
         }
