@@ -541,7 +541,11 @@ extension Post {
     )
     var postData = newData
     let postFullnameFromComment = newData?.name ?? (id.hasPrefix("\(Post.prefix)_") ? id : "\(Post.prefix)_\(id)")
-    if full, commentID != nil {
+    // The postComments query omits crosspostRoot/media. When we don't already
+    // have a fully-hydrated post (deep-links, or any first load without feed
+    // data), fetch the complete post via postsByIds so crossposts and their
+    // media survive. Feed-navigated posts already carry it, so skip the extra call.
+    if full, commentID != nil || self.data == nil {
       let hydrationStartedAt = Date()
       AppDiagnostics.asyncRecord(
         .info,
@@ -598,9 +602,25 @@ extension Post {
       }
     }
     if full, let postData {
+      // Don't clobber a good post with a degraded stub: the comments query can
+      // return a placeholder post (author "[deleted]", score 0, epoch date) that
+      // would flash garbage into a header that already shows real data.
+      let incomingIsStub = postData.author.isEmpty || postData.author == "[deleted]"
+      let haveRealData = (self.data?.author.isEmpty == false) && self.data?.author != "[deleted]"
+      // The postComments query does NOT return crosspostRoot, so its post lacks
+      // the crosspost source (and its media). Don't replace data that already has
+      // the crosspost (from the feed / postsByIds hydration) with that lesser one.
+      let existingHasCrosspost = !(self.data?.crosspost_parent_list?.isEmpty ?? true)
+      let incomingHasCrosspost = !(postData.crosspost_parent_list?.isEmpty ?? true)
+      let wouldLoseCrosspost = existingHasCrosspost && !incomingHasCrosspost
+      let shouldReplace = (self.data == nil || commentID != nil || !incomingIsStub || !haveRealData) && !wouldLoseCrosspost
       await MainActor.run {
-        self.data = postData
-        setupWinstonData(data: postData, secondary: false, theme: getEnabledTheme())
+        if shouldReplace {
+          self.data = postData
+          setupWinstonData(data: postData, secondary: false, theme: getEnabledTheme())
+        } else if self.winstonData == nil, let existing = self.data {
+          setupWinstonData(data: existing, secondary: false, theme: getEnabledTheme())
+        }
       }
     }
     let postFullname = postData?.name ?? postFullnameFromComment

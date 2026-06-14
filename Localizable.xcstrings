@@ -110,6 +110,9 @@
         }
       }
     },
+    "·" : {
+
+    },
     "\"Shiny\" Text and Buttons" : {
       "localizations" : {
         "de" : {
@@ -587,6 +590,9 @@
         }
       }
     },
+    "Be the first to comment." : {
+
+    },
     "Behavior" : {
       "localizations" : {
         "de" : {
@@ -779,6 +785,15 @@
         }
       }
     },
+    "Collapse thread" : {
+
+    },
+    "Collapsed" : {
+
+    },
+    "Collapsed, %lld hidden replies" : {
+
+    },
     "Colored Usernames" : {
       "localizations" : {
         "de" : {
@@ -894,6 +909,9 @@
     "Connect via RedditPOC" : {
 
     },
+    "Continue this thread" : {
+
+    },
     "Copied!" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -951,6 +969,9 @@
           }
         }
       }
+    },
+    "Crossposted from r/%@" : {
+
     },
     "Current Theme" : {
       "localizations" : {
@@ -1192,6 +1213,15 @@
     "Done" : {
 
     },
+    "Download" : {
+
+    },
+    "Downvote" : {
+
+    },
+    "Downvoted" : {
+
+    },
     "Drag Left" : {
       "localizations" : {
         "de" : {
@@ -1326,6 +1356,9 @@
           }
         }
       }
+    },
+    "Expand thread" : {
+
     },
     "Export" : {
       "localizations" : {
@@ -1703,6 +1736,9 @@
           }
         }
       }
+    },
+    "Hide spoiler" : {
+
     },
     "Home" : {
       "localizations" : {
@@ -2157,6 +2193,9 @@
     "Loading About details..." : {
 
     },
+    "Loading…" : {
+
+    },
     "Lock Winston With %@" : {
       "localizations" : {
         "de" : {
@@ -2463,6 +2502,9 @@
     "Mute video" : {
 
     },
+    "Native comments view (beta)" : {
+
+    },
     "Navigation everywhere" : {
       "localizations" : {
         "de" : {
@@ -2530,6 +2572,9 @@
     "No activity found" : {
 
     },
+    "No Comments" : {
+
+    },
     "No comments around..." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2563,6 +2608,12 @@
 
     },
     "Not connected. Log in to reddit.com to mint an Android bearer via RedditPOC." : {
+
+    },
+    "Not downvoted" : {
+
+    },
+    "Not upvoted" : {
 
     },
     "Now paste it here:" : {
@@ -2679,6 +2730,9 @@
         }
       }
     },
+    "OP" : {
+
+    },
     "Open feed tools" : {
 
     },
@@ -2734,6 +2788,9 @@
           }
         }
       }
+    },
+    "Opens profile" : {
+
     },
     "Original" : {
       "localizations" : {
@@ -3101,6 +3158,9 @@
     "Replies, mentions, chat updates, and Reddit activity notifications will appear here." : {
 
     },
+    "Reply" : {
+
+    },
     "Requests Only" : {
 
     },
@@ -3200,6 +3260,9 @@
       }
     },
     "Saved content" : {
+
+    },
+    "Score: %lld" : {
 
     },
     "Search" : {
@@ -3365,6 +3428,16 @@
     "Share image" : {
 
     },
+    "Show %lld more repl%@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Show %1$lld more repl%2$@"
+          }
+        }
+      }
+    },
     "Show Author" : {
       "localizations" : {
         "de" : {
@@ -3421,6 +3494,9 @@
           }
         }
       }
+    },
+    "Show spoiler" : {
+
     },
     "Show Subreddit at Top" : {
       "extractionState" : "stale",
@@ -3554,6 +3630,9 @@
           }
         }
       }
+    },
+    "Sort Comments" : {
+
     },
     "Start by duplicating the" : {
 
@@ -3766,6 +3845,9 @@
         }
       }
     },
+    "Tap to load the full discussion" : {
+
+    },
     "Tap to read" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3835,6 +3917,9 @@
         }
       }
     },
+    "Theme Store" : {
+
+    },
     "Theme Store Tint" : {
       "localizations" : {
         "de" : {
@@ -3899,6 +3984,9 @@
           }
         }
       }
+    },
+    "There was an error importing this theme" : {
+
     },
     "This clears GraphQL account records and stored sessions. It does not reset themes or general preferences." : {
 
@@ -4092,6 +4180,9 @@
     "Unmute video" : {
 
     },
+    "Unsave" : {
+
+    },
     "Unseen type" : {
       "localizations" : {
         "de" : {
@@ -4140,6 +4231,12 @@
         }
       }
     },
+    "Upvote" : {
+
+    },
+    "Upvoted" : {
+
+    },
     "View full conversation" : {
       "localizations" : {
         "de" : {
@@ -4155,6 +4252,9 @@
           }
         }
       }
+    },
+    "Viewing a single thread" : {
+
     },
     "Visit lo.cafe Website" : {
       "localizations" : {

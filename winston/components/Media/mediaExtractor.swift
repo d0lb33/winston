@@ -157,7 +157,29 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
   guard !data.is_self else { return nil }
 
   let contentWidth = contentWidth - ((theme?.postLinks.theme.innerPadding.horizontal ?? 0) * 2) - ((theme?.postLinks.theme.outerHPadding ?? 0) * 2)
-  
+
+  // Crossposts must be detected BEFORE url/media extraction: a crosspost's own
+  // `url` is the bare v.redd.it id (its `media` is null), so extracting a video
+  // from it yields an unplayable/blank player. The real media lives on the
+  // embedded original post, surfaced as `.repost`.
+  if let postEmbed = data.crosspost_parent_list?.first {
+    AppDiagnostics.asyncRecord(
+      .debug,
+      category: "ui.embeddedPost",
+      message: "Crosspost media extracted",
+      metadata: [
+        "post": data.name,
+        "title": data.title,
+        "embeddedPost": postEmbed.name,
+        "embeddedID": postEmbed.id,
+        "embeddedTitle": postEmbed.title,
+        "embeddedSubreddit": postEmbed.subreddit,
+        "contentWidth": "\(contentWidth)"
+      ]
+    )
+    return .repost(Post(data: postEmbed, contentWidth: contentWidth, secondary: true, theme: theme))
+  }
+
   if let is_gallery = data.is_gallery, is_gallery, let galleryData = data.gallery_data?.items, let metadata = data.media_metadata {
     
     let halfWidth = (contentWidth - ImageMediaPost.gallerySpacing) / 2
@@ -253,24 +275,6 @@ func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: Post
       return .yt(newExtracted)
     }
     recordMediaExtraction(data: data, kind: "youtube_unusable", compact: compact, contentWidth: contentWidth, size: .zero, extra: ["reason": "no usable thumbnail URL", "ytID": ytID])
-  }
-  
-  if let postEmbed = data.crosspost_parent_list?.first {
-    AppDiagnostics.asyncRecord(
-      .debug,
-      category: "ui.embeddedPost",
-      message: "Crosspost media extracted",
-      metadata: [
-        "post": data.name,
-        "title": data.title,
-        "embeddedPost": postEmbed.name,
-        "embeddedID": postEmbed.id,
-        "embeddedTitle": postEmbed.title,
-        "embeddedSubreddit": postEmbed.subreddit,
-        "contentWidth": "\(contentWidth)"
-      ]
-    )
-    return .repost(Post(data: postEmbed, contentWidth: contentWidth, secondary: true, theme: theme))
   }
   
   if let rawImageURL = URL(string: data.url.escape), IMAGES_FORMATS.contains(where: { ".\(rawImageURL.pathExtension.lowercased())" == $0 }) {

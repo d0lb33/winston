@@ -114,8 +114,23 @@ private final class SearchViewModel: ObservableObject {
 
     searchTask = Task { @MainActor [weak self] in
       guard let self else { return }
+      let startedAt = Date()
       let page = await self.fetchPage(query: trimmed, scope: scope, cursors: nil, contentWidth: contentWidth)
       guard !Task.isCancelled, self.requestSerial == requestID else { return }
+
+      AppDiagnostics.asyncRecord(
+        .info,
+        category: "ui.search",
+        message: "Search results",
+        metadata: [
+          "scope": scope.rawValue,
+          "queryLength": "\(trimmed.count)",
+          "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+          "posts": "\(page.posts.items.count)",
+          "subreddits": "\(page.subreddits.items.count)",
+          "users": "\(page.users.items.count)"
+        ]
+      )
 
       withAnimation {
         self.apply(page: page, appending: false)
@@ -235,7 +250,7 @@ struct Search: View {
   @ObservedObject var router: Router
   @State private var searchScope: SearchScope = .all
   @StateObject private var model = SearchViewModel()
-  @StateObject private var searchQuery = DebouncedText(delay: 0.35)
+  @StateObject private var searchQuery = DebouncedText(delay: 0.25)
   
   @State private var dummyAllSub: Subreddit? = nil
   @State private var searchViewLoaded: Bool = false

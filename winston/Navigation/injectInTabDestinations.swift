@@ -100,6 +100,7 @@ extension View {
 private struct RedditPostDestination: View {
   @ObservedObject var post: Post
   var highlightID: String?
+  @Default(.PostPageDefSettings) private var postPageSettings
 
   private var subreddit: Subreddit? {
     post.winstonData?.subreddit ?? post.data.map { Subreddit(id: $0.subreddit) }
@@ -107,8 +108,14 @@ private struct RedditPostDestination: View {
 
   var body: some View {
     if let subreddit {
-      PostView(post: post, subreddit: subreddit, highlightID: highlightID)
-        .diagnosticScreen(diagnosticName)
+      Group {
+        if postPageSettings.useNativeCommentsView {
+          PostViewNative(post: post, subreddit: subreddit, highlightID: highlightID)
+        } else {
+          PostView(post: post, subreddit: subreddit, highlightID: highlightID)
+        }
+      }
+      .diagnosticScreen(diagnosticName)
     } else {
       ProgressView()
         .progressViewStyle(.circular)
@@ -132,19 +139,36 @@ private struct RedditPostDestination: View {
 fileprivate struct AttachViewControllerToRouterView: UIViewRepresentable {
   var viewControllerHolder: ViewControllerHolder
   var disable: Bool
+
+  final class Coordinator {
+    var lastDisable: Bool?
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
   func makeUIView(context: Context) -> some UIView {
     return UIView()
   }
-  
+
   func updateUIView(_ uiView: UIViewType, context: Context) {
+    // updateUIView runs on every re-render of the host view — including every
+    // keystroke while typing in Search. Re-assigning the controller re-adds the
+    // full-swipe gestures (controller.didSet), and re-attaching the swipe
+    // gesture churns UIKit. Only do that work when something actually changed.
+    let coordinator = context.coordinator
+    let disable = self.disable
+    let holder = viewControllerHolder
     DispatchQueue.main.async {
-      if let controller = uiView.parentViewController {
-        viewControllerHolder.controller = controller
+      if let controller = uiView.parentViewController, holder.controller !== controller {
+        holder.controller = controller
       }
-      if disable {
-        viewControllerHolder.removeGestureFromViews()
-      } else {
-        viewControllerHolder.addGestureToViews()
+      if coordinator.lastDisable != disable {
+        coordinator.lastDisable = disable
+        if disable {
+          holder.removeGestureFromViews()
+        } else {
+          holder.addGestureToViews()
+        }
       }
     }
   }

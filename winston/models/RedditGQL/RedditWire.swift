@@ -640,7 +640,11 @@ final class RedditWire: ObservableObject {
             children.insert(selected, at: 0)
           }
         }
-        promoteHighlightedComment(targetFullname, in: &children, postFullname: postFullname)
+        // NOTE: we intentionally do NOT promote the highlighted comment to the
+        // post root. `commentByIdWithChildren` returns the ancestor chain
+        // (numParents), so keeping the target nested under its real parents is
+        // what lets the user see the comment they replied to. The view scrolls
+        // to / highlights the target instead.
         logCommentFetchDiagnostics(postID: postFullname, commentID: commentID, children: children)
         status = "commentByIdWithChildren \(commentID) → \(children.count) comment nodes"
         return (commentById.postInfo.map(PostData.init(graphQL:)), children)
@@ -683,13 +687,27 @@ final class RedditWire: ObservableObject {
   /// the batch's top nodes legitimately have parents outside the batch and
   /// must not be re-rooted or dropped.
   func adaptCommentTrees(_ trees: [CommentTree], postFullname: String, repairOrphans: Bool = true) -> [ListingChild<CommentData>] {
-    var children = trees.compactMap { tree -> ListingChild<CommentData>? in
+    var children: [ListingChild<CommentData>] = []
+    children.reserveCapacity(trees.count)
+    for (index, tree) in trees.enumerated() {
       if let node = tree.node {
-        guard let nodeID = node.id, !nodeID.isEmpty else {
+        // Deleted / removed comments can come back with a nil node id. Recover it
+        // from the first child's parentId (the forest is pre-order), otherwise the
+        // whole reply subtree under the deleted comment is orphaned and dropped by
+        // repairOrphanCommentRoots / nestComments.
+        var recoveredID = node.id
+        var didRecover = false
+        if recoveredID == nil || recoveredID?.isEmpty == true {
+          if let childParent = firstChildParentFullname(after: index, parentDepth: tree.depth ?? 0, in: trees) {
+            recoveredID = childParent.hasPrefix("t1_") ? String(childParent.dropFirst(3)) : childParent
+            didRecover = true
+          }
+        }
+        guard let nodeID = recoveredID, !nodeID.isEmpty else {
           AppDiagnostics.asyncRecord(
             .warning,
             category: "reddit.comment",
-            message: "Skipped invalid comment tree node",
+            message: "Skipped unidentifiable comment tree node",
             metadata: [
               "postID": postFullname,
               "parentID": tree.parentId ?? "nil",
@@ -697,13 +715,23 @@ final class RedditWire: ObservableObject {
               "hasChildren": "\(tree.childCount ?? 0)"
             ]
           )
-          return nil
+          continue
         }
-        let cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
-        return ListingChild<CommentData>(kind: "t1", data: cd)
+        var cd = CommentData(graphQL: node, depth: tree.depth, parentID: tree.parentId, postFullname: postFullname)
+        if didRecover || cd.id.isEmpty {
+          cd.id = nodeID
+          cd.name = "t1_\(nodeID)"
+        }
+        children.append(ListingChild<CommentData>(kind: "t1", data: cd))
+        continue
       }
       let moreCount = tree.more?.count ?? tree.childCount ?? 0
-      guard moreCount > 0 else { return nil }
+      let cursor = tree.more?.cursor
+      let hasCursor = !(cursor ?? "").isEmpty
+      // Keep continuation stubs that have a cursor even when count is 0: deep
+      // "continue this thread" continuations report count 0 / isTooDeepForCount,
+      // and dropping them silently truncated deep threads with no affordance.
+      guard moreCount > 0 || hasCursor else { continue }
       let parentID = tree.parentId ?? postFullname
       // Stub ids must be unique per continuation: the next page for the same
       // parent returns a new stub, and reusing the parent-derived id made
@@ -714,17 +742,31 @@ final class RedditWire: ObservableObject {
       cd.name = stubID
       cd.parent_id = parentID
       cd.depth = tree.depth
-      cd.count = moreCount
+      cd.count = moreCount  // 0 here flags a deep "continue thread" continuation
       cd.children = []
-      if let cursor = tree.more?.cursor, !cursor.isEmpty {
-        moreCursorByStubID[stubID] = cursor
+      if hasCursor {
+        moreCursorByStubID[stubID] = cursor!
       }
-      return ListingChild<CommentData>(kind: "more", data: cd)
+      children.append(ListingChild<CommentData>(kind: "more", data: cd))
     }
     if repairOrphans {
       repairOrphanCommentRoots(in: &children, postFullname: postFullname)
     }
     return children
+  }
+
+  /// Recover a nil-id (deleted) node's fullname from its first child's parentId.
+  /// The comment forest is pre-order, so the first tree deeper than `parentDepth`
+  /// after `index` is this node's first direct child.
+  private func firstChildParentFullname(after index: Int, parentDepth: Int, in trees: [CommentTree]) -> String? {
+    var i = index + 1
+    while i < trees.count {
+      let depth = trees[i].depth ?? 0
+      if depth <= parentDepth { return nil }            // left this node's subtree → no children
+      if depth == parentDepth + 1 { return trees[i].parentId }
+      i += 1
+    }
+    return nil
   }
 
   private func repairOrphanCommentRoots(in children: inout [ListingChild<CommentData>], postFullname: String) {
@@ -851,41 +893,6 @@ final class RedditWire: ObservableObject {
       )
       return nil
     }
-  }
-
-  private func promoteHighlightedComment(_ targetFullname: String, in children: inout [ListingChild<CommentData>], postFullname: String) {
-    guard let targetIndex = children.firstIndex(where: { $0.data?.name == targetFullname }) else {
-      AppDiagnostics.asyncRecord(
-        .warning,
-        category: "reddit.comment",
-        message: "Highlighted comment missing after fallback",
-        metadata: [
-          "commentID": targetFullname,
-          "postID": postFullname,
-          "children": "\(children.count)"
-        ]
-      )
-      return
-    }
-
-    var target = children.remove(at: targetIndex)
-    if var data = target.data {
-      data.parent_id = postFullname
-      data.depth = 0
-      target.data = data
-    }
-    children.insert(target, at: 0)
-
-    AppDiagnostics.asyncRecord(
-      .info,
-      category: "reddit.comment",
-      message: "Promoted highlighted comment to post root",
-      metadata: [
-        "commentID": targetFullname,
-        "postID": postFullname,
-        "children": "\(children.count)"
-      ]
-    )
   }
 
   private func logCommentFetchDiagnostics(postID: String, commentID: String?, children: [ListingChild<CommentData>]) {
@@ -1083,14 +1090,32 @@ final class RedditWire: ObservableObject {
     let subs: SearchPage<Subreddit>
     let users: SearchPage<User>
 
+    // Run the three panes concurrently. Each `dynamicSearch` round-trip is
+    // ~0.5s; serially that's ~1.5s for "All". `async let` overlaps the network
+    // waits (they suspend the main actor at the await), cutting it to ~0.5s.
     if let cursors {
-      posts = cursors.posts == nil ? .empty : await searchPostsPage(trimmed, after: cursors.posts, contentWidth: contentWidth)
-      subs = cursors.subreddits == nil ? .empty : await searchSubredditsPage(trimmed, after: cursors.subreddits).mapItems(Subreddit.init(data:))
-      users = cursors.users == nil ? .empty : await searchUsersPage(trimmed, after: cursors.users).mapItems(User.init(data:))
+      async let postsTask: SearchPage<Post> = {
+        guard let after = cursors.posts else { return .empty }
+        return await searchPostsPage(trimmed, after: after, contentWidth: contentWidth)
+      }()
+      async let subsTask: SearchPage<SubredditData> = {
+        guard let after = cursors.subreddits else { return .empty }
+        return await searchSubredditsPage(trimmed, after: after)
+      }()
+      async let usersTask: SearchPage<UserData> = {
+        guard let after = cursors.users else { return .empty }
+        return await searchUsersPage(trimmed, after: after)
+      }()
+      posts = await postsTask
+      subs = (await subsTask).mapItems(Subreddit.init(data:))
+      users = (await usersTask).mapItems(User.init(data:))
     } else {
-      posts = await searchPostsPage(trimmed, contentWidth: contentWidth)
-      subs = await searchSubredditsPage(trimmed).mapItems(Subreddit.init(data:))
-      users = await searchUsersPage(trimmed).mapItems(User.init(data:))
+      async let postsTask = searchPostsPage(trimmed, contentWidth: contentWidth)
+      async let subsTask = searchSubredditsPage(trimmed)
+      async let usersTask = searchUsersPage(trimmed)
+      posts = await postsTask
+      subs = (await subsTask).mapItems(Subreddit.init(data:))
+      users = (await usersTask).mapItems(User.init(data:))
     }
 
     status = "search all page '\(trimmed)' → \(posts.items.count) posts, \(subs.items.count) subs, \(users.items.count) users"
