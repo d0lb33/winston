@@ -149,6 +149,9 @@ final class FrameHitchMonitor: ObservableObject {
     if actual > link.duration * 2.5, actual < 2 {
       hitchTimestamps.append(link.timestamp)
       var metadata = activity ?? [:]
+      InlineVideoCoordinator.shared.diagnosticMetadata().forEach { key, value in
+        metadata[key] = value
+      }
       metadata["frameMs"] = String(format: "%.1f", actual * 1000)
       metadata["budgetMs"] = String(format: "%.1f", link.duration * 1000)
       if let stack = MainThreadSampler.shared.drainTopSamples() {

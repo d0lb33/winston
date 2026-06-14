@@ -16,7 +16,7 @@ struct AuroraSubFeedScreen: View {
   let subreddit: Subreddit
   @Default(.auroraThemeID) private var auroraThemeID
   @State private var model: AuroraFeedModel
-  @State private var sort: AuroraSort = .hot
+  @State private var sort: SubListingSortOption = .hot
   @State private var selectedPostID: String?
 
   init(subreddit: Subreddit) {

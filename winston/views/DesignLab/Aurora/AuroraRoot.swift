@@ -36,7 +36,9 @@ struct AuroraRoot: View {
   @State private var preferredColumn: NavigationSplitViewColumn = .content
   @State private var selectedSubID: String? = "popular"
   @State private var selectedPostID: String? = nil
-  @State private var sort: AuroraSort = .hot
+  @State private var detailPost: Post? = nil
+  @State private var feedPath: [Router.NavDest] = []
+  @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
 
   init(router: Router, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
@@ -84,8 +86,10 @@ struct AuroraRoot: View {
   }
 
   private var selectedPost: Post? {
-    guard let selectedPostID else { return nil }
-    return model.post(id: selectedPostID)
+    if let selectedPostID, let post = model.post(id: selectedPostID) {
+      return post
+    }
+    return detailPost
   }
 
   var body: some View {
@@ -93,9 +97,14 @@ struct AuroraRoot: View {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
-      AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                 selectedPostID: $selectedPostID, sort: $sort)
-        .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+      NavigationStack(path: $feedPath) {
+        AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
+                   selectedPostID: $selectedPostID, sort: $sort) { destination in
+          feedPath.append(destination)
+        }
+        .injectInTabDestinations(viewControllerHolder: router.navController)
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
       NavigationStack(path: $router.fullPath) {
         Group {
@@ -133,15 +142,32 @@ struct AuroraRoot: View {
       AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
       model.prepare(for: sub)
       selectedPostID = nil
+      detailPost = nil
+      feedPath = []
+      if !router.fullPath.isEmpty { router.fullPath = [] }
       // Advance to the feed when a community/feed is picked from the sidebar.
       preferredColumn = .content
     }
     .onChange(of: selectedPostID) { _, newID in
-      // A new feed selection resets the detail column to that post's root.
-      if !router.fullPath.isEmpty { router.fullPath = [] }
       // Advance to the post detail when a card is selected.
       if let newID {
+        if let post = model.post(id: newID) {
+          detailPost = post
+        }
+        // A new feed selection resets the detail column to that post's root.
+        if !router.fullPath.isEmpty { router.fullPath = [] }
         AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
+        preferredColumn = .detail
+      }
+    }
+    .onChange(of: router.fullPath) { _, path in
+      // Any push (comment-author profile, crosspost, a sub/user tapped from a card)
+      // advances the collapsed phone layout to the detail column.
+      if path.isEmpty {
+        if selectedPost == nil {
+          preferredColumn = .content
+        }
+      } else {
         preferredColumn = .detail
       }
     }

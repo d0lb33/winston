@@ -318,7 +318,10 @@ extension Post {
       let new = seen == nil ? !prev : seen
       DispatchQueue.main.async {
         withAnimation {
-          if prev != new { self.data?.winstonSeen = new }
+          if prev != new {
+            ScrollPerfProbe.shared.bump("postSeenOptimistic")
+            self.data?.winstonSeen = new
+          }
         }
       }
     }

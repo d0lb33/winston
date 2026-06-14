@@ -161,15 +161,7 @@ struct PostViewNative: View {
 
   @ToolbarContentBuilder private var sortToolbar: some ToolbarContent {
     ToolbarItem(placement: .topBarTrailing) {
-      Menu {
-        Picker("Sort Comments", selection: $sort) {
-          ForEach(CommentSortOption.allCases) { opt in
-            Label(opt.rawVal.value.capitalized, systemImage: opt.rawVal.icon).tag(opt)
-          }
-        }
-      } label: {
-        Image(systemName: sort.rawVal.icon)
-      }
+      CommentSortMenu(selection: $sort)
     }
   }
 

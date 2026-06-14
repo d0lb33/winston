@@ -135,8 +135,14 @@ private struct ImageMediaSinglePreview: View {
         !compact
         ? GeometryReader { geo in
           Color.clear
-            .onAppear { postDimensions.mediaSize = geo.size }
-            .onChange(of: geo.size) { _, newSize in postDimensions.mediaSize = newSize }
+            .onAppear {
+              ScrollPerfProbe.shared.bump("imageMediaSizeWrite")
+              postDimensions.mediaSize = geo.size
+            }
+            .onChange(of: geo.size) { _, newSize in
+              ScrollPerfProbe.shared.bump("imageMediaSizeWrite")
+              postDimensions.mediaSize = newSize
+            }
         }
         : nil
       )

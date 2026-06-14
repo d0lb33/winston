@@ -23,11 +23,13 @@ struct CommentRowView: View {
   let swipeAnywhere: Bool
   /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
   let maxMediaHeightPct: CGFloat
+  let contentWidth: CGFloat
 
   @State private var swipePresented = false
   @State private var loadingMore = false
 
   private var indent: CGFloat { CGFloat(row.depth) * ThreadRails.step }
+  private var bodyWidth: CGFloat { max(1, contentWidth - 32 - indent) }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
@@ -85,7 +87,7 @@ struct CommentRowView: View {
         if !row.isCollapsed, let body = data.body, !body.isEmpty {
           CommentBodyNative(
             markdown: body,
-            availableWidth: max(1, .screenW - 32 - indent),
+            availableWidth: bodyWidth,
             fontSize: 15,
             lineSpacing: 2,
             postTitle: post?.data?.title ?? data.link_title ?? "",

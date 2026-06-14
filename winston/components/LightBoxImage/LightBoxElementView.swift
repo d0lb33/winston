@@ -59,7 +59,12 @@ struct LightBoxElementView: View {
         .onDisappear(.cancel)
         .scaledToFit()
       } else {
-        URLImage(url: el.url, doLiveText: doLiveText)
+        URLImage(
+          url: el.url,
+          doLiveText: doLiveText,
+          liveTextActivationDelay: 0.8,
+          liveTextActivationTrigger: isActive
+        )
           .scaledToFit()
       }
     }

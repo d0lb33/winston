@@ -111,6 +111,22 @@ struct BehaviorPanel: View {
                 } label: {
                   Label(opt.rawVal.value.capitalized, systemImage: opt.rawVal.icon)
                 }
+              } else if case .controversial = opt {
+                Menu {
+                  ForEach(SubListingSortOption.TopListingSortOption.allCases, id: \.self) { topOpt in
+                    Button {
+                      subredditFeedDefSettings.preferredSort = topOpt == .all ? .controversial : .controversialTimed(topOpt)
+                    } label: {
+                      HStack {
+                        Text(topOpt.rawValue.capitalized)
+                        Spacer()
+                        Image(systemName: topOpt.icon)
+                      }
+                    }
+                  }
+                } label: {
+                  Label(opt.rawVal.value.capitalized, systemImage: opt.rawVal.icon)
+                }
               } else {
                 Button {
                   subredditFeedDefSettings.preferredSort = opt
@@ -124,14 +140,13 @@ struct BehaviorPanel: View {
               }
             }
           } label: {
-            Button { } label: {
-              HStack {
-                Text("Default post sorting")
-                Spacer()
-                Image(systemName: subredditFeedDefSettings.preferredSort.rawVal.icon)
-              }
-              .foregroundColor(.primary)
+            HStack {
+              Text("Default post sorting")
+              Spacer()
+              Image(systemName: subredditFeedDefSettings.preferredSort.rawVal.icon)
             }
+            .foregroundColor(.primary)
+            .contentShape(Rectangle())
           }
           
           Menu {
@@ -141,6 +156,22 @@ struct BehaviorPanel: View {
                   ForEach(SubListingSortOption.TopListingSortOption.allCases, id: \.self) { topOpt in
                     Button {
                       subredditFeedDefSettings.preferredSearchSort = .top(topOpt)
+                    } label: {
+                      HStack {
+                        Text(topOpt.rawValue.capitalized)
+                        Spacer()
+                        Image(systemName: topOpt.icon)
+                      }
+                    }
+                  }
+                } label: {
+                  Label(opt.rawVal.value.capitalized, systemImage: opt.rawVal.icon)
+                }
+              } else if case .controversial = opt {
+                Menu {
+                  ForEach(SubListingSortOption.TopListingSortOption.allCases, id: \.self) { topOpt in
+                    Button {
+                      subredditFeedDefSettings.preferredSearchSort = topOpt == .all ? .controversial : .controversialTimed(topOpt)
                     } label: {
                       HStack {
                         Text(topOpt.rawValue.capitalized)
@@ -165,14 +196,13 @@ struct BehaviorPanel: View {
               }
             }
           } label: {
-            Button { } label: {
-              HStack {
-                Text("Default search sorting")
-                Spacer()
-                Image(systemName: subredditFeedDefSettings.preferredSearchSort.rawVal.icon)
-              }
-              .foregroundColor(.primary)
+            HStack {
+              Text("Default search sorting")
+              Spacer()
+              Image(systemName: subredditFeedDefSettings.preferredSearchSort.rawVal.icon)
             }
+            .foregroundColor(.primary)
+            .contentShape(Rectangle())
           }
           
           VStack(alignment: .leading) {

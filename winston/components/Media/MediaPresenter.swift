@@ -61,8 +61,10 @@ struct MediaPresenter: View, Equatable {
   var feedItemKey: String? = nil
 
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("mediaPresenterBody")
     switch media {
     case .imgs(let imgsExtracted):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.imgs")
       if !showURLInstead {
         if imgsExtracted.count > 0 && imgsExtracted[0].url.absoluteString.hasSuffix(".gif") {
           ImageMediaPost(postDimensions: $postDimensions, controller: controller, postTitle: postTitle, badgeKit: badgeKit, avatarImageRequest: avatarImageRequest, markAsSeen: markAsSeen, cornerRadius: cornerRadius, compact: compact, images: imgsExtracted, contentWidth: contentWidth, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext)
@@ -74,12 +76,14 @@ struct MediaPresenter: View, Equatable {
         }
       }
     case .video(let sharedVideo):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.video")
       if !showURLInstead {
         VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext, feedItemKey: feedItemKey)
           .nsfw(over18 && blurPostLinkNSFW, smallIcon: compact, size: postDimensions.mediaSize)
       }
       
     case .streamable(_):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.streamable")
       if !showURLInstead {
         ProgressView()
         .progressViewStyle(.circular)
@@ -90,10 +94,12 @@ struct MediaPresenter: View, Equatable {
         .listRowBackground(Color.clear)
       }
     case .yt(let ytMediaExtracted):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.yt")
       if !showURLInstead {
         YTMediaPostPlayer(compact: compact, player: ytMediaExtracted.player, ytMediaExtracted: ytMediaExtracted, contentWidth: contentWidth, diagnosticContext: diagnosticContext)
       }
     case .link(let previewModel):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.link")
       if let previewURL = previewModel.previewURL {
         if !showURLInstead {
           PreviewLinkContent(compact: compact, viewModel: previewModel, url: previewURL)
@@ -102,6 +108,7 @@ struct MediaPresenter: View, Equatable {
         }
       }
     case .post(let postExtractedEntity):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.post")
       if let postExtractedEntity = postExtractedEntity {
         if !showURLInstead {
           if compact, let sub = postExtractedEntity.subredditID, let postID = postExtractedEntity.postID {
@@ -116,6 +123,7 @@ struct MediaPresenter: View, Equatable {
         }
       }
     case .comment(let commentExtractedEntity):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.comment")
       if let commentExtractedEntity = commentExtractedEntity {
         if !showURLInstead {
           if compact, let sub = commentExtractedEntity.subredditID, let postID = commentExtractedEntity.postID, let commentID = commentExtractedEntity.commentID {
@@ -130,6 +138,7 @@ struct MediaPresenter: View, Equatable {
         }
       }
     case .subreddit(let subExtractedEntity):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.subreddit")
       if let subExtractedEntity = subExtractedEntity {
         if !showURLInstead {
           if compact {
@@ -144,6 +153,7 @@ struct MediaPresenter: View, Equatable {
         }
       }
     case .user(let userExtractedEntity):
+      let _ = ScrollPerfProbe.shared.bump("mediaPresenter.user")
       if let userExtractedEntity = userExtractedEntity {
         if !showURLInstead {
           if compact {

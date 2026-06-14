@@ -16,6 +16,7 @@
 import SwiftUI
 import Defaults
 import NukeUI
+import UIKit
 
 // MARK: - Offline palette (stable per-seed colors; no network, cheap under scroll)
 
@@ -226,10 +227,12 @@ struct AuroraCommunityHeader: View {
 struct AuroraCard: View {
   @ObservedObject var post: Post
   var isSelected: Bool = false
+  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
 
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("auroraCardBody")
     if let winstonData = post.winstonData {
-      AuroraCardContent(post: post, winstonData: winstonData, isSelected: isSelected)
+      AuroraCardContent(post: post, winstonData: winstonData, isSelected: isSelected, onCompactNavigate: onCompactNavigate)
     }
   }
 }
@@ -238,8 +241,11 @@ private struct AuroraCardContent: View {
   @ObservedObject var post: Post
   @ObservedObject var winstonData: PostWinstonData
   let isSelected: Bool
+  let onCompactNavigate: ((Router.NavDest) -> Void)?
   @Environment(\.auroraTheme) private var theme
+  @Environment(\.useTheme) private var selectedTheme
   @Environment(\.contentWidth) private var envContentWidth
+  @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var defSettings
   /// Live row width, measured so feed media reflows on fold / rotate / split changes.
   @State private var rowWidth: CGFloat = 0
@@ -253,11 +259,17 @@ private struct AuroraCardContent: View {
   }
 
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("auroraCardContentBody")
     if let data = post.data {
       VStack(alignment: .leading, spacing: 11) {
         HStack(spacing: 8) {
-          AuroraSubIcon(name: data.subreddit, size: 24)
-          Text("r/\(data.subreddit)").font(.caption.weight(.semibold))
+          Button { openSubreddit(data.subreddit) } label: {
+            HStack(spacing: 8) {
+              AuroraSubIcon(name: data.subreddit, size: 24)
+              Text("r/\(data.subreddit)").font(.caption.weight(.semibold)).foregroundStyle(.primary)
+            }
+          }
+          .buttonStyle(.borderless)
           Text("· \(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))")
             .font(.caption).foregroundStyle(.secondary)
           Spacer()
@@ -282,9 +294,13 @@ private struct AuroraCardContent: View {
         }
 
         HStack(spacing: 12) {
-          AuroraAvatar(name: data.author, size: 20)
-          Text("u/\(data.author)")
-            .font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+          Button { openAuthor(data.author) } label: {
+            HStack(spacing: 6) {
+              AuroraAvatar(name: data.author, size: 20)
+              Text("u/\(data.author)").font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
+            }
+          }
+          .buttonStyle(.borderless)
           Spacer(minLength: 8)
           Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
             .font(.caption.weight(.medium)).foregroundStyle(.secondary)
@@ -305,7 +321,63 @@ private struct AuroraCardContent: View {
           .stroke(isSelected ? theme.accent.opacity(0.9) : theme.hairline,
                   lineWidth: isSelected ? 1.8 : 0.7)
       )
-      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = $0 }
+      // Dim posts already seen (opened, or scrolled past when read-on-scroll is on).
+      .opacity(data.winstonSeen == true ? 0.6 : 1)
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
+        ScrollPerfProbe.shared.bump("auroraRowWidthChange")
+        rowWidth = newWidth
+      }
+      .contextMenu { contextMenuItems(data) }
+      .onDisappear {
+        if defSettings.readOnScroll {
+          ScrollPerfProbe.shared.bump("auroraReadOnDisappear")
+          Task(priority: .background) { await post.toggleSeen(true, optimistic: true) }
+        }
+      }
+    }
+  }
+
+  // MARK: - Card actions
+
+  private func openAuthor(_ author: String) {
+    guard !author.isEmpty, author != "[deleted]" else { return }
+    navigate(.reddit(.user(User(id: author))))
+  }
+
+  private func openSubreddit(_ name: String) {
+    guard !name.isEmpty else { return }
+    navigate(.reddit(.subFeed(Subreddit(id: name))))
+  }
+
+  private func navigate(_ destination: Router.NavDest) {
+    if hSize == .compact, let onCompactNavigate {
+      onCompactNavigate(destination)
+    } else {
+      Nav.to(destination)
+    }
+  }
+
+  private func permalink(_ data: PostData) -> URL? {
+    URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
+  }
+
+  @ViewBuilder
+  private func contextMenuItems(_ data: PostData) -> some View {
+    Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
+    Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
+    Button { Task { _ = await post.saveToggle() } } label: {
+      Label(data.saved ? "Unsave" : "Save", systemImage: data.saved ? "bookmark.fill" : "bookmark")
+    }
+    Button { ReplyModalInstance.shared.enable(.post(post)) } label: {
+      Label("Reply", systemImage: "arrowshape.turn.up.left")
+    }
+    Divider()
+    Button { openAuthor(data.author) } label: { Label("u/\(data.author)", systemImage: "person.circle") }
+    Button { openSubreddit(data.subreddit) } label: { Label("r/\(data.subreddit)", systemImage: "rectangle.stack") }
+    Divider()
+    if let url = permalink(data) {
+      ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
+      Button { UIPasteboard.general.url = url } label: { Label("Copy Link", systemImage: "link") }
     }
   }
 
@@ -334,7 +406,7 @@ private struct AuroraCardContent: View {
           columnWidth: contentWidth,
           maxMediaHeightPct: defSettings.maxMediaHeightScreenPercentage,
           cornerRadius: theme.mediaRadius,
-          dimsTheme: getEnabledTheme().postLinks.theme,
+          dimsTheme: selectedTheme.postLinks.theme,
           feedItemKey: post.id,
           resetVideo: nil
         )

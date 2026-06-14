@@ -128,6 +128,7 @@ struct PostRowMediaNative: View, Equatable {
   }
 
   var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("postRowMediaNativeBody")
     MediaPresenter(
       postDimensions: $dims,
       controller: nil,

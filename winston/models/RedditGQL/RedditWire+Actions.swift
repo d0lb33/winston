@@ -268,7 +268,12 @@ extension RedditWire {
     let gqlSort: RedditCommentSortType = {
       switch sort {
       case .new: return .newest
+      case .top: return .top
+      case .controversial: return .controversial
+      case .old: return .old
+      case .random: return .random
       case .qa: return .questionAnswer
+      case .live: return .live
       default: return .confidence
       }
     }()
@@ -395,7 +400,8 @@ extension RedditWire {
   /// PostsByIds hydration.
   func multiPosts(path: String, sort: SubListingSortOption = .hot, after: String? = nil) async -> ([PostData], String?) {
     do {
-      let resp = try await client.customFeedSduiResponse(path: path, sort: feedSort(from: sort), after: after)
+      let gqlSort = feedSortAndTime(from: sort)
+      let resp = try await client.customFeedSduiResponse(path: path, sort: gqlSort.sort, time: gqlSort.time, after: after)
       let raw = resp.data?.rawData
       let ids = raw?.feedPostIDs ?? []
       let pageInfo = raw.flatMap(Self.firstPageInfoObject(in:))
@@ -659,12 +665,36 @@ extension RedditWire {
   }
 
   func feedSort(from sort: SubListingSortOption) -> RedditFeedSort {
+    feedSortAndTime(from: sort).sort
+  }
+
+  func feedSortAndTime(from sort: SubListingSortOption) -> (sort: RedditFeedSort, time: RedditFeedTime?) {
     switch sort {
-    case .best: return .best
-    case .hot: return .hot
-    case .new: return .newest
-    case .controversial: return .controversial
-    case .top: return .top
+    case .best:
+      return (.best, nil)
+    case .hot:
+      return (.hot, nil)
+    case .new:
+      return (.newest, nil)
+    case .rising:
+      return (.rising, nil)
+    case .controversial:
+      return (.controversial, nil)
+    case .controversialTimed(let topSortOption):
+      return (.controversial, feedTime(from: topSortOption))
+    case .top(let topSortOption):
+      return (.top, feedTime(from: topSortOption))
+    }
+  }
+
+  func feedTime(from topSortOption: SubListingSortOption.TopListingSortOption) -> RedditFeedTime {
+    switch topSortOption {
+    case .hour: return .hour
+    case .day: return .day
+    case .week: return .week
+    case .month: return .month
+    case .year: return .year
+    case .all: return .all
     }
   }
 

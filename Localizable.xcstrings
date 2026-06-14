@@ -947,6 +947,9 @@
         }
       }
     },
+    "Copy Link" : {
+
+    },
     "Copy Snapshot" : {
 
     },
@@ -3680,9 +3683,6 @@
           }
         }
       }
-    },
-    "Sort Comments" : {
-
     },
     "Start by duplicating the" : {
 

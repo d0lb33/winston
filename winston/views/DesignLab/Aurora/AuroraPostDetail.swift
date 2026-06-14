@@ -56,62 +56,65 @@ struct AuroraPostDetail: View {
 
   var body: some View {
     ScrollViewReader { proxy in
-      List {
-        Section {
-          if let winstonData = post.winstonData {
-            PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit)
-          } else {
-            ProgressView().frame(maxWidth: .infinity, minHeight: 200)
-          }
-          auroraActionBar
-        }
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
+      GeometryReader { geometry in
+        let contentWidth = max(1, geometry.size.width)
 
-        Section {
-          if isSingleThread { viewAllCommentsBanner }
-          CommentsTreeView(
-            model: model,
-            loading: loadingComments,
-            post: post,
-            postFullname: post.data?.name ?? "",
-            opAuthor: post.data?.author,
-            swipeActions: commentDefSettings.swipeActions,
-            swipeAnywhere: swipeAnywhere,
-            maxMediaHeightPct: maxMediaHeightPct
-          )
-        } header: {
-          if !model.rows.isEmpty {
-            Text(commentsHeaderTitle).font(.headline).foregroundStyle(.primary).textCase(nil)
+        List {
+          Section {
+            if let winstonData = post.winstonData {
+              PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit)
+            } else {
+              ProgressView().frame(maxWidth: .infinity, minHeight: 200)
+            }
+            auroraActionBar
+          }
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+
+          Section {
+            if !model.rows.isEmpty {
+              commentsHeader
+            }
+            if isSingleThread { viewAllCommentsBanner }
+            CommentsTreeView(
+              model: model,
+              loading: loadingComments,
+              post: post,
+              postFullname: post.data?.name ?? "",
+              opAuthor: post.data?.author,
+              swipeActions: commentDefSettings.swipeActions,
+              swipeAnywhere: swipeAnywhere,
+              maxMediaHeightPct: maxMediaHeightPct,
+              contentWidth: contentWidth
+            )
+          }
+          .listRowBackground(Color.clear)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .navigationTitle(navTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { sortToolbar }
+        .safeAreaInset(edge: .bottom) { composer }
+        .refreshable { await fetch(true) }
+        .task {
+          ensureWinston()
+          if model.rows.isEmpty || post.data == nil {
+            await fetch(post.data == nil)
           }
         }
-        .listRowBackground(Color.clear)
-      }
-      .listStyle(.plain)
-      .scrollContentBackground(.hidden)
-      .navigationTitle(navTitle)
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar { sortToolbar }
-      .toolbarMinimizeBehavior(.onScrollDown, for: .navigationBar)
-      .safeAreaInset(edge: .bottom) { composer }
-      .refreshable { await fetch(true) }
-      .task {
-        ensureWinston()
-        if model.rows.isEmpty || post.data == nil {
-          await fetch(post.data == nil)
+        .onChange(of: sort) { _, _ in
+          Defaults[.PostPageDefSettings].postSorts[post.id] = sort
+          Task { await fetch(true) }
         }
-      }
-      .onChange(of: sort) { _, _ in
-        Defaults[.PostPageDefSettings].postSorts[post.id] = sort
-        Task { await fetch(true) }
-      }
-      .onChange(of: model.rows.count) { _, _ in
-        guard let target = pendingHighlight else { return }
-        withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
-        pendingHighlight = nil
-      }
-      .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
-        if showing == .none { withAnimation { model.rebuild() } }
+        .onChange(of: model.rows.count) { _, _ in
+          guard let target = pendingHighlight else { return }
+          withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
+          pendingHighlight = nil
+        }
+        .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
+          if showing == .none { withAnimation { model.rebuild() } }
+        }
       }
     }
   }
@@ -119,6 +122,16 @@ struct AuroraPostDetail: View {
   private var commentsHeaderTitle: String {
     if isSingleThread { return "Thread" }
     return "\(post.data?.num_comments ?? model.rows.count) Comments"
+  }
+
+  private var commentsHeader: some View {
+    Text(commentsHeaderTitle)
+      .font(.headline)
+      .foregroundStyle(.primary)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
   }
 
   // MARK: - Glass action bar (chrome — live glass is fine, it never scrolls inside the list)
@@ -219,15 +232,7 @@ struct AuroraPostDetail: View {
 
   @ToolbarContentBuilder private var sortToolbar: some ToolbarContent {
     ToolbarItem(placement: .topBarTrailing) {
-      Menu {
-        Picker("Sort Comments", selection: $sort) {
-          ForEach(CommentSortOption.allCases) { opt in
-            Label(opt.rawVal.value.capitalized, systemImage: opt.rawVal.icon).tag(opt)
-          }
-        }
-      } label: {
-        Image(systemName: sort.rawVal.icon)
-      }
+      CommentSortMenu(selection: $sort)
     }
   }
 
@@ -245,13 +250,11 @@ struct AuroraPostDetail: View {
 
     let commentID = effectiveCommentID
     let result = await post.refreshPost(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full)
-    print("AURORA_POST fetch post=\(post.id) sub=\(subreddit.id) full=\(full) → \(result == nil ? "result=nil" : "comments=\(result?.0?.count ?? -1)")")
     if let result, let newComments = result.0 {
       withAnimation {
         model.setRoots(newComments)
         loadingComments = false
       }
-      print("AURORA_POST setRoots post=\(post.id) model.rows=\(model.rows.count)")
       if let commentID {
         pendingHighlight = commentID.hasPrefix("t1_") ? String(commentID.dropFirst(3)) : commentID
       }

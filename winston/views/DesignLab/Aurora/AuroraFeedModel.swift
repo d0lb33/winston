@@ -44,7 +44,6 @@ final class AuroraFeedModel {
   }
 
   func loadInitialIfNeeded(sort: SubListingSortOption, contentWidth: CGFloat) async {
-    print("AURORA_FEED loadInitialIfNeeded sub=\(subreddit.id) posts=\(posts.count) inFlight=\(inFlight)")
     guard posts.isEmpty, !inFlight else { return }
     await load(more: false, sort: sort, contentWidth: contentWidth)
   }
@@ -68,21 +67,24 @@ final class AuroraFeedModel {
     defer { inFlight = false; loading = false }
 
     let cursor = more ? after : nil
-    print("AURORA_FEED load sub=\(subreddit.id) more=\(more) sort=\(sort.rawVal.value) width=\(contentWidth)")
     AppDiagnostics.asyncBreadcrumb("Aurora feed fetch started", metadata: [
       "sub": subreddit.id, "more": "\(more)", "sort": sort.rawVal.value,
       "width": "\(Int(contentWidth))", "after": cursor ?? "nil"
     ])
-    guard let result = await subreddit.fetchPosts(sort: sort, after: cursor, contentWidth: max(1, contentWidth)),
-          let newPosts = result.0 else {
-      print("AURORA_FEED fetchPosts returned NIL for sub=\(subreddit.id)")
+    // The Saved feed is a separate Reddit surface (no sort), so it has its own fetch.
+    let response: ([Post]?, String?)?
+    if subreddit.id == "saved" {
+      response = await subreddit.fetchSavedPosts(after: cursor, contentWidth: max(1, contentWidth))
+    } else {
+      response = await subreddit.fetchPosts(sort: sort, after: cursor, contentWidth: max(1, contentWidth))
+    }
+    guard let result = response, let newPosts = result.0 else {
       failed = posts.isEmpty
       AppDiagnostics.asyncRecord(.error, category: "ui.aurora.feed",
         message: "Aurora feed fetch returned nil",
         metadata: ["sub": subreddit.id, "more": "\(more)", "sort": sort.rawVal.value])
       return
     }
-    print("AURORA_FEED got \(newPosts.count) posts for sub=\(subreddit.id) after=\(result.1 ?? "nil")")
 
     // Author avatars are fetched lazily in the background, exactly like the legacy feed.
     let avatarSize = getEnabledTheme().postLinks.theme.badge.avatar.size
@@ -102,7 +104,6 @@ final class AuroraFeedModel {
     fresh.forEach { loadedIDs.insert($0.id) }
     after = result.1
     reachedEnd = result.1 == nil
-    print("AURORA_FEED posts now \(posts.count) for sub=\(subreddit.id)")
     AppDiagnostics.asyncRecord(newPosts.isEmpty ? .warning : .info, category: "ui.aurora.feed",
       message: "Aurora feed fetch applied",
       metadata: [

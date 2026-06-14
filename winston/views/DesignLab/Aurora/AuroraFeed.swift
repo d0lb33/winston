@@ -11,32 +11,14 @@
 import SwiftUI
 import Defaults
 
-enum AuroraSort: String, CaseIterable {
-  case hot, new, top
-  var label: String { rawValue.capitalized }
-  var symbol: String {
-    switch self {
-    case .hot: "flame.fill"
-    case .new: "clock.fill"
-    case .top: "arrow.up.circle.fill"
-    }
-  }
-  var listing: SubListingSortOption {
-    switch self {
-    case .hot: .hot
-    case .new: .new
-    case .top: .top(.all)
-    }
-  }
-}
-
 struct AuroraFeed: View {
   let model: AuroraFeedModel
   let title: String
   /// The real community backing this feed (for the header + join). nil for Popular/Home/All.
   let community: Subreddit?
   @Binding var selectedPostID: String?
-  @Binding var sort: AuroraSort
+  @Binding var sort: SubListingSortOption
+  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
 
@@ -49,7 +31,7 @@ struct AuroraFeed: View {
           .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
       }
       ForEach(model.posts) { post in
-        AuroraCard(post: post, isSelected: post.id == selectedPostID && hSize == .regular)
+        AuroraCard(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
           .tag(post.id)
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
@@ -68,7 +50,7 @@ struct AuroraFeed: View {
           }
           .onAppear {
             if post.id == model.posts.last?.id {
-              Task { await model.loadMore(sort: sort.listing, contentWidth: contentWidth) }
+              Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
             }
           }
       }
@@ -84,19 +66,15 @@ struct AuroraFeed: View {
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
     .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
-    .refreshable { await model.reload(sort: sort.listing, contentWidth: contentWidth) }
+    .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
     .overlay { if model.posts.isEmpty { emptyState } }
     .task(id: model.subreddit.id) {
-      await model.loadInitialIfNeeded(sort: sort.listing, contentWidth: contentWidth)
+      await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onChange(of: sort) { _, newSort in
-      Task { await model.reload(sort: newSort.listing, contentWidth: contentWidth) }
+      Task { await model.reload(sort: newSort, contentWidth: contentWidth) }
     }
-    .safeAreaInset(edge: .bottom) {
-      AuroraSortBar(sort: $sort)
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
-    }
+    .toolbar { sortToolbar }
   }
 
   @ViewBuilder private var emptyState: some View {
@@ -112,32 +90,10 @@ struct AuroraFeed: View {
       ContentUnavailableView("No posts", systemImage: "tray")
     }
   }
-}
 
-struct AuroraSortBar: View {
-  @Binding var sort: AuroraSort
-  @Environment(\.auroraTheme) private var theme
-
-  var body: some View {
-    HStack {
-      Spacer()
-      HStack(spacing: 4) {
-        ForEach(AuroraSort.allCases, id: \.self) { s in
-          Button {
-            withAnimation(.snappy) { sort = s }
-          } label: {
-            Label(s.label, systemImage: s.symbol)
-              .font(.caption.weight(.semibold))
-              .padding(.horizontal, 13).padding(.vertical, 8)
-              .foregroundStyle(sort == s ? (theme.isDark ? Color.black : Color.white) : Color.primary)
-              .background { if sort == s { Capsule().fill(theme.accent) } }
-          }
-          .buttonStyle(.plain)
-        }
-      }
-      .padding(5)
-      .glassEffect(.regular.interactive(), in: .capsule)
-      Spacer()
+  @ToolbarContentBuilder private var sortToolbar: some ToolbarContent {
+    ToolbarItem(placement: .topBarTrailing) {
+      PostSortMenu(selection: $sort)
     }
   }
 }

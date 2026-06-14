@@ -617,8 +617,12 @@ final class RedditWire: ObservableObject {
       return (.hot, nil)
     case .new:
       return (.newest, nil)
+    case .rising:
+      return (.rising, nil)
     case .controversial:
       return (.controversial, nil)
+    case .controversialTimed(let topSortOption):
+      return (.controversial, redditFeedTime(from: topSortOption))
     case .top(let topSortOption):
       return (.top, redditFeedTime(from: topSortOption))
     }
@@ -961,8 +965,18 @@ final class RedditWire: ObservableObject {
     switch sort {
     case .new:
       return .newest
+    case .top:
+      return .top
+    case .controversial:
+      return .controversial
+    case .old:
+      return .old
+    case .random:
+      return .random
     case .qa:
       return .questionAnswer
+    case .live:
+      return .live
     default:
       return .confidence
     }

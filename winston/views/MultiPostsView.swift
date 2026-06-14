@@ -169,26 +169,7 @@ struct MultiPostsView: View {
     .navigationBarItems(
       trailing:
         HStack {
-          Menu {
-            ForEach(SubListingSortOption.allCases) { opt in
-              Button {
-                sort = opt
-              } label: {
-                HStack {
-                  Text(opt.rawVal.value.capitalized)
-                  Spacer()
-                  Image(systemName: opt.rawVal.icon)
-                    .foregroundColor(Color.accentColor)
-                    .fontSize(17, .bold)
-                }
-              }
-            }
-          }
-        label: {
-            Image(systemName: sort.rawVal.icon)
-              .foregroundColor(Color.accentColor)
-              .fontSize(17, .bold)
-          }
+          PostSortMenu(selection: $sort)
           
           if let imgLink = multi.data?.icon_url, let imgURL = URL(string: imgLink) {
             Button {

@@ -328,27 +328,8 @@ private struct Toolbar: ToolbarContent {
 
     ToolbarItem(id: "postview-sortandsub", placement: .navigationBarTrailing) {
       HStack {
-        Menu {
-          if !hideElements {
-            ForEach(CommentSortOption.allCases) { opt in
-              Button {
-                sort = opt
-                Defaults[.PostPageDefSettings].postSorts[post.id] = opt
-              } label: {
-                HStack {
-                  Text(opt.rawVal.value.capitalized)
-                  Spacer()
-                  Image(systemName: opt.rawVal.icon)
-                    .foregroundColor(Color.accentColor)
-                    .fontSize(17, .bold)
-                }
-              }
-            }
-          }
-        } label: {
-          Image(systemName: sort.rawVal.icon)
-            .foregroundColor(Color.accentColor)
-            .fontSize(17, .bold)
+        CommentSortMenu(selection: $sort, isEnabled: !hideElements, accented: true) { option in
+          Defaults[.PostPageDefSettings].postSorts[post.id] = option
         }
 
         if let data = subreddit.data, !feedsAndSuch.contains(subreddit.id) {

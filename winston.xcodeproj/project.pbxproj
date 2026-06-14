@@ -33,6 +33,7 @@
 		0A5302562FDF21A100CAC6F2 /* AuroraComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */; };
 		0A5302582FDF21CC00CAC6F2 /* AuroraFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */; };
 		0A53025A2FDF222200CAC6F2 /* AuroraPostDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */; };
+		C0DEC0DEC0DEC0DEC0DEC002 /* SortMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DEC0DEC0DEC0DEC001 /* SortMenus.swift */; };
 		0A53025C2FDF228A00CAC6F2 /* AuroraRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */; };
 		0A53025E2FDF238900CAC6F2 /* DesignLabGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */; };
 		0A5302722FDF2B2E00CAC6F2 /* AuroraTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */; };
@@ -652,6 +653,7 @@
 		EC082F282A66134C00BA2727 /* CommentLinkFull.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentLinkFull.swift; sourceTree = "<group>"; };
 		EC08540D2A4BD26600E88389 /* ObservedScrollView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservedScrollView.swift; sourceTree = "<group>"; };
 		EC0854122A4BE13000E88389 /* PostView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostView.swift; sourceTree = "<group>"; };
+		C0DEC0DEC0DEC0DEC0DEC001 /* SortMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortMenus.swift; sourceTree = "<group>"; };
 		EC0854142A4BE1D800E88389 /* PostLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostLink.swift; sourceTree = "<group>"; };
 		EC0854162A4BF45C00E88389 /* Comment.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Comment.swift; sourceTree = "<group>"; };
 		EC0854182A4BFC4600E88389 /* CommentLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentLink.swift; sourceTree = "<group>"; };
@@ -2062,6 +2064,7 @@
 				EC8F34942A6F55C800EB8249 /* Links */,
 				ECEFC26D2A5F300E0003C6C4 /* LightBoxImage */,
 				ECC10C762A4A874C009124BE /* RR.swift */,
+				C0DEC0DEC0DEC0DEC0DEC001 /* SortMenus.swift */,
 				EC08540D2A4BD26600E88389 /* ObservedScrollView.swift */,
 				EC0854252A4C013B00E88389 /* Avatar.swift */,
 				EC0854422A4D6A4800E88389 /* MasterButton.swift */,
@@ -2658,6 +2661,7 @@
 				EC2A39172AC2035F001E5354 /* PostLinkNormal.swift in Sources */,
 				ECAEFF5E2A77A03E0052FCD3 /* RedditMediaPost.swift in Sources */,
 				EC3188212A92D6D900CB3738 /* MultiPostsView.swift in Sources */,
+				C0DEC0DEC0DEC0DEC0DEC002 /* SortMenus.swift in Sources */,
 				EC320A2A2B3D26E500BD5FC4 /* FloatingBGBlur.swift in Sources */,
 				EC2830EF2AC330F00042BE65 /* PreviewModel.swift in Sources */,
 				EC77B1832AA4021D00C482DF /* injectInTabDestinations.swift in Sources */,

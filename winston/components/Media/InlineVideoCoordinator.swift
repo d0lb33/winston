@@ -14,6 +14,7 @@
 
 import SwiftUI
 import Observation
+import Foundation
 
 @MainActor
 @Observable
@@ -50,11 +51,13 @@ final class InlineVideoCoordinator {
 
   func setActive(_ key: String?) {
     guard key != activeVideoKey else { return }
+    ScrollPerfProbe.shared.bump("inlineActiveChange")
     activeVideoKey = key
   }
 
   func setScrolling(_ scrolling: Bool) {
     guard scrolling != isScrolling else { return }
+    ScrollPerfProbe.shared.bump(scrolling ? "scrollBegan" : "scrollEnded")
     isScrolling = scrolling
   }
 
@@ -70,6 +73,7 @@ final class InlineVideoCoordinator {
   /// Cheap per-frame sink for row centers. Does NOT elect (and does not invalidate
   /// views) — election is deferred to rest, since nothing plays while scrolling.
   func updateCenters(_ centers: [InlineVideoCenter]) {
+    ScrollPerfProbe.shared.bump("inlineCenterUpdate")
     latestCenters = centers.sorted { $0.midY < $1.midY }
     updateScrollVelocity(from: latestCenters)
 
@@ -126,7 +130,10 @@ final class InlineVideoCoordinator {
 
   private func updateWarmVideoKeys(forceEmpty: Bool = false) {
     guard !forceEmpty, !isFastScrolling, !latestCenters.isEmpty else {
-      if !warmVideoKeys.isEmpty { warmVideoKeys = [] }
+      if !warmVideoKeys.isEmpty {
+        ScrollPerfProbe.shared.bump("inlineWarmChange")
+        warmVideoKeys = []
+      }
       return
     }
 
@@ -144,8 +151,21 @@ final class InlineVideoCoordinator {
 
     let nextKeys = Set(keys.prefix(warmAheadCount + 1))
     if nextKeys != warmVideoKeys {
+      ScrollPerfProbe.shared.bump("inlineWarmChange")
       warmVideoKeys = nextKeys
     }
+  }
+
+  func diagnosticMetadata() -> [String: String] {
+    [
+      "inlineActive": activeVideoKey.map { "\($0.hashValue)" } ?? "nil",
+      "inlineWarmCount": "\(warmVideoKeys.count)",
+      "inlineCenters": "\(latestCenters.count)",
+      "inlineScrolling": "\(isScrolling)",
+      "inlineFastScrolling": "\(isFastScrolling)",
+      "inlineViewportHeight": String(format: "%.1f", viewportHeight),
+      "inlineLastDeltaY": String(format: "%.1f", lastScrollDeltaY)
+    ]
   }
 }
 

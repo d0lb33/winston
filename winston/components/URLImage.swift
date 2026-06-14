@@ -29,12 +29,17 @@ struct URLImage: View, Equatable {
   var stallTimeout: TimeInterval = 6
   var showPlaceholder: Bool = true
   var requestImageScaledToFill: Bool = false
+  var liveTextActivationDelay: TimeInterval? = nil
+  var liveTextActivationTrigger: Bool = true
   @State private var retryID = UUID()
   @State private var retryCount = 0
   @State private var loadGeneration = UUID()
   @State private var loadCompleted = false
   @State private var isVisible = false
   @State private var loadStartedAt: Date? = nil
+  @State private var liveTextReady = false
+  @State private var liveTextGeneration = UUID()
+  @State private var liveTextActivationScheduled = false
 
   private var requestIdentity: String {
     [
@@ -42,10 +47,15 @@ struct URLImage: View, Equatable {
       processors?.map { $0.identifier }.joined(separator: "|") ?? "",
       "\(size?.width ?? 0)x\(size?.height ?? 0)",
       doLiveText ? "livetext" : "",
+      liveTextActivationDelay.map { "livetext-delay:\($0)" } ?? "livetext-immediate",
       showPlaceholder ? "placeholder" : "clear-placeholder",
       requestImageScaledToFill ? "request-fill" : "request-intrinsic",
       diagnosticContext ?? ""
     ].joined(separator: "::")
+  }
+
+  private var shouldRenderLiveText: Bool {
+    doLiveText && liveTextActivationTrigger && ImageAnalyzer.isSupported && (liveTextActivationDelay == nil || liveTextReady)
   }
   
   var body: some View {
@@ -53,6 +63,7 @@ struct URLImage: View, Equatable {
     if url.pathExtension.lowercased() == "gif" {
       LazyImage(url: url) { state in
         let phase = imagePhase(hasImage: state.imageContainer?.data != nil || state.image != nil, error: state.error)
+        let _ = ScrollPerfProbe.shared.bump("imagePhase.\(phase)")
         Group {
           if let imageData = state.imageContainer?.data {
             ScrubbableGIFImage(
@@ -129,9 +140,10 @@ struct URLImage: View, Equatable {
 ////            Image(uiImage: response.image).resizable()
 //          }
           let phase = imagePhase(hasImage: state.image != nil, error: state.error)
+          let _ = ScrollPerfProbe.shared.bump("imagePhase.\(phase)")
           Group {
             if let image = state.image {
-              if doLiveText && ImageAnalyzer.isSupported {
+              if shouldRenderLiveText {
                 LiveTextInteraction(image: image)
                   .scaledToFill()
               } else if requestImageScaledToFill {
@@ -157,6 +169,7 @@ struct URLImage: View, Equatable {
               phase: phase,
               error: state.error?.localizedDescription
             )
+            if phase == "image" { scheduleLiveTextActivation(source: "request-phase") }
           }
         }
         .onCompletion { result in
@@ -176,6 +189,7 @@ struct URLImage: View, Equatable {
           }
           if case .success = result {
             onLoadSucceeded?()
+            scheduleLiveTextActivation(source: "request-success")
           }
         }
         .onDisappear(.lowerPriority)
@@ -186,16 +200,21 @@ struct URLImage: View, Equatable {
           recordImageEvent(.debug, message: "Image request identity changed", source: "request-change", phase: "identity-change")
           retryCount = 0
           loadCompleted = false
+          resetLiveTextActivation()
           retryID = UUID()
           scheduleStallCheck(source: "request-change")
+        }
+        .onChange(of: liveTextActivationTrigger) { _, newValue in
+          handleLiveTextTriggerChange(newValue)
         }
         .diagnosticLayout("URLImage.request", metadata: imageDiagnosticsMetadata(source: "request-layout", error: nil))
       } else {
         LazyImage(url: url) { state in
           let phase = imagePhase(hasImage: state.image != nil, error: state.error)
+          let _ = ScrollPerfProbe.shared.bump("imagePhase.\(phase)")
           Group {
             if let image = state.image {
-              if doLiveText && ImageAnalyzer.isSupported {
+              if shouldRenderLiveText {
                 LiveTextInteraction(image: image)
                   .scaledToFill()
               } else {
@@ -217,6 +236,7 @@ struct URLImage: View, Equatable {
               phase: phase,
               error: state.error?.localizedDescription
             )
+            if phase == "image" { scheduleLiveTextActivation(source: "url-phase") }
           }
         }
         .processors(processors)
@@ -237,6 +257,7 @@ struct URLImage: View, Equatable {
           }
           if case .success = result {
             onLoadSucceeded?()
+            scheduleLiveTextActivation(source: "url-success")
           }
         }
         .onDisappear(.cancel)
@@ -247,8 +268,12 @@ struct URLImage: View, Equatable {
           recordImageEvent(.debug, message: "Image request identity changed", source: "url-change", phase: "identity-change")
           retryCount = 0
           loadCompleted = false
+          resetLiveTextActivation()
           retryID = UUID()
           scheduleStallCheck(source: "url-change")
+        }
+        .onChange(of: liveTextActivationTrigger) { _, newValue in
+          handleLiveTextTriggerChange(newValue)
         }
         .diagnosticLayout("URLImage.url", metadata: imageDiagnosticsMetadata(source: "url-layout", error: nil))
       }
@@ -270,16 +295,60 @@ struct URLImage: View, Equatable {
   }
 
   private func beginImageLoad(source: String) {
+    ScrollPerfProbe.shared.bump("imageLoadAppear")
     isVisible = true
     loadStartedAt = Date()
+    resetLiveTextActivation()
     recordImageEvent(.debug, message: "Image load appeared", source: source, phase: "appear")
     scheduleStallCheck(source: source)
+    scheduleLiveTextActivation(source: "\(source)-appear")
   }
 
   private func endImageLoad() {
+    ScrollPerfProbe.shared.bump("imageLoadDisappear")
     recordImageEvent(.debug, message: "Image load disappeared", source: "disappear", phase: "disappear")
     isVisible = false
     loadCompleted = true
+    cancelLiveTextActivation()
+  }
+
+  private func resetLiveTextActivation() {
+    liveTextGeneration = UUID()
+    liveTextActivationScheduled = false
+    liveTextReady = liveTextActivationDelay == nil
+  }
+
+  private func cancelLiveTextActivation() {
+    liveTextGeneration = UUID()
+    liveTextActivationScheduled = false
+    if liveTextActivationDelay != nil {
+      liveTextReady = false
+    }
+  }
+
+  private func handleLiveTextTriggerChange(_ isTriggered: Bool) {
+    if isTriggered {
+      scheduleLiveTextActivation(source: "trigger-change")
+    } else {
+      cancelLiveTextActivation()
+    }
+  }
+
+  private func scheduleLiveTextActivation(source: String) {
+    guard doLiveText, liveTextActivationTrigger, ImageAnalyzer.isSupported else { return }
+    guard let liveTextActivationDelay else {
+      liveTextReady = true
+      return
+    }
+    guard isVisible, !liveTextReady, !liveTextActivationScheduled else { return }
+    liveTextActivationScheduled = true
+    let generation = liveTextGeneration
+    DispatchQueue.main.asyncAfter(deadline: .now() + liveTextActivationDelay) {
+      guard isVisible, liveTextGeneration == generation, liveTextActivationTrigger else { return }
+      ScrollPerfProbe.shared.bump("liveTextActivated")
+      liveTextReady = true
+      recordImageEvent(.debug, message: "Live Text activated", source: source, phase: "live-text-ready")
+    }
   }
 
   private func scheduleStallCheck(source: String) {
@@ -288,6 +357,7 @@ struct URLImage: View, Equatable {
     loadCompleted = false
     DispatchQueue.main.asyncAfter(deadline: .now() + stallTimeout) {
       guard isVisible && loadGeneration == generation && !loadCompleted else { return }
+      ScrollPerfProbe.shared.bump("imageLoadStalled")
       AppDiagnostics.asyncRecord(
         .warning,
         category: "ui.image",
@@ -304,6 +374,7 @@ struct URLImage: View, Equatable {
       recordImageEvent(.debug, message: "Image retry skipped", source: source, phase: "retry-skipped")
       return
     }
+    ScrollPerfProbe.shared.bump("imageRetry")
     retryCount += 1
     AppDiagnostics.asyncRecord(
       .info,
@@ -326,8 +397,10 @@ struct URLImage: View, Equatable {
   private func recordCompletion<Failure: Error>(_ result: Result<ImageResponse, Failure>, source: String) {
     switch result {
     case .success:
+      ScrollPerfProbe.shared.bump("imageLoadSuccess")
       recordImageEvent(.debug, message: "Image load completed", source: source, phase: "success")
     case .failure(let error):
+      ScrollPerfProbe.shared.bump("imageLoadFailure")
       recordImageEvent(.warning, message: "Image load completed", source: source, phase: "failure", error: error.localizedDescription)
     }
   }

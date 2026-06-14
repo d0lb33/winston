@@ -23,6 +23,29 @@ struct CommentsTreeView: View {
   let swipeActions: SwipeActionsSet
   let swipeAnywhere: Bool
   let maxMediaHeightPct: CGFloat
+  let contentWidth: CGFloat
+
+  init(
+    model: CommentTreeModel,
+    loading: Bool,
+    post: Post?,
+    postFullname: String,
+    opAuthor: String?,
+    swipeActions: SwipeActionsSet,
+    swipeAnywhere: Bool,
+    maxMediaHeightPct: CGFloat,
+    contentWidth: CGFloat = .screenW
+  ) {
+    self.model = model
+    self.loading = loading
+    self.post = post
+    self.postFullname = postFullname
+    self.opAuthor = opAuthor
+    self.swipeActions = swipeActions
+    self.swipeAnywhere = swipeAnywhere
+    self.maxMediaHeightPct = maxMediaHeightPct
+    self.contentWidth = contentWidth
+  }
 
   var body: some View {
     if loading && model.rows.isEmpty {
@@ -53,7 +76,8 @@ struct CommentsTreeView: View {
           opAuthor: opAuthor,
           swipeActions: swipeActions,
           swipeAnywhere: swipeAnywhere,
-          maxMediaHeightPct: maxMediaHeightPct
+          maxMediaHeightPct: maxMediaHeightPct,
+          contentWidth: contentWidth
         )
       }
     }
