@@ -26,6 +26,7 @@ struct PostRowMediaNative: View, Equatable {
       && lhs.compact == rhs.compact
       && lhs.feedItemKey == rhs.feedItemKey
       && lhs.widthBucket == rhs.widthBucket
+      && lhs.mediaIdentity == rhs.mediaIdentity
   }
 
   let postID: String
@@ -87,6 +88,40 @@ struct PostRowMediaNative: View, Equatable {
 
   /// Bucket the width so sub-point jitter doesn't churn the equatable identity.
   private var widthBucket: Int { Int((columnWidth / 2).rounded()) }
+
+  /// Stable identity for the rendered media payload. Keep this narrow enough that scroll
+  /// re-renders don't churn the media subtree, but broad enough that async media swaps
+  /// (streamable -> video, reset video, poster URL changes) are not hidden by `.equatable()`.
+  private var mediaIdentity: String {
+    switch media {
+    case .video(let video):
+      return [
+        "video",
+        video.url.absoluteString,
+        video.downloadURL?.absoluteString ?? "",
+        video.posterURL?.absoluteString ?? "",
+        "\(video.size.width)x\(video.size.height)"
+      ].joined(separator: "|")
+    case .streamable(let streamable):
+      return "streamable|\(streamable.shortCode)"
+    case .imgs(let images):
+      return "imgs|\(images.map { "\($0.url.absoluteString):\($0.size.width)x\($0.size.height)" }.joined(separator: ","))"
+    case .yt(let media):
+      return "yt|\(media.videoID)|\(media.thumbnailURL.absoluteString)|\(media.size.width)x\(media.size.height)"
+    case .link(let preview):
+      return "link|\(preview.previewURL?.absoluteString ?? "")"
+    case .repost(let post):
+      return "repost|\(post.id)|\(post.winstonData?.extractedMedia?.isInlineVideo == true)"
+    case .post(let entity):
+      return "post|\(entity?.entity.id ?? "")"
+    case .comment(let entity):
+      return "comment|\(entity?.entity.id ?? "")"
+    case .subreddit(let entity):
+      return "subreddit|\(entity?.entity.id ?? "")"
+    case .user(let entity):
+      return "user|\(entity?.entity.id ?? "")"
+    }
+  }
 
   private var presenterWidth: CGFloat {
     compact ? scaledCompactModeThumbSize(compact: true, thumbnailSize: Defaults[.PostLinkDefSettings].compactMode.thumbnailSize) : max(1, columnWidth)

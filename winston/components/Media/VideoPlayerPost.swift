@@ -187,18 +187,25 @@ struct VideoPlayerPost: View, Equatable {
   }
   
   var safe: Double { getSafeArea().top + getSafeArea().bottom }
-  
-  
-  var body: some View {
-    let _ = ScrollPerfProbe.shared.bump("videoBody")
+
+  private var renderedVideoSize: CGSize {
     let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * (.screenH)
     let sourceWidth = size.width
     let sourceHeight = size.height
     let propHeight = sourceWidth > 0 && sourceHeight > 0 && contentWidth > 0 ? (contentWidth * sourceHeight) / sourceWidth : contentWidth * 9 / 16
     let finalHeight = maxMediaHeightScreenPercentage != 110 ? Double(min(maxHeight, propHeight)) : Double(propHeight)
+    return CGSize(
+      width: compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth,
+      height: compact ? scaledCompactModeThumbSize(compact: compact) : CGFloat(finalHeight)
+    )
+  }
+  
+  
+  var body: some View {
+    let _ = ScrollPerfProbe.shared.bump("videoBody")
     
     if let sharedVideo = sharedVideo {
-      let videoSize = CGSize(width: compact ? scaledCompactModeThumbSize(compact: compact) : contentWidth, height: compact ? scaledCompactModeThumbSize(compact: compact) : CGFloat(finalHeight))
+      let videoSize = renderedVideoSize
       if let controller = controller {
         ZStack {
           inlineVideoPlaceholder()
@@ -346,8 +353,16 @@ struct VideoPlayerPost: View, Equatable {
     if !playerReadyForDisplay {
       withAnimation(.easeOut(duration: 0.2)) { playerReadyForDisplay = true }
     }
-    guard !fullscreen, autoPlayVideos, showInlinePoster else { return }
-    scheduleInlinePosterHide(sharedVideo: sharedVideo)
+    guard !fullscreen, autoPlayVideos else { return }
+    if shouldPlayInline {
+      if showInlinePoster {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "player-ready-active", playAfterHide: true)
+      } else {
+        startInlinePlaybackIfNeeded(sharedVideo, reason: "player-ready-poster-hidden")
+      }
+    } else if shouldMountPlayer, showInlinePoster {
+      scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "player-ready-warm", playAfterHide: false)
+    }
   }
 
   @ViewBuilder
@@ -355,9 +370,9 @@ struct VideoPlayerPost: View, Equatable {
     if let posterURL = sharedVideo.posterURL, showInlinePoster, !posterUnavailable {
       let request = winstonImageRequest(
         url: posterURL,
-        processors: [ImageProcessors.Resize(size: size, unit: .points, contentMode: .aspectFill, crop: false, upscale: true)],
+        processors: [ImageProcessors.ScaleFixer()],
         priority: .high,
-        thumbnail: ImageRequest.ThumbnailOptions(size: size, unit: .points, contentMode: .aspectFill)
+        thumbnail: nil
       )
       URLImage(
         url: posterURL,
@@ -368,9 +383,9 @@ struct VideoPlayerPost: View, Equatable {
         onLoadFailed: { hideUnavailablePoster(reason: "failed", url: posterURL, sharedVideo: sharedVideo) },
         onLoadStalled: { hideUnavailablePoster(reason: "stalled", url: posterURL, sharedVideo: sharedVideo) },
         stallTimeout: 2,
-        showPlaceholder: false
+        showPlaceholder: false,
+        requestImageScaledToFill: true
       )
-        .scaledToFill()
         .frame(width: size.width, height: size.height)
         .clipped()
         .opacity(showInlinePoster ? 1 : 0)
@@ -455,15 +470,17 @@ struct VideoPlayerPost: View, Equatable {
     // isn't ready. The active video's play() buffers itself.
     sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
     if shouldPlayInline {
-      sharedVideo.player.play()
-      recordVideoEvent(.debug, message: "Inline autoplay requested", sharedVideo: sharedVideo)
-      if sharedVideo.posterURL == nil || posterLoaded {
-        scheduleInlinePosterHide(sharedVideo: sharedVideo)
+      if inlineVideoIsRenderable(sharedVideo) {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "prepare-active-renderable", playAfterHide: true)
       } else {
-        recordVideoEvent(.debug, message: "Inline poster kept mounted waiting for poster load", sharedVideo: sharedVideo)
+        sharedVideo.player.pause()
+        recordVideoEvent(.debug, message: "Inline autoplay waiting for displayable frame", sharedVideo: sharedVideo)
       }
     } else {
       sharedVideo.player.pause()
+      if inlineVideoIsRenderable(sharedVideo), showInlinePoster {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "prepare-warm-renderable", playAfterHide: false)
+      }
     }
   }
 
@@ -472,21 +489,34 @@ struct VideoPlayerPost: View, Equatable {
   /// on transient scroll (avoids flicker); the poster only returns on disappear.
   func applyInlinePlaybackState(_ sharedVideo: SharedVideo) {
     guard !fullscreen else { return }
-    if shouldPlayInline {
-      sharedVideo.player.play()
-      if sharedVideo.posterURL == nil || posterLoaded {
-        scheduleInlinePosterHide(sharedVideo: sharedVideo)
+    guard shouldMountPlayer else {
+      if sharedVideo.isPlayerLoaded {
+        // Don't create a player just to pause it — only an already-mounted one needs pausing.
+        sharedVideo.player.pause()
       }
-    } else if shouldMountPlayer {
+      return
+    }
+
+    if shouldPlayInline {
+      sharedVideo.player.isMuted = muteVideos
+      sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
+      if inlineVideoIsRenderable(sharedVideo) {
+        if showInlinePoster {
+          scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "play-state-active-renderable", playAfterHide: true)
+        } else {
+          startInlinePlaybackIfNeeded(sharedVideo, reason: "play-state-active-poster-hidden")
+        }
+      } else {
+        sharedVideo.player.pause()
+        recordVideoEvent(.debug, message: "Inline playback deferred until frame is displayable", sharedVideo: sharedVideo)
+      }
+    } else {
       sharedVideo.player.isMuted = muteVideos
       sharedVideo.player.currentItem?.preferredForwardBufferDuration = 1
       sharedVideo.player.pause()
-      if sharedVideo.posterURL == nil || posterLoaded {
-        scheduleInlinePosterHide(sharedVideo: sharedVideo)
+      if inlineVideoIsRenderable(sharedVideo), showInlinePoster {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "play-state-warm-renderable", playAfterHide: false)
       }
-    } else if sharedVideo.isPlayerLoaded {
-      // Don't create a player just to pause it — only an already-mounted one needs pausing.
-      sharedVideo.player.pause()
     }
   }
 
@@ -499,49 +529,68 @@ struct VideoPlayerPost: View, Equatable {
     activeInlineVideoKey = cacheKey
     posterLoaded = true
     recordVideoEvent(.debug, message: "Poster load callback accepted", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
-    if autoPlayVideos {
-      scheduleInlinePosterHide(sharedVideo: sharedVideo)
+    guard autoPlayVideos, shouldMountPlayer, sharedVideo.isPlayerLoaded, inlineVideoIsRenderable(sharedVideo), showInlinePoster else {
+      return
     }
+    scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "poster-loaded-renderable", playAfterHide: shouldPlayInline)
   }
 
-  func scheduleInlinePosterHide(sharedVideo: SharedVideo, attempt: Int = 0) {
+  func startInlinePlaybackIfNeeded(_ sharedVideo: SharedVideo, reason: String) {
+    guard !fullscreen, shouldPlayInline, sharedVideo.isPlayerLoaded else { return }
+    sharedVideo.player.isMuted = muteVideos
+    sharedVideo.player.play()
+    recordVideoEvent(.debug, message: "Inline playback started", sharedVideo: sharedVideo, extra: ["reason": reason])
+  }
+
+  func scheduleInlinePosterHide(sharedVideo: SharedVideo, reason: String, playAfterHide: Bool, attempt: Int = 0) {
+    guard shouldMountPlayer, sharedVideo.isPlayerLoaded else {
+      recordVideoEvent(.debug, message: "Inline poster hide not scheduled", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "player-not-mounted", "attempt": "\(attempt)"])
+      return
+    }
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
     let generation = UUID()
     posterHideGeneration = generation
-    recordVideoEvent(.debug, message: "Scheduling inline poster hide", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "cacheKeyHash": "\(cacheKey.hashValue)", "attempt": "\(attempt)"])
+    recordVideoEvent(.debug, message: "Scheduling inline poster hide", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "cacheKeyHash": "\(cacheKey.hashValue)", "attempt": "\(attempt)", "reason": reason, "playAfterHide": "\(playAfterHide)"])
     doThisAfter(attempt == 0 ? 0.6 : 0.25) {
       guard posterHideGeneration == generation else {
-        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "generation-mismatch", "generation": generation.uuidString])
+        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "generation-mismatch", "generation": generation.uuidString])
         return
       }
       guard self.sharedVideo == sharedVideo else {
-        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "stale-video", "generation": generation.uuidString])
+        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "stale-video", "generation": generation.uuidString])
         return
       }
       guard activeInlineVideoKey == cacheKey else {
-        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "active-key-mismatch", "generation": generation.uuidString, "expectedKeyHash": "\(cacheKey.hashValue)", "activeKeyHash": activeInlineVideoKey.map { "\($0.hashValue)" } ?? "nil"])
+        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "active-key-mismatch", "generation": generation.uuidString, "expectedKeyHash": "\(cacheKey.hashValue)", "activeKeyHash": activeInlineVideoKey.map { "\($0.hashValue)" } ?? "nil"])
         return
       }
       guard autoPlayVideos else {
-        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "autoplay-disabled", "generation": generation.uuidString])
+        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "autoplay-disabled", "generation": generation.uuidString])
         return
       }
       guard !fullscreen else {
-        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "fullscreen", "generation": generation.uuidString])
+        recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "fullscreen", "generation": generation.uuidString])
         return
       }
       guard inlineVideoIsRenderable(sharedVideo) else {
         if attempt < 8 {
-          recordVideoEvent(.debug, message: "Inline poster hide delayed", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "video-not-renderable", "generation": generation.uuidString, "attempt": "\(attempt)"])
-          scheduleInlinePosterHide(sharedVideo: sharedVideo, attempt: attempt + 1)
+          recordVideoEvent(.debug, message: "Inline poster hide delayed", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "video-not-renderable", "generation": generation.uuidString, "attempt": "\(attempt)", "playAfterHide": "\(playAfterHide)"])
+          scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: reason, playAfterHide: playAfterHide, attempt: attempt + 1)
         } else {
-          recordVideoEvent(.warning, message: "Inline poster kept visible because video was not renderable", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "attempt": "\(attempt)"])
+          recordVideoEvent(.warning, message: "Inline poster kept visible because video was not renderable", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "generation": generation.uuidString, "attempt": "\(attempt)", "playAfterHide": "\(playAfterHide)"])
         }
         return
       }
-      recordVideoEvent(.debug, message: "Inline poster hide executing", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "attempt": "\(attempt)"])
-      withAnimation(.easeOut(duration: 0.2)) {
-        showInlinePoster = false
+      let hadPoster = showInlinePoster
+      recordVideoEvent(.debug, message: "Inline poster hide executing", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "attempt": "\(attempt)", "reason": reason, "playAfterHide": "\(playAfterHide)", "hadPoster": "\(hadPoster)"])
+      if hadPoster {
+        withAnimation(.easeOut(duration: 0.08)) {
+          showInlinePoster = false
+        }
+      }
+      guard playAfterHide else { return }
+      doThisAfter(hadPoster ? 0.07 : 0) {
+        startInlinePlaybackIfNeeded(sharedVideo, reason: "poster-hidden:\(reason)")
       }
     }
   }
@@ -549,11 +598,12 @@ struct VideoPlayerPost: View, Equatable {
   func inlineVideoIsRenderable(_ sharedVideo: SharedVideo) -> Bool {
     // The layer must have composited a real frame, otherwise hiding the poster reveals an
     // empty/grey gap (the flash). isReadyForDisplay is the authoritative signal for this.
-    guard playerReadyForDisplay else { return false }
-    let currentTime = CMTimeGetSeconds(sharedVideo.player.currentTime())
+    guard sharedVideo.isPlayerLoaded, playerReadyForDisplay else { return false }
+    let player = sharedVideo.player
+    let currentTime = CMTimeGetSeconds(player.currentTime())
     let hasAdvanced = currentTime.isFinite && currentTime > 0.05
-    let itemReady = sharedVideo.player.currentItem?.status == .readyToPlay
-    let isPlaying = sharedVideo.player.timeControlStatus == .playing || sharedVideo.player.rate > 0
+    let itemReady = player.currentItem?.status == .readyToPlay
+    let isPlaying = player.timeControlStatus == .playing || player.rate > 0
     return itemReady && (isPlaying ? hasAdvanced : shouldMountPlayer)
   }
 
@@ -757,19 +807,34 @@ struct VideoPlayerPost: View, Equatable {
 
   func videoDiagnosticsMetadata(sharedVideo: SharedVideo) -> [String: String] {
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
-    let item = sharedVideo.player.currentItem
+    let playerLoaded = sharedVideo.isPlayerLoaded
+    let player = playerLoaded ? sharedVideo.player : nil
+    let item = player?.currentItem
+    let renderedSize = renderedVideoSize
+    let coordinator = InlineVideoCoordinator.shared
     return [
       "context": diagnosticContext ?? "nil",
+      "feedItemKey": feedItemKey ?? "nil",
       "compact": "\(compact)",
       "contentWidth": "\(contentWidth)",
       "sourceURL": sharedVideo.url.absoluteString,
       "downloadURL": sharedVideo.downloadURL?.absoluteString ?? "nil",
       "posterURL": sharedVideo.posterURL?.absoluteString ?? "nil",
       "videoSize": "\(sharedVideo.size.width)x\(sharedVideo.size.height)",
+      "renderedVideoSize": "\(renderedSize.width)x\(renderedSize.height)",
       "cacheKeyHash": "\(cacheKey.hashValue)",
       "activeKeyHash": activeInlineVideoKey.map { "\($0.hashValue)" } ?? "nil",
       "preparedKeyHash": preparedInlineVideoKey.map { "\($0.hashValue)" } ?? "nil",
       "observedKeyHash": observedVideoKey.map { "\($0.hashValue)" } ?? "nil",
+      "isActive": "\(coordinator.isActive(feedItemKey))",
+      "isWarm": "\(coordinator.isWarm(feedItemKey))",
+      "isScrolling": "\(coordinator.isScrolling)",
+      "isFastScrolling": "\(coordinator.isFastScrolling)",
+      "mountPlayer": "\(mountPlayer)",
+      "shouldMountPlayer": "\(shouldMountPlayer)",
+      "shouldPlayInline": "\(shouldPlayInline)",
+      "playerLoaded": "\(playerLoaded)",
+      "playerReadyForDisplay": "\(playerReadyForDisplay)",
       "showInlinePoster": "\(showInlinePoster)",
       "posterLoaded": "\(posterLoaded)",
       "posterUnavailable": "\(posterUnavailable)",
@@ -778,14 +843,14 @@ struct VideoPlayerPost: View, Equatable {
       "fullscreen": "\(fullscreen)",
       "scenePhase": scenePhaseDescription(scenePhase),
       "inlineVideoRefreshID": inlineVideoRefreshID.uuidString,
-      "playerStatus": videoStatus(sharedVideo.player.status),
-      "timeControlStatus": timeControlStatus(sharedVideo.player.timeControlStatus),
-      "playerRate": "\(sharedVideo.player.rate)",
+      "playerStatus": player.map { videoStatus($0.status) } ?? "notLoaded",
+      "timeControlStatus": player.map { timeControlStatus($0.timeControlStatus) } ?? "notLoaded",
+      "playerRate": player.map { "\($0.rate)" } ?? "notLoaded",
       "itemStatus": itemStatus(item?.status),
       "itemLikelyToKeepUp": item.map { "\($0.isPlaybackLikelyToKeepUp)" } ?? "nil",
       "itemBufferEmpty": item.map { "\($0.isPlaybackBufferEmpty)" } ?? "nil",
       "loadedTimeRanges": "\(item?.loadedTimeRanges.count ?? 0)",
-      "currentTime": "\(CMTimeGetSeconds(sharedVideo.player.currentTime()))",
+      "currentTime": player.map { "\(CMTimeGetSeconds($0.currentTime()))" } ?? "notLoaded",
       "duration": item.map { "\(CMTimeGetSeconds($0.duration))" } ?? "nil"
     ]
   }

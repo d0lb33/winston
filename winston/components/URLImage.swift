@@ -28,6 +28,7 @@ struct URLImage: View, Equatable {
   var onLoadStalled: (() -> Void)? = nil
   var stallTimeout: TimeInterval = 6
   var showPlaceholder: Bool = true
+  var requestImageScaledToFill: Bool = false
   @State private var retryID = UUID()
   @State private var retryCount = 0
   @State private var loadGeneration = UUID()
@@ -42,6 +43,7 @@ struct URLImage: View, Equatable {
       "\(size?.width ?? 0)x\(size?.height ?? 0)",
       doLiveText ? "livetext" : "",
       showPlaceholder ? "placeholder" : "clear-placeholder",
+      requestImageScaledToFill ? "request-fill" : "request-intrinsic",
       diagnosticContext ?? ""
     ].joined(separator: "::")
   }
@@ -131,6 +133,10 @@ struct URLImage: View, Equatable {
             if let image = state.image {
               if doLiveText && ImageAnalyzer.isSupported {
                 LiveTextInteraction(image: image)
+                  .scaledToFill()
+              } else if requestImageScaledToFill {
+                image
+                  .resizable()
                   .scaledToFill()
               } else {
                 image
@@ -365,6 +371,7 @@ struct URLImage: View, Equatable {
       "requestIdentityHash": "\(requestIdentity.hashValue)",
       "stallTimeout": "\(stallTimeout)",
       "showPlaceholder": "\(showPlaceholder)",
+      "requestImageScaledToFill": "\(requestImageScaledToFill)",
       "isVisible": "\(isVisible)",
       "loadCompleted": "\(loadCompleted)",
       "elapsedMs": elapsedMsString(),
