@@ -199,7 +199,7 @@ struct BehaviorPanel: View {
           Toggle("Collapse AutoModerator comments", isOn: $commentsSectionDefSettings.collapseAutoModerator)
           Toggle("Comment skipper button", isOn: $commentsSectionDefSettings.commentSkipper)
           Toggle("Save comment sort per post", isOn: $postPageDefSettings.perPostSort)
-          Toggle("Native comments view (beta)", isOn: $postPageDefSettings.useNativeCommentsView)
+          Toggle("Native interface (beta)", isOn: $postPageDefSettings.useNativeCommentsView)
         }
         
       }

@@ -8,5 +8,7 @@
 import Foundation
 
 extension CGSize {
-  static let screenSize = CGSize(width: .screenW, height: .screenH)
+  /// Live window size — recomputed from the current cached metrics on each access
+  /// so it tracks rotation / resize / fold (was a frozen `static let`).
+  static var screenSize: CGSize { CGSize(width: CGFloat.screenW, height: CGFloat.screenH) }
 }

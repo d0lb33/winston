@@ -50,6 +50,8 @@ struct Settings: View {
             WSListButton("GraphQL (experimental)", icon: "flask") {
               presentingGQLDebug.toggle()
             }
+
+            WSNavigationLink(.setting(.designLab), "Design Lab", icon: "paintpalette.fill")
             
             WSListButton("Donate monthly", icon: "heart.fill") {
               openURL(URL(string: "https://patreon.com/user?u=93745105")!)

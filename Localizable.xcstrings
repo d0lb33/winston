@@ -113,6 +113,9 @@
     "·" : {
 
     },
+    "· %@" : {
+
+    },
     "\"Shiny\" Text and Buttons" : {
       "localizations" : {
         "de" : {
@@ -219,6 +222,9 @@
         }
       }
     },
+    "%@ members" : {
+
+    },
     "%@ subscribers" : {
       "localizations" : {
         "de" : {
@@ -278,6 +284,12 @@
       }
     },
     "%lld hitches/min" : {
+
+    },
+    "%lld PHOTOS" : {
+
+    },
+    "%lld STORIES" : {
 
     },
     "%lld/%lld" : {
@@ -350,6 +362,9 @@
         }
       }
     },
+    "▲ %@" : {
+
+    },
     "🥳" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -366,6 +381,9 @@
           }
         }
       }
+    },
+    "1/%lld" : {
+
     },
     "7000" : {
       "extractionState" : "stale",
@@ -453,6 +471,9 @@
 
     },
     "Adapted PostData → rendered" : {
+
+    },
+    "Add a comment…" : {
 
     },
     "Add Manual Marker" : {
@@ -554,6 +575,12 @@
           }
         }
       }
+    },
+    "Aurora" : {
+
+    },
+    "AUTHOR" : {
+
     },
     "Autoplay videos (muted)" : {
       "localizations" : {
@@ -692,6 +719,16 @@
         }
       }
     },
+    "By %@   ·   %@   ·   %@ comments" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "By %1$@   ·   %2$@   ·   %3$@ comments"
+          }
+        }
+      }
+    },
     "Cancel" : {
       "localizations" : {
         "de" : {
@@ -763,6 +800,9 @@
     "Clear Logs" : {
 
     },
+    "Close Design Lab preview" : {
+
+    },
     "Close feed tools" : {
 
     },
@@ -809,6 +849,9 @@
           }
         }
       }
+    },
+    "Coming soon" : {
+
     },
     "Comment skipper button" : {
 
@@ -866,6 +909,9 @@
           }
         }
       }
+    },
+    "Communities" : {
+
     },
     "Compact" : {
 
@@ -1132,6 +1178,9 @@
           }
         }
       }
+    },
+    "Design Lab" : {
+
     },
     "Diagnostics" : {
 
@@ -1892,6 +1941,9 @@
         }
       }
     },
+    "In progress" : {
+
+    },
     "IN USE" : {
 
     },
@@ -2039,6 +2091,9 @@
         }
       }
     },
+    "Join" : {
+
+    },
     "Join the Discord Server" : {
       "localizations" : {
         "de" : {
@@ -2054,6 +2109,12 @@
           }
         }
       }
+    },
+    "Joined" : {
+
+    },
+    "Jump to a community" : {
+
     },
     "Jump to Next Comment" : {
 
@@ -2464,6 +2525,9 @@
         }
       }
     },
+    "Mockups built for foldables and iOS 27. Each has its own navigation and adapts as the screen folds, unfolds and resizes. All data is fake — explore freely." : {
+
+    },
     "more" : {
       "localizations" : {
         "de" : {
@@ -2499,7 +2563,7 @@
     "Mute video" : {
 
     },
-    "Native comments view (beta)" : {
+    "Native interface (beta)" : {
 
     },
     "Navigation everywhere" : {
@@ -2727,7 +2791,19 @@
         }
       }
     },
+    "OP" : {
+
+    },
+    "Open" : {
+
+    },
+    "Open a post here and keep flicking through the deck on the left." : {
+
+    },
     "Open feed tools" : {
+
+    },
+    "Open it here while the feed stays in view — the quiet luxury of the big screen." : {
 
     },
     "Open links in Safari" : {
@@ -2805,6 +2881,9 @@
     "Original Winston post layout." : {
 
     },
+    "P" : {
+
+    },
     "Paste here the app ID" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2843,6 +2922,9 @@
 
     },
     "Pause video" : {
+
+    },
+    "Pick a post" : {
 
     },
     "Placeholder image" : {
@@ -2931,6 +3013,9 @@
       }
     },
     "Post Look" : {
+
+    },
+    "Post media" : {
 
     },
     "Post page" : {
@@ -3084,6 +3169,9 @@
       }
     },
     "Preparing Export..." : {
+
+    },
+    "Press" : {
 
     },
     "r/%@" : {
@@ -3354,6 +3442,12 @@
           }
         }
       }
+    },
+    "SENSITIVE" : {
+
+    },
+    "Sensitive media" : {
+
     },
     "Sets how many posts to load per chunk (loads more on scroll)" : {
       "localizations" : {
@@ -3628,6 +3722,12 @@
     "Sort Comments" : {
 
     },
+    "Spoiler" : {
+
+    },
+    "SPOILER" : {
+
+    },
     "Start by duplicating the" : {
 
     },
@@ -3802,6 +3902,9 @@
     "t3_…" : {
 
     },
+    "Tap a card" : {
+
+    },
     "Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar." : {
 
     },
@@ -3859,6 +3962,9 @@
         }
       }
     },
+    "Tap to reveal" : {
+
+    },
     "Tap to unblur" : {
       "localizations" : {
         "de" : {
@@ -3894,6 +4000,9 @@
           }
         }
       }
+    },
+    "THE CONVERSATION" : {
+
     },
     "The theme was imported successfully. Enable it in \"Themes\" section in the Settings tab." : {
       "localizations" : {
@@ -4047,6 +4156,9 @@
         }
       }
     },
+    "Three ways to read Reddit" : {
+
+    },
     "Thumbnail Position" : {
       "localizations" : {
         "de" : {
@@ -4165,6 +4277,16 @@
         }
       }
     },
+    "u/%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "u/%1$@ · %2$@"
+          }
+        }
+      }
+    },
     "Unmute video" : {
 
     },
@@ -4259,6 +4381,9 @@
           }
         }
       }
+    },
+    "VOL. XXVII — TODAY’S EDITION" : {
+
     },
     "Voting Buttons Position" : {
       "localizations" : {

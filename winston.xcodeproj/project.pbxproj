@@ -18,6 +18,32 @@
 		0A5302312FDD8B4E00CAC6F2 /* PostViewNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302302FDD8B4E00CAC6F2 /* PostViewNative.swift */; };
 		0A5302332FDD936400CAC6F2 /* CommentBodyNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302322FDD936400CAC6F2 /* CommentBodyNative.swift */; };
 		0A5302352FDDE4DB00CAC6F2 /* NativeVoteControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302342FDDE4DB00CAC6F2 /* NativeVoteControl.swift */; };
+		0A5302382FDF0F1A00CAC6F2 /* PostRowMediaNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302372FDF0F1A00CAC6F2 /* PostRowMediaNative.swift */; };
+		0A53023A2FDF0F3500CAC6F2 /* LinkImageCardNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302392FDF0F3500CAC6F2 /* LinkImageCardNative.swift */; };
+		0A53023C2FDF0F6E00CAC6F2 /* PostLinkNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53023B2FDF0F6E00CAC6F2 /* PostLinkNative.swift */; };
+		0A53023E2FDF0F9D00CAC6F2 /* PostLinkNativeCompact.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53023D2FDF0F9D00CAC6F2 /* PostLinkNativeCompact.swift */; };
+		0A5302402FDF0FDD00CAC6F2 /* PostsFeedNative.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53023F2FDF0FDD00CAC6F2 /* PostsFeedNative.swift */; };
+		0A5302482FDF1FD100CAC6F2 /* MockModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302472FDF1FD100CAC6F2 /* MockModels.swift */; };
+		0A53024A2FDF1FDD00CAC6F2 /* MockFormatting.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302492FDF1FDD00CAC6F2 /* MockFormatting.swift */; };
+		0A53024C2FDF202500CAC6F2 /* MockData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53024B2FDF202500CAC6F2 /* MockData.swift */; };
+		0A53024E2FDF203100CAC6F2 /* MockMediaPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53024D2FDF203100CAC6F2 /* MockMediaPalette.swift */; };
+		0A5302502FDF204300CAC6F2 /* SeededRemoteImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53024F2FDF204300CAC6F2 /* SeededRemoteImage.swift */; };
+		0A5302522FDF204B00CAC6F2 /* DesignLabClose.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302512FDF204B00CAC6F2 /* DesignLabClose.swift */; };
+		0A5302542FDF205B00CAC6F2 /* DesignLabConcept.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302532FDF205B00CAC6F2 /* DesignLabConcept.swift */; };
+		0A5302562FDF21A100CAC6F2 /* AuroraComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */; };
+		0A5302582FDF21CC00CAC6F2 /* AuroraFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */; };
+		0A53025A2FDF222200CAC6F2 /* AuroraPostDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */; };
+		0A53025C2FDF228A00CAC6F2 /* AuroraRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */; };
+		0A53025E2FDF238900CAC6F2 /* DesignLabGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */; };
+		0A5302602FDF24BA00CAC6F2 /* PressComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025F2FDF24BA00CAC6F2 /* PressComponents.swift */; };
+		0A5302622FDF24CE00CAC6F2 /* PressFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302612FDF24CE00CAC6F2 /* PressFeed.swift */; };
+		0A5302642FDF24E500CAC6F2 /* PressPostDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302632FDF24E500CAC6F2 /* PressPostDetail.swift */; };
+		0A5302662FDF24F600CAC6F2 /* PressRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302652FDF24F600CAC6F2 /* PressRoot.swift */; };
+		0A5302682FDF25BB00CAC6F2 /* DeckComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302672FDF25BB00CAC6F2 /* DeckComponents.swift */; };
+		0A53026A2FDF25CB00CAC6F2 /* DeckCardStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302692FDF25CB00CAC6F2 /* DeckCardStack.swift */; };
+		0A53026C2FDF260200CAC6F2 /* DeckPostDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53026B2FDF260200CAC6F2 /* DeckPostDetail.swift */; };
+		0A53026E2FDF261D00CAC6F2 /* DeckCommandPalette.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53026D2FDF261D00CAC6F2 /* DeckCommandPalette.swift */; };
+		0A5302702FDF266200CAC6F2 /* DeckRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53026F2FDF266200CAC6F2 /* DeckRoot.swift */; };
 		0AF2CAC92FDA38AE00944869 /* RedditGQLDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */; };
 		0AF2CACB2FDA434300944869 /* RedditGQLAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */; };
 		0AF2CACD2FDA48E500944869 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */; };
@@ -538,6 +564,32 @@
 		0A5302302FDD8B4E00CAC6F2 /* PostViewNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostViewNative.swift; sourceTree = "<group>"; };
 		0A5302322FDD936400CAC6F2 /* CommentBodyNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommentBodyNative.swift; sourceTree = "<group>"; };
 		0A5302342FDDE4DB00CAC6F2 /* NativeVoteControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeVoteControl.swift; sourceTree = "<group>"; };
+		0A5302372FDF0F1A00CAC6F2 /* PostRowMediaNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostRowMediaNative.swift; sourceTree = "<group>"; };
+		0A5302392FDF0F3500CAC6F2 /* LinkImageCardNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinkImageCardNative.swift; sourceTree = "<group>"; };
+		0A53023B2FDF0F6E00CAC6F2 /* PostLinkNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostLinkNative.swift; sourceTree = "<group>"; };
+		0A53023D2FDF0F9D00CAC6F2 /* PostLinkNativeCompact.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostLinkNativeCompact.swift; sourceTree = "<group>"; };
+		0A53023F2FDF0FDD00CAC6F2 /* PostsFeedNative.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PostsFeedNative.swift; sourceTree = "<group>"; };
+		0A5302472FDF1FD100CAC6F2 /* MockModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockModels.swift; sourceTree = "<group>"; };
+		0A5302492FDF1FDD00CAC6F2 /* MockFormatting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockFormatting.swift; sourceTree = "<group>"; };
+		0A53024B2FDF202500CAC6F2 /* MockData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockData.swift; sourceTree = "<group>"; };
+		0A53024D2FDF203100CAC6F2 /* MockMediaPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockMediaPalette.swift; sourceTree = "<group>"; };
+		0A53024F2FDF204300CAC6F2 /* SeededRemoteImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeededRemoteImage.swift; sourceTree = "<group>"; };
+		0A5302512FDF204B00CAC6F2 /* DesignLabClose.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignLabClose.swift; sourceTree = "<group>"; };
+		0A5302532FDF205B00CAC6F2 /* DesignLabConcept.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignLabConcept.swift; sourceTree = "<group>"; };
+		0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraComponents.swift; sourceTree = "<group>"; };
+		0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraFeed.swift; sourceTree = "<group>"; };
+		0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraPostDetail.swift; sourceTree = "<group>"; };
+		0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraRoot.swift; sourceTree = "<group>"; };
+		0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignLabGallery.swift; sourceTree = "<group>"; };
+		0A53025F2FDF24BA00CAC6F2 /* PressComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressComponents.swift; sourceTree = "<group>"; };
+		0A5302612FDF24CE00CAC6F2 /* PressFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressFeed.swift; sourceTree = "<group>"; };
+		0A5302632FDF24E500CAC6F2 /* PressPostDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressPostDetail.swift; sourceTree = "<group>"; };
+		0A5302652FDF24F600CAC6F2 /* PressRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PressRoot.swift; sourceTree = "<group>"; };
+		0A5302672FDF25BB00CAC6F2 /* DeckComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckComponents.swift; sourceTree = "<group>"; };
+		0A5302692FDF25CB00CAC6F2 /* DeckCardStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckCardStack.swift; sourceTree = "<group>"; };
+		0A53026B2FDF260200CAC6F2 /* DeckPostDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckPostDetail.swift; sourceTree = "<group>"; };
+		0A53026D2FDF261D00CAC6F2 /* DeckCommandPalette.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckCommandPalette.swift; sourceTree = "<group>"; };
+		0A53026F2FDF266200CAC6F2 /* DeckRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeckRoot.swift; sourceTree = "<group>"; };
 		0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLDebugView.swift; sourceTree = "<group>"; };
 		0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLAdapters.swift; sourceTree = "<group>"; };
 		0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
@@ -1068,6 +1120,86 @@
 			path = Native;
 			sourceTree = "<group>";
 		};
+		0A5302362FDF0F1A00CAC6F2 /* Native */ = {
+			isa = PBXGroup;
+			children = (
+				0A5302372FDF0F1A00CAC6F2 /* PostRowMediaNative.swift */,
+				0A5302392FDF0F3500CAC6F2 /* LinkImageCardNative.swift */,
+				0A53023B2FDF0F6E00CAC6F2 /* PostLinkNative.swift */,
+				0A53023D2FDF0F9D00CAC6F2 /* PostLinkNativeCompact.swift */,
+				0A53023F2FDF0FDD00CAC6F2 /* PostsFeedNative.swift */,
+			);
+			path = Native;
+			sourceTree = "<group>";
+		};
+		0A5302412FDF1F2D00CAC6F2 /* DesignLab */ = {
+			isa = PBXGroup;
+			children = (
+				0A5302422FDF1F3800CAC6F2 /* Model */,
+				0A5302432FDF1F3A00CAC6F2 /* Shared */,
+				0A5302442FDF1F3B00CAC6F2 /* Aurora */,
+				0A5302452FDF1F3D00CAC6F2 /* Press */,
+				0A5302462FDF1F3E00CAC6F2 /* Deck */,
+				0A5302532FDF205B00CAC6F2 /* DesignLabConcept.swift */,
+				0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */,
+			);
+			path = DesignLab;
+			sourceTree = "<group>";
+		};
+		0A5302422FDF1F3800CAC6F2 /* Model */ = {
+			isa = PBXGroup;
+			children = (
+				0A5302472FDF1FD100CAC6F2 /* MockModels.swift */,
+				0A5302492FDF1FDD00CAC6F2 /* MockFormatting.swift */,
+				0A53024B2FDF202500CAC6F2 /* MockData.swift */,
+			);
+			path = Model;
+			sourceTree = "<group>";
+		};
+		0A5302432FDF1F3A00CAC6F2 /* Shared */ = {
+			isa = PBXGroup;
+			children = (
+				0A53024D2FDF203100CAC6F2 /* MockMediaPalette.swift */,
+				0A53024F2FDF204300CAC6F2 /* SeededRemoteImage.swift */,
+				0A5302512FDF204B00CAC6F2 /* DesignLabClose.swift */,
+			);
+			path = Shared;
+			sourceTree = "<group>";
+		};
+		0A5302442FDF1F3B00CAC6F2 /* Aurora */ = {
+			isa = PBXGroup;
+			children = (
+				0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */,
+				0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */,
+				0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */,
+				0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */,
+			);
+			path = Aurora;
+			sourceTree = "<group>";
+		};
+		0A5302452FDF1F3D00CAC6F2 /* Press */ = {
+			isa = PBXGroup;
+			children = (
+				0A53025F2FDF24BA00CAC6F2 /* PressComponents.swift */,
+				0A5302612FDF24CE00CAC6F2 /* PressFeed.swift */,
+				0A5302632FDF24E500CAC6F2 /* PressPostDetail.swift */,
+				0A5302652FDF24F600CAC6F2 /* PressRoot.swift */,
+			);
+			path = Press;
+			sourceTree = "<group>";
+		};
+		0A5302462FDF1F3E00CAC6F2 /* Deck */ = {
+			isa = PBXGroup;
+			children = (
+				0A5302672FDF25BB00CAC6F2 /* DeckComponents.swift */,
+				0A5302692FDF25CB00CAC6F2 /* DeckCardStack.swift */,
+				0A53026B2FDF260200CAC6F2 /* DeckPostDetail.swift */,
+				0A53026D2FDF261D00CAC6F2 /* DeckCommandPalette.swift */,
+				0A53026F2FDF266200CAC6F2 /* DeckRoot.swift */,
+			);
+			path = Deck;
+			sourceTree = "<group>";
+		};
 		0AF2CAC32FDA383F00944869 /* RedditGQL */ = {
 			isa = PBXGroup;
 			children = (
@@ -1399,6 +1531,7 @@
 				EC2A39122AC1FF63001E5354 /* PostLinkCompact.swift */,
 				EC2A39162AC2035F001E5354 /* PostLinkNormal.swift */,
 				EC0854142A4BE1D800E88389 /* PostLink.swift */,
+				0A5302362FDF0F1A00CAC6F2 /* Native */,
 			);
 			path = PostLink;
 			sourceTree = "<group>";
@@ -1470,6 +1603,7 @@
 				BB0D15262B0698FD00668448 /* MixedContentFeedView.swift */,
 				BB53CA992B0D827F003D3332 /* EndOfFeedView.swift */,
 				EC7FBE2E2B411C810082FA44 /* AppContent.swift */,
+				0A5302412FDF1F2D00CAC6F2 /* DesignLab */,
 			);
 			path = views;
 			sourceTree = "<group>";
@@ -2410,6 +2544,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0A53026E2FDF261D00CAC6F2 /* DeckCommandPalette.swift in Sources */,
 				65B0619B2AFE8A05008B7AF3 /* changelog.json in Sources */,
 				EC593AF02A47ACB0002D6454 /* Tabber.swift in Sources */,
 				EC3AC9D42AACCBE40078EC78 /* LabeledTextField.swift in Sources */,
@@ -2421,12 +2556,14 @@
 				EC1312AB2AB5234000C95D3A /* ThemeForegroundEdit.swift in Sources */,
 				EC620EF02B0CD5A400206A66 /* UnseenType.swift in Sources */,
 				ECD5EE952B11D585002CA158 /* AccountSwitcherFingerLight.swift in Sources */,
+				0A5302682FDF25BB00CAC6F2 /* DeckComponents.swift in Sources */,
 				EC421D562B4B98BA0038C27A /* simpleHighlight.swift in Sources */,
 				ECF5B3052AC837F500355589 /* IconManager.swift in Sources */,
 				ECE285A12A50EC9E009CF9DD /* Badge.swift in Sources */,
 				EC0854192A4BFC4600E88389 /* CommentLink.swift in Sources */,
 				ECF5B3092AC83C8E00355589 /* AppIconSetting.swift in Sources */,
 				ECEF412A2B239FAC005FE84E /* Published+Codable.swift in Sources */,
+				0A53025C2FDF228A00CAC6F2 /* AuroraRoot.swift in Sources */,
 				EC77EC182B2585FF0053B966 /* openFromWebListener.swift in Sources */,
 				EC31882B2A94439D00CB3738 /* mediaExtractor.swift in Sources */,
 				EC3AC9E12AAD1BB60078EC78 /* CardSettings.swift in Sources */,
@@ -2451,6 +2588,7 @@
 				652011FA2AC2C46C005DD899 /* themeStore.swift in Sources */,
 				ECAA8B5A2A75004300D9D636 /* redditURLParser.swift in Sources */,
 				0AF2CACF2FDA48F500944869 /* RedditWire.swift in Sources */,
+				0A53025E2FDF238900CAC6F2 /* DesignLabGallery.swift in Sources */,
 				BEEF0101000000000000000B /* RedditWire+Actions.swift in Sources */,
 				BEEF02010000000000000002 /* AppDiagnostics.swift in Sources */,
 				ECDD515C2A73A90700FD9498 /* PreviewLink.swift in Sources */,
@@ -2458,6 +2596,7 @@
 				ECD5EE972B11D59F002CA158 /* AccountSwitcherOverlayView.swift in Sources */,
 				652012022AC31E7C005DD899 /* ThemeStoreUploadSheet.swift in Sources */,
 				EC5EDA712A4DA94A00140A08 /* SwipeActionsOld.swift in Sources */,
+				0A5302402FDF0FDD00CAC6F2 /* PostsFeedNative.swift in Sources */,
 				EC3AC9F02AB39BE50078EC78 /* FeedThemingPanel.swift in Sources */,
 				EC796DCF2B1455D400B425A1 /* AccountSwitcherProvider.swift in Sources */,
 				EC6495A92A999C4A00B1852C /* CachedMulti+CoreDataProperties.swift in Sources */,
@@ -2469,6 +2608,7 @@
 				EC31881C2A92BBFB00CB3738 /* Multi.swift in Sources */,
 				65840EE82AE11BFD000315E1 /* exportImportSettings.swift in Sources */,
 				0A5302332FDD936400CAC6F2 /* CommentBodyNative.swift in Sources */,
+				0A5302502FDF204300CAC6F2 /* SeededRemoteImage.swift in Sources */,
 				0A5302242FDCF00700CAC6F2 /* PerformanceDiagnostics.swift in Sources */,
 				ECC2C7B22AAB48D1000E196C /* ThemesPanel.swift in Sources */,
 				ECAA8B892A764A3C00D9D636 /* YTMediaPost.swift in Sources */,
@@ -2485,6 +2625,7 @@
 				EC200C882A7795BA00E69543 /* PostContent.swift in Sources */,
 				EC3AC9D72AAD0E300078EC78 /* TagsOptionsCarousel.swift in Sources */,
 				0A5302292FDD8A9000CAC6F2 /* CommentThreadGutter.swift in Sources */,
+				0A5302702FDF266200CAC6F2 /* DeckRoot.swift in Sources */,
 				65AA535D2A8BB27900275299 /* FAQPanel.swift in Sources */,
 				654559042B0E418B0080E27F /* UpsellCard.swift in Sources */,
 				0A5302202FDCE10500CAC6F2 /* CommentSwipeActions.swift in Sources */,
@@ -2501,6 +2642,7 @@
 				ECF0B7DD2A53DD5C002B9FAD /* ImageMediaPost.swift in Sources */,
 				ECE4497B2A68898100E2A3B7 /* SubredditMyPostsTab.swift in Sources */,
 				EC6081162B434B19001A1077 /* NoBtnStyle.swift in Sources */,
+				0A53024A2FDF1FDD00CAC6F2 /* MockFormatting.swift in Sources */,
 				EC6081182B434B9A001A1077 /* ButtonPressingProviderStyle.swift in Sources */,
 				EC8F34792A6CE79B00EB8249 /* PostInBoxLink.swift in Sources */,
 				EC1AB2CE2B0FE20800247971 /* StringJSONConversions.swift in Sources */,
@@ -2514,8 +2656,10 @@
 				0AF2CACB2FDA434300944869 /* RedditGQLAdapters.swift in Sources */,
 				ECED2EB92B282B7800F4D25F /* UIScreen+ScreenCorners..swift in Sources */,
 				EC6373632A7934F8000A03A3 /* AboutPanel.swift in Sources */,
+				0A53024E2FDF203100CAC6F2 /* MockMediaPalette.swift in Sources */,
 				EC1E7B662A815BC100DB459A /* LightBoxElementView.swift in Sources */,
 				ECF147912AB670A600572352 /* ScrollWithPreview.swift in Sources */,
+				0A53024C2FDF202500CAC6F2 /* MockData.swift in Sources */,
 				EC77EC162B2577580053B966 /* themeFetchingListener.swift in Sources */,
 				ECF82A172B21664100CBF45D /* ThemedForegroundBG.swift in Sources */,
 				EC91C8542AB9601000F2AD30 /* TabBarOverlay.swift in Sources */,
@@ -2535,6 +2679,7 @@
 				EC7FBE2A2B41193D0082FA44 /* ComingFrom.swift in Sources */,
 				EC200C862A7795B500E69543 /* PostReplies.swift in Sources */,
 				EC3AC9ED2AB3913E0078EC78 /* resetter.swift in Sources */,
+				0A53026C2FDF260200CAC6F2 /* DeckPostDetail.swift in Sources */,
 				ECF0B7DF2A53DD82002B9FAD /* VideoPlayerPost.swift in Sources */,
 				AA01CE0D2C01000000000001 /* InlineVideoCoordinator.swift in Sources */,
 				659FDEA82A87798300103414 /* VoteButton.swift in Sources */,
@@ -2550,11 +2695,13 @@
 				ECF2C44B2AE81D5F004FCA79 /* DispatchQueueDebounce.swift in Sources */,
 				EC3AC9CF2AACB2A30078EC78 /* LabeledSlider.swift in Sources */,
 				ECD5EE932B11D564002CA158 /* AccountSwitcherGradientBackground.swift in Sources */,
+				0A5302622FDF24CE00CAC6F2 /* PressFeed.swift in Sources */,
 				659F68022A84E32300989300 /* VotesCluster.swift in Sources */,
 				EC7FBE312B411FD60082FA44 /* checkForOnboardingStatus.swift in Sources */,
 				ECA86A812AB94DA200C31EC6 /* SubredditsStack.swift in Sources */,
 				ECD2B7192B3D2CF0008E2663 /* FloatingMainTrigger.swift in Sources */,
 				ECFF6B3A2B15A93D00527528 /* AccountSwitcherParticles.swift in Sources */,
+				0A5302582FDF21CC00CAC6F2 /* AuroraFeed.swift in Sources */,
 				0AF2CAD32FDA5F2100944869 /* RedditAccount.swift in Sources */,
 				EC2A39172AC2035F001E5354 /* PostLinkNormal.swift in Sources */,
 				ECAEFF5E2A77A03E0052FCD3 /* RedditMediaPost.swift in Sources */,
@@ -2572,6 +2719,7 @@
 				EC1AC9B82B200ACD00674B31 /* wait.swift in Sources */,
 				EC593AF22A47AD97002D6454 /* Subreddits.swift in Sources */,
 				ECBD8E2B2ABBC6DB00C74E87 /* BaseCache.swift in Sources */,
+				0A5302662FDF24F600CAC6F2 /* PressRoot.swift in Sources */,
 				EC593AE12A4673B3002D6454 /* Persistence.swift in Sources */,
 				BB978B432B4F756400BE90D1 /* External to Internal Links.swift in Sources */,
 				EC58D4532AC0251700FF5B6B /* getPostContentWidth.swift in Sources */,
@@ -2678,6 +2826,7 @@
 				CE0EC5D82B1A9E9600C6E210 /* SubredditFilters.swift in Sources */,
 				EC8B779C2AB3A45800875C98 /* ImageThemePicker.swift in Sources */,
 				EC3188062A918FF300CB3738 /* URLImage.swift in Sources */,
+				0A53023C2FDF0F6E00CAC6F2 /* PostLinkNative.swift in Sources */,
 				ECC10C772A4A874C009124BE /* RR.swift in Sources */,
 				ECE08B822AAA0D0100F84DC9 /* PostTheme.swift in Sources */,
 				650ACAFC2A87A36900A7C600 /* calcVotes.swift in Sources */,
@@ -2713,6 +2862,7 @@
 				EC77EC122B2574580053B966 /* themeImportingListener.swift in Sources */,
 				EC0854152A4BE1D800E88389 /* PostLink.swift in Sources */,
 				ECE08B602AA9C95F00F84DC9 /* PostLinkTheme.swift in Sources */,
+				0A5302642FDF24E500CAC6F2 /* PressPostDetail.swift in Sources */,
 				CECA71EB2B1E358700852DAD /* CustomFilterView.swift in Sources */,
 				ECC68D4B2A7A9554005BC7B4 /* nsfw.swift in Sources */,
 				ECA5AF582B22B0620084954B /* NumbersScreenInfo.swift in Sources */,
@@ -2729,11 +2879,14 @@
 				EC63E7252ACCC0C500918260 /* CollectionView.swift in Sources */,
 				653E2DA52A8E278800833556 /* GeneralPanel.swift in Sources */,
 				BEEF0101000000000000000F /* AccountsPanel.swift in Sources */,
+				0A53025A2FDF222200CAC6F2 /* AuroraPostDetail.swift in Sources */,
 				BEEF02010000000000000004 /* DiagnosticsPanel.swift in Sources */,
 				EC620EEE2B0CD59700206A66 /* ThemeBG.swift in Sources */,
 				EC8B77A42AB4D89A00875C98 /* Dividers.swift in Sources */,
+				0A53023E2FDF0F9D00CAC6F2 /* PostLinkNativeCompact.swift in Sources */,
 				0A5302272FDD8A8400CAC6F2 /* CommentTreeModel.swift in Sources */,
 				ECEFC26B2A5E00B30003C6C4 /* floating.swift in Sources */,
+				0A53026A2FDF25CB00CAC6F2 /* DeckCardStack.swift in Sources */,
 				ECC10C742A4A8729009124BE /* fontSize.swift in Sources */,
 				ECB03BFB2AEC2D090090674A /* AltImage.swift in Sources */,
 				ECE245602B3030C3002BD370 /* FilterButton.swift in Sources */,
@@ -2747,6 +2900,7 @@
 				ECB549D92B18C3C5004E9A96 /* removeDefaultThemeFromThemes.swift in Sources */,
 				BBD6E9D92B50F53000901C1C /* CommentSkipper.swift in Sources */,
 				6593CC432A88C9E8003CA58D /* AccessibilityPanel.swift in Sources */,
+				0A53023A2FDF0F3500CAC6F2 /* LinkImageCardNative.swift in Sources */,
 				ECEFC2732A5F70B70003C6C4 /* saveMedia.swift in Sources */,
 				ECEFC2672A5DE60C0003C6C4 /* UserLink.swift in Sources */,
 				ECC68D492A7A9136005BC7B4 /* WDivider.swift in Sources */,
@@ -2754,6 +2908,7 @@
 				65010D032AC70ADD00A8F611 /* getDownloadURL.swift in Sources */,
 				ECF1478F2AB620A400572352 /* CommentSample.swift in Sources */,
 				EC4C7C912B2BFA080007A4DA /* PostLinkDefSettings.swift in Sources */,
+				0A5302382FDF0F1A00CAC6F2 /* PostRowMediaNative.swift in Sources */,
 				EC31DB182B12F0EB00A777ED /* CircleWave.metal in Sources */,
 				EC2760832B2ADFD100ADCE26 /* ConcurrentRunner.swift in Sources */,
 				ECE08B682AA9E62900F84DC9 /* AvatarTheme.swift in Sources */,
@@ -2767,9 +2922,11 @@
 				EC4C7CAC2B2C6FC00007A4DA /* DynamicColor.swift in Sources */,
 				EC8B779E2AB3A9C500875C98 /* SchemesBGImagesPicker.swift in Sources */,
 				EC4C7CA62B2C67B70007A4DA /* oldDefaults.swift in Sources */,
+				0A5302522FDF204B00CAC6F2 /* DesignLabClose.swift in Sources */,
 				65A5FFF22ACED3BF000D1ADA /* getPreviewImages.swift in Sources */,
 				EC6081282B43B04E001A1077 /* PressableButton.swift in Sources */,
 				ECE08B862AAA43F400F84DC9 /* NiceDivider.swift in Sources */,
+				0A5302602FDF24BA00CAC6F2 /* PressComponents.swift in Sources */,
 				EC12D7182A59C7A800C300B3 /* Arrows.swift in Sources */,
 				0A53022D2FDD8B0F00CAC6F2 /* PostHeaderNative.swift in Sources */,
 				ECDD514E2A726E5900FD9498 /* modifyColor.swift in Sources */,
@@ -2787,6 +2944,7 @@
 				652F240A2B0E222B00BB95A3 /* SpoilerModifer.swift in Sources */,
 				ECDBA8C52A4A835800FB42DB /* Subreddit.swift in Sources */,
 				EC49A8F12B49F7C100000EBD /* WinstonButton.swift in Sources */,
+				0A5302542FDF205B00CAC6F2 /* DesignLabConcept.swift in Sources */,
 				ECD2A3772A69C26900EDD02D /* consts.swift in Sources */,
 				EC8F348F2A6E61B900EB8249 /* PinchToZoom.swift in Sources */,
 				EC8F347C2A6CEBD600EB8249 /* winston.xcdatamodeld in Sources */,
@@ -2796,8 +2954,10 @@
 				ECAA8B8B2A766E3900D9D636 /* ListBigBtn.swift in Sources */,
 				EC143B2B2B223DC3008A567F /* AVLooperPlayer.swift in Sources */,
 				EC2D27652A4FCE42006444D6 /* SubredditInfo.swift in Sources */,
+				0A5302562FDF21A100CAC6F2 /* AuroraComponents.swift in Sources */,
 				EC0854132A4BE13000E88389 /* PostView.swift in Sources */,
 				ECDEBD212B31C8D300A8AC78 /* CGGradient+.swift in Sources */,
+				0A5302482FDF1FD100CAC6F2 /* MockModels.swift in Sources */,
 				0A5302312FDD8B4E00CAC6F2 /* PostViewNative.swift in Sources */,
 				ECE449712A67610A00E2A3B7 /* VotesPopover.swift in Sources */,
 				65E45A702AFD3E48007DBBFC /* whatsNew.swift in Sources */,

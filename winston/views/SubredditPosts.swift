@@ -70,7 +70,8 @@ struct SubredditPosts: View, Equatable {
 	
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
-  
+  @Default(.PostPageDefSettings) private var postPageDefSettings
+
   let context = PersistenceController.shared.container.newBackgroundContext()
   
   init(subreddit: Subreddit) {
@@ -476,7 +477,9 @@ struct SubredditPosts: View, Equatable {
         Group {
           let filteredPosts = getFilteredPosts(posts: posts.data)
           
-          if IPAD && hSizeClass == .regular {
+          if postPageDefSettings.useNativeCommentsView {
+            PostsFeedNative(showSub: isFeedsAndSuch, feedStyleKey: subreddit.id, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+          } else if IPAD && hSizeClass == .regular {
             SubredditPostsIPAD(showSub: isFeedsAndSuch, feedStyleKey: subreddit.id, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
           } else {
             SubredditPostsIOS(showSub: isFeedsAndSuch, feedStyleKey: subreddit.id, lastPostAfter: lastPostAfter, subreddit: subreddit, filters: filters, posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)

@@ -15,7 +15,7 @@ let POSTLINK_INNER_H_PAD: CGFloat = 16
 
 struct PostLink: View, Equatable, Identifiable {
   static func == (lhs: PostLink, rhs: PostLink) -> Bool {
-    return lhs.id == rhs.id && lhs.repostAvatarRequest?.url == rhs.repostAvatarRequest?.url && lhs.theme == rhs.theme && lhs.defSettings == rhs.defSettings && lhs.compactPerSubreddit == rhs.compactPerSubreddit && lhs.postStyleOverride == rhs.postStyleOverride
+    return lhs.id == rhs.id && lhs.repostAvatarRequest?.url == rhs.repostAvatarRequest?.url && lhs.theme == rhs.theme && lhs.defSettings == rhs.defSettings && lhs.compactPerSubreddit == rhs.compactPerSubreddit && lhs.postStyleOverride == rhs.postStyleOverride && lhs.useNative == rhs.useNative
   }
   
   //  var disableOuterVSpacing = false
@@ -33,8 +33,12 @@ struct PostLink: View, Equatable, Identifiable {
   /// forced to the OUTER post id (the one the feed actually tracks for center election),
   /// so the embedded player autoplays with the rest of the feed instead of never matching.
   var inlineVideoKeyOverride: String? = nil
+  /// When true, render the iOS-27 native feed rows (PostLinkNative / PostLinkNativeCompact)
+  /// instead of the legacy variants. Threaded down as a plain Bool so PostLink never has to
+  /// JSON-decode PostPageDefSettings in its per-row body.
+  var useNative: Bool = false
 
-  init(id: String, controller: UIViewController? = nil, repostAvatarRequest: ImageRequest? = nil, theme: SubPostsListTheme, showSub: Bool = false, secondary: Bool = false, compactPerSubreddit: Bool?, postStyleOverride: PostLinkDisplayStyle? = nil, contentWidth: CGFloat, defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings], inlineVideoKeyOverride: String? = nil) {
+  init(id: String, controller: UIViewController? = nil, repostAvatarRequest: ImageRequest? = nil, theme: SubPostsListTheme, showSub: Bool = false, secondary: Bool = false, compactPerSubreddit: Bool?, postStyleOverride: PostLinkDisplayStyle? = nil, contentWidth: CGFloat, defSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings], inlineVideoKeyOverride: String? = nil, useNative: Bool = false) {
     self.id = id
     self.controller = controller
     self.repostAvatarRequest = repostAvatarRequest
@@ -46,12 +50,41 @@ struct PostLink: View, Equatable, Identifiable {
     self.contentWidth = contentWidth
     self.defSettings = defSettings
     self.inlineVideoKeyOverride = inlineVideoKeyOverride
+    self.useNative = useNative
   }
 
   var body: some View {
     ScrollPerfProbe.shared.bump("cellBody")
     let style = defSettings.resolvedPostStyle(styleOverride: postStyleOverride, compactOverride: compactPerSubreddit)
     return Group {
+      if useNative {
+        switch style {
+        case .compact:
+          PostLinkNativeCompact(
+            id: id,
+            controller: controller,
+            theme: theme,
+            showSub: showSub,
+            secondary: secondary,
+            contentWidth: contentWidth,
+            defSettings: defSettings
+          )
+          .equatable()
+        default:
+          // .clean and .classic both collapse to the native "normal" row.
+          PostLinkNative(
+            id: id,
+            controller: controller,
+            theme: theme,
+            showSub: showSub,
+            secondary: secondary,
+            contentWidth: contentWidth,
+            defSettings: defSettings,
+            inlineVideoKeyOverride: inlineVideoKeyOverride
+          )
+          .equatable()
+        }
+      } else {
       switch style {
       case .compact:
         PostLinkCompact(
@@ -88,6 +121,7 @@ struct PostLink: View, Equatable, Identifiable {
           inlineVideoKeyOverride: inlineVideoKeyOverride
         )
         .equatable()
+      }
       }
     }
   }

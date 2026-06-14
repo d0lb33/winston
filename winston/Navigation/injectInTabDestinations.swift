@@ -91,6 +91,9 @@ extension View {
           case .appIcon:
             AppIconSetting()
               .diagnosticScreen("setting.appIcon")
+          case .designLab:
+            DesignLabGallery()
+              .diagnosticScreen("setting.designLab")
           }
         }
       })

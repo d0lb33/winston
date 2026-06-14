@@ -63,7 +63,10 @@ struct AccountSwitcherProvider<Content: View>: View {
   @StateObject private var transmitter = AccountSwitcherTransmitter()
   //  @State private var credIDToSelect: UUID? = nil
   @State private var accTransKit: AccountTransitionKit = .init()
-  
+  /// Live window size — drives the side-by-side mask so the app fills the window
+  /// after a rotation / resize instead of being clipped to the frozen launch width.
+  @State private var windowSize: CGSize = .screenSize
+
   var content: () -> Content
   
   func selectAccount() {
@@ -105,7 +108,7 @@ struct AccountSwitcherProvider<Content: View>: View {
     let showOverlay = (transmitter.positionInfo != nil && transmitter.showing) || accTransKit.focusCloser
     //    let completelyFree = true
     let focusFramePadding: Double = !showOverlay ? 0 : accTransKit.focusCloser ? 40 : 16
-    let frameSlideOffsetX = accTransKit.passLens ? (.screenW * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0
+    let frameSlideOffsetX = accTransKit.passLens ? (windowSize.width * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0
     let somethingGoinOnYet = accTransKit.focusCloser || transmitter.showing
     //    let parallaxW = .screenW * 0.25
     ZStack {
@@ -118,7 +121,7 @@ struct AccountSwitcherProvider<Content: View>: View {
           .zIndex(1)
         
         if let screenshot = transmitter.screenshot {
-          Image(uiImage: screenshot).resizable().frame(.screenSize)
+          Image(uiImage: screenshot).resizable().frame(windowSize)
             .blur(radius: accTransKit.focusCloser ? 15 : transmitter.showing ? 10 : 0)
           //            .offset(x: accTransKit.passLens ? (parallaxW * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0)
             .background(.black)
@@ -132,7 +135,7 @@ struct AccountSwitcherProvider<Content: View>: View {
         }
       }
       .overlay {
-        SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft) {
+        SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft, size: windowSize) {
           Rectangle().fill(
             EllipticalGradient(
               colors: [.gray.opacity(0.5), .gray.opacity(0.2)],
@@ -146,7 +149,7 @@ struct AccountSwitcherProvider<Content: View>: View {
         .allowsHitTesting(false)
       }
       .mask(
-        SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft) {
+        SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft, size: windowSize) {
           RR(showOverlay ? accTransKit.focusCloser ? 40 : 48 : .screenCornerRadius, .black).padding(.all, focusFramePadding)
         }
       )
@@ -162,6 +165,16 @@ struct AccountSwitcherProvider<Content: View>: View {
       }
     }
     .ignoresSafeArea(.all)
+    // A geometry change (rotation / resize / fold) is only used as a re-render TRIGGER —
+    // `proxy.size` here reports the safe-area-inset size, which would make the mask shorter
+    // than the window and clip the top/bottom. The mask must cover the FULL window, so we
+    // refresh the live metrics and use `.screenSize` (the key window's bounds) as the size.
+    .onGeometryChange(for: CGSize.self) { proxy in
+      proxy.size
+    } action: { _ in
+      ScreenMetrics.refresh()
+      windowSize = .screenSize
+    }
     .allowsHitTesting(!(showOverlay || accTransKit.passLens))
   }
 }
@@ -169,6 +182,10 @@ struct AccountSwitcherProvider<Content: View>: View {
 struct SideBySideWindow<C: View>: View {
   var passLens: Bool
   var willLensHeadLeft: Bool
+  /// Live window size, measured at render time by the parent. Using this instead of
+  /// the frozen `.screenW`/`.screenSize` is what lets the whole app fill the window
+  /// after a rotation / resize instead of being clipped to the launch (portrait) width.
+  var size: CGSize
   @ViewBuilder var content: () -> C
   var body: some View {
     HStack(spacing: 0) {
@@ -176,12 +193,12 @@ struct SideBySideWindow<C: View>: View {
         content()
         content()
       }
-      .frame(.screenSize)
+      .frame(size)
     }
-    .frame(width: .screenW * 2, alignment: .leading)
+    .frame(width: size.width * 2, alignment: .leading)
     .scaleEffect(1)
-    .offset(x: passLens ? (.screenW * (willLensHeadLeft ? -1 : 1)) : 0)
-    .frame(width: .screenW, alignment: willLensHeadLeft ? .leading : .trailing)
+    .offset(x: passLens ? (size.width * (willLensHeadLeft ? -1 : 1)) : 0)
+    .frame(width: size.width, alignment: willLensHeadLeft ? .leading : .trailing)
     .allowsHitTesting(false)
     .clipped()
     .drawingGroup()

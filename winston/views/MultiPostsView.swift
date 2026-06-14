@@ -34,7 +34,8 @@ struct MultiPostsView: View {
 	@Environment(\.horizontalSizeClass) private var hSizeClass
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
-  
+  @Default(.PostPageDefSettings) private var postPageDefSettings
+
   func searchCallback(str: String?) {
     searchText = str ?? ""
     clearAndReloadData()
@@ -153,7 +154,9 @@ struct MultiPostsView: View {
     Group {
       let filteredPosts = visiblePosts(posts.data)
 
-      if IPAD && hSizeClass == .regular {
+      if postPageDefSettings.useNativeCommentsView {
+        PostsFeedNative(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+      } else if IPAD && hSizeClass == .regular {
         SubredditPostsIPAD(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
       } else {
         SubredditPostsIOS(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)

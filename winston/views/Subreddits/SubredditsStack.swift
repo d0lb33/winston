@@ -14,7 +14,12 @@ struct SubredditsStack: View {
   @Default(.GeneralDefSettings) private var generalDefSettings // handle default feed selection routing
   @State private var columnVisibility: NavigationSplitViewVisibility = .automatic
   @State private var sidebarSize: CGSize = .zero
-  
+  /// Live width of the detail pane. Seeded with the launch width but kept in sync
+  /// via `.onGeometryChange` so the feed reflows on rotate / resize / split changes
+  /// instead of being stuck at the frozen `screenW` (which is captured once, in
+  /// portrait, and never updates — the root of the broken landscape layout).
+  @State private var detailWidth: CGFloat = .screenW
+
   var postContentWidth: CGFloat { .screenW - (!IPAD || columnVisibility == .detailOnly ? 0 : sidebarSize.width) }
   
   @State private var loaded = false
@@ -80,7 +85,12 @@ struct SubredditsStack: View {
           }
         }
       }
-      .environment(\.contentWidth, postContentWidth)
+      .onGeometryChange(for: CGFloat.self) { proxy in
+        proxy.size.width
+      } action: { newWidth in
+        if newWidth > 0 { detailWidth = newWidth }
+      }
+      .environment(\.contentWidth, detailWidth)
     }
 //    .swipeAnywhere()
     .environment(\.contentWidth, postContentWidth)
