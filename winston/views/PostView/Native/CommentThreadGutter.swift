@@ -16,18 +16,22 @@ struct ThreadRails: View {
   /// Width of one indentation level.
   static let step: CGFloat = 14
 
-  private static let palette: [Color] = [.blue, .teal, .green, .orange, .pink, .purple]
+  /// Aurora-tinted depth rails: the palette is the active theme's `railColors`
+  /// (accent-led), so the comment hierarchy reads in the same language as the rest
+  /// of the app. Falls back to the default Midnight palette through the environment.
+  @Environment(\.auroraTheme) private var theme
 
-  static func color(_ level: Int) -> Color {
+  static func color(_ level: Int, palette: [Color]) -> Color {
     palette[((level % palette.count) + palette.count) % palette.count]
   }
 
   var body: some View {
     if depth > 0 {
+      let palette = theme.railColors
       HStack(spacing: 0) {
         ForEach(0..<depth, id: \.self) { level in
           Capsule()
-            .fill(Self.color(level).opacity(0.5))
+            .fill(Self.color(level, palette: palette).opacity(0.55))
             .frame(width: 2)
             .frame(maxWidth: Self.step, alignment: .leading)
         }

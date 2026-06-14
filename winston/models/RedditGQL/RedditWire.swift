@@ -44,28 +44,46 @@ extension SearchPage {
 struct SearchCursors {
   var posts: String?
   var subreddits: String?
+  var comments: String?
   var users: String?
 
   static var empty: SearchCursors {
-    SearchCursors(posts: nil, subreddits: nil, users: nil)
+    SearchCursors(posts: nil, subreddits: nil, comments: nil, users: nil)
   }
 
   var hasAny: Bool {
-    posts != nil || subreddits != nil || users != nil
+    posts != nil || subreddits != nil || comments != nil || users != nil
+  }
+}
+
+enum SearchSuggestionKind: String {
+  case recent
+  case trending
+}
+
+struct SearchSuggestion: Identifiable, Equatable {
+  let kind: SearchSuggestionKind
+  let query: String
+  let displayQuery: String
+  let subtitle: String?
+
+  var id: String {
+    "\(kind.rawValue):\(query.lowercased())"
   }
 }
 
 struct RedditSearchPageResults {
   var posts: SearchPage<Post>
   var subreddits: SearchPage<Subreddit>
+  var comments: SearchPage<Comment>
   var users: SearchPage<User>
 
   static var empty: RedditSearchPageResults {
-    RedditSearchPageResults(posts: .empty, subreddits: .empty, users: .empty)
+    RedditSearchPageResults(posts: .empty, subreddits: .empty, comments: .empty, users: .empty)
   }
 
   var cursors: SearchCursors {
-    SearchCursors(posts: posts.nextAfter, subreddits: subreddits.nextAfter, users: users.nextAfter)
+    SearchCursors(posts: posts.nextAfter, subreddits: subreddits.nextAfter, comments: comments.nextAfter, users: users.nextAfter)
   }
 }
 
@@ -464,6 +482,20 @@ final class RedditWire: ObservableObject {
           extra["time"] = .string(time.rawValue)
         }
         let resp = try await client.homeFeedSduiResponse(
+          capturedVariables: ["sort": .string(gqlSort.sort.rawValue)],
+          after: after,
+          extra: extra
+        )
+        ids = resp.data?.postIDs ?? []
+        pageInfo = resp.data?.pageInfo
+      } else if name.lowercased() == "popular" {
+        // r/popular is a special feed with its own SDUI operation — the subreddit
+        // feed returns zero posts for the literal name "popular".
+        var extra: [String: JSONValue] = [:]
+        if let time = gqlSort.time {
+          extra["time"] = .string(time.rawValue)
+        }
+        let resp = try await client.popularFeedSduiResponse(
           capturedVariables: ["sort": .string(gqlSort.sort.rawValue)],
           after: after,
           extra: extra
@@ -1088,11 +1120,11 @@ final class RedditWire: ObservableObject {
 
     let posts: SearchPage<Post>
     let subs: SearchPage<Subreddit>
+    let comments: SearchPage<Comment>
     let users: SearchPage<User>
 
-    // Run the three panes concurrently. Each `dynamicSearch` round-trip is
-    // ~0.5s; serially that's ~1.5s for "All". `async let` overlaps the network
-    // waits (they suspend the main actor at the await), cutting it to ~0.5s.
+    // Run panes concurrently. Each `dynamicSearch` round-trip is around half a
+    // second; `async let` overlaps the network waits.
     if let cursors {
       async let postsTask: SearchPage<Post> = {
         guard let after = cursors.posts else { return .empty }
@@ -1102,24 +1134,31 @@ final class RedditWire: ObservableObject {
         guard let after = cursors.subreddits else { return .empty }
         return await searchSubredditsPage(trimmed, after: after)
       }()
+      async let commentsTask: SearchPage<Comment> = {
+        guard let after = cursors.comments else { return .empty }
+        return await searchCommentsPage(trimmed, after: after)
+      }()
       async let usersTask: SearchPage<UserData> = {
         guard let after = cursors.users else { return .empty }
         return await searchUsersPage(trimmed, after: after)
       }()
       posts = await postsTask
       subs = (await subsTask).mapItems(Subreddit.init(data:))
+      comments = await commentsTask
       users = (await usersTask).mapItems(User.init(data:))
     } else {
       async let postsTask = searchPostsPage(trimmed, contentWidth: contentWidth)
       async let subsTask = searchSubredditsPage(trimmed)
+      async let commentsTask = searchCommentsPage(trimmed)
       async let usersTask = searchUsersPage(trimmed)
       posts = await postsTask
       subs = (await subsTask).mapItems(Subreddit.init(data:))
+      comments = await commentsTask
       users = (await usersTask).mapItems(User.init(data:))
     }
 
-    status = "search all page '\(trimmed)' → \(posts.items.count) posts, \(subs.items.count) subs, \(users.items.count) users"
-    return RedditSearchPageResults(posts: posts, subreddits: subs, users: users)
+    status = "search all page '\(trimmed)' → \(posts.items.count) posts, \(subs.items.count) subs, \(comments.items.count) comments, \(users.items.count) users"
+    return RedditSearchPageResults(posts: posts, subreddits: subs, comments: comments, users: users)
   }
 
   /// Search all over GraphQL. Kept as an array-returning compatibility wrapper.
@@ -1131,6 +1170,25 @@ final class RedditWire: ObservableObject {
     let users = await searchUsers(trimmed, pageLimit: 2).map(User.init(data:))
     status = "search all '\(trimmed)' → \(posts.count) posts, \(subs.count) subs, \(users.count) users"
     return RedditSearchResults(posts: posts, subreddits: subs, users: users)
+  }
+
+  func searchTrendingSuggestions() async -> [SearchSuggestion] {
+    do {
+      let resp = try await client.searchDynamicTypeaheadNullStateResponse()
+      let suggestions = resp.data?.trendingQueries.map {
+        SearchSuggestion(
+          kind: .trending,
+          query: $0.query,
+          displayQuery: $0.displayQuery,
+          subtitle: $0.subtitle
+        )
+      } ?? []
+      status = "search trending suggestions → \(suggestions.count)"
+      return suggestions
+    } catch {
+      status = "search trending suggestions failed: \(describe(error))"
+      return []
+    }
   }
 
   func searchPostsPage(_ query: String, after: String? = nil, contentWidth: CGFloat = .screenW) async -> SearchPage<Post> {
@@ -1170,23 +1228,74 @@ final class RedditWire: ObservableObject {
     return posts
   }
 
-  /// Search typeahead over GraphQL. Kept for API compatibility; all-search is
-  /// preferred because the live typeahead response can be layout-only.
+  func searchCommunityTypeaheadPage(_ query: String) async -> SearchPage<SubredditData> {
+    await searchSubredditTypeaheadPage(query)
+  }
+
+  func searchCommentsPage(_ query: String, after: String? = nil) async -> SearchPage<Comment> {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return .empty }
+
+    let rawPage = await searchRawPage(trimmed, pane: .comments, after: after, disableSpellCorrection: isLikelyRedditIdentifier(trimmed))
+    let comments = rawPage.items
+      .flatMap(\.searchComments)
+      .map {
+        let data = CommentData(
+          graphQL: $0,
+          depth: 0,
+          parentID: $0.postInfo?.id,
+          postFullname: $0.postInfo?.id ?? "",
+          authorName: nil
+        )
+        return Comment(data: data)
+      }
+      .deduped { $0.id }
+
+    status = "search comments page '\(trimmed)' → \(comments.count), next=\(rawPage.nextAfter == nil ? "nil" : "yes")"
+    return SearchPage(items: comments, nextAfter: rawPage.nextAfter)
+  }
+
+  /// Search communities over GraphQL. First-page results use Android's
+  /// typeahead shape because it carries the ranked community suggestions shown
+  /// below query completions in Reddit's search UI.
   func searchSubredditsPage(_ query: String, after: String? = nil) async -> SearchPage<SubredditData> {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .empty }
     var subs: [SubredditData] = []
-    if after == nil, isLikelyRedditIdentifier(trimmed), let exact = await subredditData(name: trimmed) {
-      subs.append(exact)
+
+    if after == nil {
+      let typeaheadPage = await searchSubredditTypeaheadPage(trimmed)
+      subs.append(contentsOf: typeaheadPage.items)
     }
 
     let rawPage = await searchRawPage(trimmed, pane: .communities, after: after, disableSpellCorrection: isLikelyRedditIdentifier(trimmed))
     subs.append(contentsOf: rawPage.items.flatMap {
       $0.searchSubredditObjects.compactMap(SubredditData.init(graphQLSearchObject:))
     })
+
+    if subs.isEmpty, after == nil, isLikelyRedditIdentifier(trimmed), let exact = await subredditData(name: trimmed) {
+      subs.append(exact)
+    }
+
     subs = subs.deduped { ($0.display_name ?? $0.id).lowercased() }
     status = "search subreddits page '\(trimmed)' → \(subs.count), next=\(rawPage.nextAfter == nil ? "nil" : "yes")"
     return SearchPage(items: subs, nextAfter: rawPage.nextAfter)
+  }
+
+  private func searchSubredditTypeaheadPage(_ query: String) async -> SearchPage<SubredditData> {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return .empty }
+    do {
+      let resp = try await client.searchDynamicTypeaheadResponse(trimmed)
+      let subs = (resp.data?.rawData.searchTypeaheadSubredditObjects ?? [])
+        .compactMap(SubredditData.init(graphQLTypeaheadSuggestion:))
+        .deduped { ($0.display_name ?? $0.id).lowercased() }
+      status = "search subreddit typeahead '\(trimmed)' → \(subs.count)"
+      return SearchPage(items: subs, nextAfter: nil)
+    } catch {
+      status = "search subreddit typeahead failed: \(describe(error))"
+      return .empty
+    }
   }
 
   func searchSubreddits(_ query: String, pageLimit: Int = 4) async -> [SubredditData] {

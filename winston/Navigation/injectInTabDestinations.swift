@@ -32,7 +32,7 @@ extension View {
           case .postHighlighted(let post, let highlightID):
             RedditPostDestination(post: post, highlightID: highlightID)
           case .subFeed(let sub):
-            SubredditPosts(subreddit: sub).equatable()
+            AuroraSubFeedScreen(subreddit: sub)
               .diagnosticScreen("reddit.subFeed.\(sub.id)")
           case .subInfo(let sub):
             SubredditInfo(subreddit: sub)
@@ -103,7 +103,6 @@ extension View {
 private struct RedditPostDestination: View {
   @ObservedObject var post: Post
   var highlightID: String?
-  @Default(.PostPageDefSettings) private var postPageSettings
 
   private var subreddit: Subreddit? {
     post.winstonData?.subreddit ?? post.data.map { Subreddit(id: $0.subreddit) }
@@ -111,14 +110,8 @@ private struct RedditPostDestination: View {
 
   var body: some View {
     if let subreddit {
-      Group {
-        if postPageSettings.useNativeCommentsView {
-          PostViewNative(post: post, subreddit: subreddit, highlightID: highlightID)
-        } else {
-          PostView(post: post, subreddit: subreddit, highlightID: highlightID)
-        }
-      }
-      .diagnosticScreen(diagnosticName)
+      AuroraPostDetail(post: post, subreddit: subreddit, highlightID: highlightID)
+        .diagnosticScreen(diagnosticName)
     } else {
       ProgressView()
         .progressViewStyle(.circular)

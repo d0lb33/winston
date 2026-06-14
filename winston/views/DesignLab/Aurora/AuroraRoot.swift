@@ -2,70 +2,112 @@
 //  AuroraRoot.swift
 //  winston
 //
-//  Design Lab · Aurora family — the shared experience, parameterised by AuroraTheme.
+//  Aurora — the shared experience: an adaptive NavigationSplitView (communities
+//  sidebar | feed | post+comments). Collapses to a single stack on compact width
+//  (fold closed / iPhone), expands to 2–3 panes when wide (fold open / iPad / Stage
+//  Manager). The same value-based selections drive both layouts.
 //
-//  Navigation system: NavigationSplitView (sidebar | feed | post+comments).
-//  Resize behaviour: collapses to a single stack on compact width (fold closed),
-//  expands to 2–3 panes when wide (fold open / iPad / Stage Manager). The same
-//  value-based selections drive both layouts. Midnight / Dawn / Eclipse are the same
-//  views with a different theme injected through the environment.
+//  Wired to real data: the sidebar reads the signed-in account's CachedSub
+//  subscriptions, the feed paginates real posts, and the detail renders the real
+//  post + comment engine. The detail column hosts a NavigationStack bound to the
+//  tab's Router so deep links (comment-author profiles, crossposts, pushed feeds)
+//  flow through the existing Nav / injectInTabDestinations machinery.
 //
 
 import SwiftUI
+import Defaults
+import CoreData
 
 struct AuroraRoot: View {
-  var theme: AuroraTheme = .midnight
-  var displayName: String = "Aurora"
-  var onClose: () -> Void = {}
+  @ObservedObject var router: Router
+  /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
+  var themeOverride: AuroraTheme? = nil
+  var onClose: (() -> Void)? = nil
 
-  static let popularID = "__popular__"
+  @Default(.auroraThemeID) private var auroraThemeID
+  private var theme: AuroraTheme { themeOverride ?? auroraThemeID.theme }
+
+  @FetchRequest private var subs: FetchedResults<CachedSub>
 
   @State private var columnVisibility: NavigationSplitViewVisibility = .all
-  @State private var selectedSubID: String? = AuroraRoot.popularID
+  /// Drives which single column is shown when the split collapses on a phone, so
+  /// selecting a feed/post actually advances sidebar → feed → detail (without this
+  /// the selection updates state but the view stays on the sidebar).
+  @State private var preferredColumn: NavigationSplitViewColumn = .content
+  @State private var selectedSubID: String? = "popular"
   @State private var selectedPostID: String? = nil
   @State private var sort: AuroraSort = .hot
+  @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
 
-  private var subFilter: String? {
-    (selectedSubID == nil || selectedSubID == Self.popularID) ? nil : selectedSubID
-  }
-
-  private var feedTitle: String {
-    guard let id = subFilter else { return "Popular" }
-    return MockData.subreddits.first { $0.id == id }?.displayName ?? "Feed"
-  }
-
-  private var posts: [MockPost] {
-    let base = MockData.posts(in: subFilter)
-    switch sort {
-    case .hot: return base
-    case .new: return base.sorted { $0.createdOffset < $1.createdOffset }
-    case .top: return base.sorted { $0.score > $1.score }
+  init(router: Router, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
+    self.router = router
+    self.themeOverride = themeOverride
+    self.onClose = onClose
+    if let cid = Defaults[.GeneralDefSettings].redditCredentialSelectedID {
+      _subs = FetchRequest<CachedSub>(
+        sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
+        predicate: NSPredicate(format: "winstonCredentialID == %@", cid as CVarArg),
+        animation: .default
+      )
+    } else {
+      _subs = FetchRequest<CachedSub>(
+        sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
+        animation: .default
+      )
     }
   }
 
-  private var selectedPost: MockPost? {
-    guard let selectedPostID else { return nil }
-    return MockData.feed.first { $0.id == selectedPostID }
+  // MARK: - Selection → entity resolution
+
+  private func resolve(_ selection: String?) -> (sub: Subreddit, community: Subreddit?) {
+    guard let selection else { return (Subreddit(id: "popular"), nil) }
+    if feedsAndSuch.contains(selection) { return (Subreddit(id: selection), nil) }
+    if let cached = subs.first(where: { $0.uuid == selection }) {
+      let sub = Subreddit(data: SubredditData(entity: cached))
+      return (sub, sub)
+    }
+    return (Subreddit(id: selection), nil)
   }
 
-  private var selectedCommunity: MockSubreddit? {
-    guard let id = subFilter else { return nil }
-    return MockData.subreddits.first { $0.id == id }
+  /// Title + community derive from the feed the model is ACTUALLY showing, not from
+  /// `selectedSubID` — the sidebar List selection is flaky (it clears transiently when
+  /// the CachedSub @FetchRequest re-syncs), and deriving display state from it made the
+  /// header snap back to Popular. `model.subreddit` is the stable source of truth.
+  private var currentCommunity: Subreddit? {
+    feedsAndSuch.contains(model.subreddit.id) ? nil : model.subreddit
+  }
+
+  private var feedTitle: String {
+    let sub = model.subreddit
+    if feedsAndSuch.contains(sub.id) { return sub.id.capitalized }
+    return sub.data?.display_name_prefixed ?? "r/\(sub.id)"
+  }
+
+  private var selectedPost: Post? {
+    guard let selectedPostID else { return nil }
+    return model.post(id: selectedPostID)
   }
 
   var body: some View {
-    NavigationSplitView(columnVisibility: $columnVisibility) {
+    NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
-      AuroraFeed(posts: posts, title: feedTitle, community: selectedCommunity,
+      AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: $selectedPostID, sort: $sort)
         .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
-      if let selectedPost {
-        AuroraPostDetail(post: selectedPost)
-      } else {
-        AuroraDetailPlaceholder()
+      NavigationStack(path: $router.fullPath) {
+        Group {
+          if let selectedPost {
+            AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost))
+              .id(selectedPost.id)
+              .diagnosticScreen("aurora.post.\(selectedPost.id)")
+          } else {
+            AuroraDetailPlaceholder()
+          }
+        }
+        .injectInTabDestinations(viewControllerHolder: router.navController)
       }
     }
     .navigationSplitViewStyle(.balanced)
@@ -75,47 +117,82 @@ struct AuroraRoot: View {
     .preferredColorScheme(theme.colorScheme)
     .background { AuroraBackdrop(theme: theme) }
     .toolbarBackground(.hidden, for: .navigationBar)
-    .designLabImageSession()
     .overlay(alignment: .topTrailing) {
-      DesignLabClose(tint: theme.onGlass) { onClose() }
-        .padding(.top, 8)
-        .padding(.trailing, 14)
+      if let onClose {
+        DesignLabClose(tint: theme.onGlass) { onClose() }
+          .padding(.top, 8)
+          .padding(.trailing, 14)
+      }
     }
-    .onChange(of: sort) { _, _ in dropStaleSelection() }
-    .onChange(of: selectedSubID) { _, _ in dropStaleSelection() }
+    .diagnosticScreen("aurora.posts")
+    .onChange(of: selectedSubID) { _, newID in
+      // Ignore transient deselection (the sidebar List clears its selection when the
+      // CachedSub @FetchRequest re-syncs); only react to a real new pick.
+      guard let newID else { return }
+      let sub = resolve(newID).sub
+      AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
+      model.prepare(for: sub)
+      selectedPostID = nil
+      // Advance to the feed when a community/feed is picked from the sidebar.
+      preferredColumn = .content
+    }
+    .onChange(of: selectedPostID) { _, newID in
+      // A new feed selection resets the detail column to that post's root.
+      if !router.fullPath.isEmpty { router.fullPath = [] }
+      // Advance to the post detail when a card is selected.
+      if let newID {
+        AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
+        preferredColumn = .detail
+      }
+    }
   }
 
-  private func dropStaleSelection() {
-    if let pid = selectedPostID, !posts.contains(where: { $0.id == pid }) {
-      selectedPostID = nil
+  private func detailSubreddit(for post: Post) -> Subreddit {
+    // Use the post's REAL subreddit, never the feed's pseudo-sub. Posts loaded from
+    // Popular/Home carry winstonData.subreddit == the feed ("popular"/"home"), which
+    // is wrong for the detail header, permalink, and avatar fetches.
+    if let name = post.data?.subreddit, !name.isEmpty {
+      return Subreddit(id: name)
     }
+    return post.winstonData?.subreddit ?? Subreddit(id: selectedSubID ?? "")
   }
+
+  // MARK: - Sidebar
 
   private var sidebar: some View {
     List(selection: $selectedSubID) {
       Section {
-        Label("Popular", systemImage: "flame.fill")
-          .tag(Self.popularID)
-          .listRowBackground(Color.clear)
+        feedRow("Home", id: "home", systemImage: "house.fill")
+        feedRow("Popular", id: "popular", systemImage: "chart.line.uptrend.xyaxis")
+        feedRow("Saved", id: "saved", systemImage: "bookmark.fill")
+        // r/all is intentionally omitted: Reddit's feed GraphQL returns a server
+        // "internal error" for it (no SDUI feed exists), so there's nothing to show.
       }
       Section("Communities") {
-        ForEach(MockData.subreddits) { sub in
+        ForEach(subs.filter { $0.user_is_subscriber && $0.uuid != nil }, id: \.uuid) { sub in
           HStack(spacing: 10) {
-            AuroraSubIcon(sub: sub, size: 26)
-            VStack(alignment: .leading, spacing: 1) {
-              Text(sub.displayName).font(.subheadline.weight(.medium))
-              Text("\(MockFormatting.compactNumber(sub.members)) members")
-                .font(.caption2).foregroundStyle(.secondary)
-            }
+            AuroraSubIcon(name: sub.display_name ?? "r", size: 26)
+            Text("r/\(sub.display_name ?? "")")
+              .font(.subheadline.weight(.medium))
+              .lineLimit(1)
           }
-          .tag(sub.id)
+          // Tag with a plain String (not String?) so these rows share the fixed
+          // feeds' tag type — mixing String and String? tags silently breaks List
+          // selection for the inconsistent rows (here, the communities).
+          .tag(sub.uuid ?? "")
           .listRowBackground(Color.clear)
         }
       }
     }
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
-    .navigationTitle(displayName)
+    .navigationTitle("Aurora")
+  }
+
+  private func feedRow(_ label: String, id: String, systemImage: String) -> some View {
+    Label(label, systemImage: systemImage)
+      .tag(id)
+      .listRowBackground(Color.clear)
   }
 }
 
@@ -138,14 +215,13 @@ struct AuroraDetailPlaceholder: View {
   }
 }
 
-#Preview("Aurora · Midnight") {
-  AuroraRoot(theme: .midnight, displayName: "Aurora")
-}
-
-#Preview("Solstice · Dawn") {
-  AuroraRoot(theme: .dawn, displayName: "Solstice")
-}
-
-#Preview("Eclipse") {
-  AuroraRoot(theme: .eclipse, displayName: "Eclipse")
+/// Standalone Aurora shell for the Design Lab preview (owns a throwaway router so
+/// deep navigation still works inside the full-screen cover).
+struct AuroraDesignLabPreview: View {
+  let theme: AuroraTheme
+  let onClose: () -> Void
+  @StateObject private var router = Router(id: "aurora-designlab")
+  var body: some View {
+    AuroraRoot(router: router, themeOverride: theme, onClose: onClose)
+  }
 }

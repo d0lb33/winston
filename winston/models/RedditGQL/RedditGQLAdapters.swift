@@ -440,6 +440,38 @@ extension SubredditData {
 }
 
 extension SubredditData {
+  init?(graphQLTypeaheadSuggestion object: [String: JSONValue]) {
+    guard object["__typename"]?.stringValue == "TypeaheadSuggestion" else { return nil }
+
+    let behavior = object["behaviors"]?.objectValue?["default"]?.objectValue
+    let presentation = object["presentation"]?.objectValue
+    guard behavior?["__typename"]?.stringValue == "SearchCommunityNavigationBehavior" else { return nil }
+
+    let rawName = behavior?.string(for: ["name"])
+      ?? presentation?.string(for: ["name"])?.replacingOccurrences(of: "r/", with: "")
+    guard let resolvedName = rawName, !resolvedName.isEmpty else { return nil }
+
+    let fullID = behavior?.string(for: ["id"]) ?? object.string(for: ["id"])
+    let bareID = fullID.flatMap { $0.hasPrefix("t5_") ? String($0.dropFirst(3)) : $0 } ?? resolvedName
+
+    self.init(id: bareID)
+    self.name = fullID ?? (bareID.hasPrefix("t5_") ? bareID : "t5_\(bareID)")
+    self.display_name = resolvedName
+    self.display_name_prefixed = presentation?.string(for: ["name"]) ?? "r/\(resolvedName)"
+    self.title = resolvedName
+    self.public_description = presentation?.string(for: ["description"]) ?? ""
+    let iconURL = presentation?.string(for: ["icon"])
+    self.community_icon = iconURL
+    self.icon_img = iconURL
+    self.over18 = behavior?
+      .object(at: ["telemetry", "trackingContext", "subreddit"])?
+      .bool(for: ["isNsfw"])
+    self.quarantine = behavior?
+      .object(at: ["telemetry", "trackingContext", "subreddit"])?
+      .bool(for: ["isQuarantined"])
+    self.url = behavior?.string(for: ["url"]) ?? "/r/\(resolvedName)/"
+  }
+
   init?(graphQLSearchObject object: [String: JSONValue]) {
     let typeName = object["__typename"]?.stringValue?.lowercased() ?? ""
     let name = object.string(for: ["name", "displayName", "display_name", "subredditName"])
@@ -518,6 +550,10 @@ extension JSONValue {
     searchPostObjects.compactMap { JSONValue.object($0).decodeObject(SubredditPost.self) }
   }
 
+  var searchComments: [RedditPOC.Comment] {
+    searchCommentObjects.compactMap { JSONValue.object($0).decodeObject(RedditPOC.Comment.self) }
+  }
+
   var searchPostObjects: [[String: JSONValue]] {
     var result: [[String: JSONValue]] = []
     collectObjects(named: "post", typeName: "SubredditPost", into: &result)
@@ -528,6 +564,18 @@ extension JSONValue {
     var result: [[String: JSONValue]] = []
     collectObjects(named: "subreddit", typeName: "Subreddit", into: &result)
     collectObjects(named: "community", typeName: "Subreddit", into: &result)
+    return result
+  }
+
+  var searchTypeaheadSubredditObjects: [[String: JSONValue]] {
+    var result: [[String: JSONValue]] = []
+    collectTypeaheadSubredditSuggestions(into: &result)
+    return result
+  }
+
+  var searchCommentObjects: [[String: JSONValue]] {
+    var result: [[String: JSONValue]] = []
+    collectSearchCommentObjects(into: &result)
     return result
   }
 
@@ -580,6 +628,51 @@ extension JSONValue {
     case .array(let array):
       for value in array {
         value.collectSearchObjects(into: &result)
+      }
+    case .null, .bool, .number, .string:
+      break
+    }
+  }
+
+  func collectTypeaheadSubredditSuggestions(into result: inout [[String: JSONValue]]) {
+    switch self {
+    case .object(let object):
+      if
+        object["__typename"]?.stringValue == "TypeaheadSuggestion",
+        object["behaviors"]?.objectValue?["default"]?.objectValue?["__typename"]?.stringValue == "SearchCommunityNavigationBehavior"
+      {
+        result.append(object)
+        return
+      }
+      for value in object.values {
+        value.collectTypeaheadSubredditSuggestions(into: &result)
+      }
+    case .array(let array):
+      for value in array {
+        value.collectTypeaheadSubredditSuggestions(into: &result)
+      }
+    case .null, .bool, .number, .string:
+      break
+    }
+  }
+
+  func collectSearchCommentObjects(into result: inout [[String: JSONValue]]) {
+    switch self {
+    case .object(let object):
+      if
+        object["__typename"]?.stringValue == "SearchComment",
+        let comment = object["comment"]?.objectValue,
+        comment["content"] != nil || comment["authorInfo"] != nil || comment["postInfo"] != nil
+      {
+        result.append(comment)
+        return
+      }
+      for value in object.values {
+        value.collectSearchCommentObjects(into: &result)
+      }
+    case .array(let array):
+      for value in array {
+        value.collectSearchCommentObjects(into: &result)
       }
     case .null, .bool, .number, .string:
       break
@@ -648,6 +741,15 @@ private extension Dictionary where Key == String, Value == JSONValue {
       }
     }
     return nil
+  }
+
+  func object(at path: [String]) -> [String: JSONValue]? {
+    var current: [String: JSONValue]? = self
+    for key in path {
+      current = current?[key]?.objectValue
+      if current == nil { return nil }
+    }
+    return current
   }
 }
 

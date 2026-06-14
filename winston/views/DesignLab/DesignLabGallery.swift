@@ -30,7 +30,7 @@ struct DesignLabGallery: View {
     .navigationTitle("Design Lab")
     .navigationBarTitleDisplayMode(.inline)
     .fullScreenCover(item: $presented) { concept in
-      AuroraRoot(theme: concept.auroraTheme, displayName: concept.title) { presented = nil }
+      AuroraDesignLabPreview(theme: concept.auroraTheme) { presented = nil }
     }
   }
 

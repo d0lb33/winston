@@ -10,6 +10,7 @@
 //
 
 import SwiftUI
+import Defaults
 
 struct AuroraTheme: Equatable {
   var accent: Color
@@ -86,6 +87,54 @@ extension AuroraTheme {
     vignette: .black,
     vignetteStrength: 0.34
   )
+
+  /// Canonical name for the warm light preset (the mock called this `dawn`).
+  static var solstice: AuroraTheme { dawn }
+}
+
+// MARK: - Selectable theme identity (persisted)
+
+/// The user-selectable Aurora theme. Persisted in `Defaults[.auroraThemeID]`,
+/// resolved to a concrete `AuroraTheme` that drives the whole app's chrome.
+enum AuroraThemeID: String, CaseIterable, Identifiable, Codable, Hashable, Defaults.Serializable {
+  case midnight, solstice, eclipse
+  var id: String { rawValue }
+
+  var theme: AuroraTheme {
+    switch self {
+    case .midnight: .midnight
+    case .solstice: .solstice
+    case .eclipse:  .eclipse
+    }
+  }
+
+  var displayName: String {
+    switch self {
+    case .midnight: "Midnight"
+    case .solstice: "Solstice"
+    case .eclipse:  "Eclipse"
+    }
+  }
+
+  var tagline: String {
+    switch self {
+    case .midnight: "Glacial glass · calm & dark"
+    case .solstice: "Warm sunrise · soft & light"
+    case .eclipse:  "True black · electric serif"
+    }
+  }
+
+  var symbol: String {
+    switch self {
+    case .midnight: "sparkles"
+    case .solstice: "sun.horizon.fill"
+    case .eclipse:  "moon.stars.fill"
+    }
+  }
+}
+
+extension Defaults.Keys {
+  static let auroraThemeID = Key<AuroraThemeID>("auroraThemeID", default: .midnight)
 }
 
 // MARK: - Environment plumbing

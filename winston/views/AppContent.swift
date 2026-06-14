@@ -14,6 +14,7 @@ struct AppContent: View {
   
   @Default(.ThemesDefSettings) private var themesDefSettings
   @Default(.GeneralDefSettings) private var generalDefSettings
+  @Default(.auroraThemeID) private var auroraThemeID
 
   var selectedTheme: WinstonTheme { themesDefSettings.themesPresets.first { $0.id == themesDefSettings.selectedThemeID } ?? defaultTheme }
   
@@ -37,6 +38,7 @@ struct AppContent: View {
     .environment(\.setTabBarHeight, setTabBarHeight)
     .environmentObject(themeStore)
     .environment(\.useTheme, selectedTheme)
+    .environment(\.auroraTheme, auroraThemeID.theme)
     .onAppear { themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" } }
     .onChange(of: scenePhase) { newPhase in
       AppDiagnostics.shared.breadcrumb("Scene phase changed", metadata: ["phase": "\(newPhase)"])
