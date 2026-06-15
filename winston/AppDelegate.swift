@@ -78,13 +78,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 class CustomSceneDelegate: UIResponder, UIWindowSceneDelegate {
   func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-    ScreenMetrics.refresh()
+    if let windowScene = scene as? UIWindowScene {
+      ScreenMetrics.refresh(windowScene: windowScene)
+    }
   }
 
   /// Keep the cached window metrics in sync with rotation / resize / Stage Manager /
   /// fold so the whole app reflows instead of staying pinned to the launch width.
   func windowScene(_ windowScene: UIWindowScene, didUpdate previousCoordinateSpace: UICoordinateSpace, interfaceOrientation previousInterfaceOrientation: UIInterfaceOrientation, traitCollection previousTraitCollection: UITraitCollection) {
-    ScreenMetrics.refresh()
+    ScreenMetrics.refresh(windowScene: windowScene)
   }
 
   func windowScene(_ windowScene: UIWindowScene, performActionFor shortcutItem: UIApplicationShortcutItem, completionHandler: @escaping (Bool) -> Void) {

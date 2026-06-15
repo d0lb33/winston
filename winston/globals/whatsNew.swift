@@ -38,7 +38,7 @@ func getCurrentChangelog() -> WhatsNewCollection {
             for feature in features {
                 let systemImage = feature.systemImage
                 let featureTitle = feature.title
-                let featureSubtitle = feature.subtitle
+                let featureSubtitle = feature.subtitle ?? ""
 
                 // Create a new WhatsNew.Feature for each feature detail
                 let newFeature = WhatsNew.Feature(
@@ -103,8 +103,7 @@ struct WhatsNewRelease: Decodable {
 }
 
 struct WhatsNewFeatureDetail: Decodable {
-    let subtitle: String
+    let subtitle: String?
     let systemImage: String
     let title: String
 }
-

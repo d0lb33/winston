@@ -10,6 +10,8 @@ import Defaults
 
 struct AppContent: View {
   @Environment(\.scenePhase) var scenePhase
+  @ObservedObject private var nav = Nav.shared
+  @ObservedObject private var wire = RedditWire.shared
   
   @Default(.ThemesDefSettings) private var themesDefSettings
   @Default(.GeneralDefSettings) private var generalDefSettings
@@ -19,7 +21,7 @@ struct AppContent: View {
   
   let biometrics = Biometrics()
   @State private var isAuthenticating = false
-  @State private var tabBarHeight: Double = 0
+  @State private var tabBarHeight: Double = 62
   @State private var lockBlur: Int = 50 // Set initial startup blur
 
   func setTabBarHeight(_ val: Double) {
@@ -29,9 +31,12 @@ struct AppContent: View {
   var body: some View {
     AccountSwitcherProvider {
       GlobalDestinationsProvider {
-        Tabber(theme: selectedTheme).equatable()
+        AuroraAppShell(accountID: wire.accountScopeID)
       }
     }
+    .openFromWebListener()
+    .clipboardRedditLinkListener()
+    .globalLoaderProvider()
     .whatsNewSheet()
     .environment(\.tabBarHeight, tabBarHeight)
     .environment(\.setTabBarHeight, setTabBarHeight)
@@ -39,7 +44,7 @@ struct AppContent: View {
     .environment(\.auroraTheme, auroraThemeID.theme)
     .preferredColorScheme(auroraThemeID.theme.colorScheme)
     .onAppear { themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" } }
-    .onChange(of: scenePhase) { newPhase in
+    .onChange(of: scenePhase) { _, newPhase in
       AppDiagnostics.shared.breadcrumb("Scene phase changed", metadata: ["phase": "\(newPhase)"])
       // No auth on MacOS
       var runningOnMac = false
@@ -77,14 +82,14 @@ struct AppContent: View {
         }
         switch name {
         case "saved":
-          print("saved is selected")
+          nav.activeTab = .posts
+          nav[.posts].navigateContextually(to: .reddit(.subFeed(Subreddit(id: "saved"))))
         case "search":
-          print("search is selected")
-          // MANDRAKE
-          // activeTab = .search // Set the active tab to "Search"
+          nav.activeTab = .search
         default:
           print("default " + name)
         }
+        shortcutItemToProcess = nil
       case .inactive:
         // inactive
         AppDiagnostics.shared.markSessionClean("inactive")
@@ -99,6 +104,15 @@ struct AppContent: View {
     .blur(radius: CGFloat(lockBlur)) // Set lockscreen blur
     .overlay {
       DiagnosticsHUD()
+    }
+    .task(priority: .background) {
+      migrateOldDefaults()
+      cleanCredentialOrphanEntities()
+      removeDefaultThemeFromThemes()
+      checkForOnboardingStatus()
+      if !Defaults[.graphQLAccounts].isEmpty {
+        Task(priority: .background) { await updatePostsInBox() }
+      }
     }
   }
   
@@ -123,5 +137,98 @@ struct AppContent: View {
       UIApplicationShortcutItem(type: "Saved", localizedTitle: "Saved", localizedSubtitle: "", icon: UIApplicationShortcutIcon(type: .bookmark), userInfo: savedInfo),
     ]
     
+  }
+}
+
+private struct AuroraAppShell: View {
+  let accountID: UUID?
+
+  @ObservedObject private var nav = Nav.shared
+  @Environment(\.displayScale) private var displayScale
+
+  var body: some View {
+    GeometryReader { proxy in
+      AuroraRoot(router: nav[.posts], accountID: accountID)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+          AuroraBottomNav()
+        }
+        .environment(\.contentWidth, max(Double(proxy.size.width), 1))
+        .onAppear {
+          ScreenMetrics.refresh(size: proxy.size, scale: displayScale)
+        }
+        .onGeometryChange(for: CGSize.self) { geometry in
+          geometry.size
+        } action: { newSize in
+          ScreenMetrics.refresh(size: newSize, scale: displayScale)
+        }
+    }
+  }
+}
+
+private struct AuroraBottomNav: View {
+  @ObservedObject private var nav = Nav.shared
+  @ObservedObject private var wire = RedditWire.shared
+  @Default(.AppearanceDefSettings) private var appearanceDefSettings
+  @Environment(\.auroraTheme) private var theme
+  @Environment(\.setTabBarHeight) private var setTabBarHeight
+
+  private let barHeight: CGFloat = 62
+
+  var body: some View {
+    HStack(spacing: 0) {
+      navButton(.posts, title: "Posts", systemImage: "doc.text.image")
+      navButton(.inbox, title: "Inbox", systemImage: "bell.fill")
+      AccountSwitcherTrigger(onTap: { select(.me) }) {
+        bottomNavLabel(
+          title: appearanceDefSettings.showUsernameInTabBar ? wire.me?.data?.name ?? "Me" : "Me",
+          systemImage: "person.fill",
+          isSelected: nav.activeTab == .me
+        )
+      }
+      navButton(.search, title: "Search", systemImage: "magnifyingglass")
+      navButton(.settings, title: "Settings", systemImage: "gearshape.fill")
+    }
+    .frame(height: barHeight)
+    .frame(maxWidth: .infinity)
+    .background(.ultraThinMaterial)
+    .overlay(alignment: .top) {
+      Rectangle()
+        .fill(theme.hairline)
+        .frame(height: 0.7)
+    }
+    .onAppear {
+      setTabBarHeight(Double(barHeight))
+    }
+  }
+
+  private func navButton(_ tab: Nav.TabIdentifier, title: String, systemImage: String) -> some View {
+    Button {
+      select(tab)
+    } label: {
+      bottomNavLabel(title: title, systemImage: systemImage, isSelected: nav.activeTab == tab)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func bottomNavLabel(title: String, systemImage: String, isSelected: Bool) -> some View {
+    VStack(spacing: 4) {
+      Image(systemName: systemImage)
+        .font(.system(size: 18, weight: isSelected ? .semibold : .regular))
+      Text(title)
+        .font(.caption2.weight(isSelected ? .semibold : .regular))
+        .lineLimit(1)
+        .minimumScaleFactor(0.72)
+    }
+    .foregroundStyle(isSelected ? theme.accent : Color.secondary)
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .contentShape(Rectangle())
+  }
+
+  private func select(_ tab: Nav.TabIdentifier) {
+    if nav.activeTab == tab {
+      nav[tab].resetNavPath()
+    } else {
+      nav.activeTab = tab
+    }
   }
 }

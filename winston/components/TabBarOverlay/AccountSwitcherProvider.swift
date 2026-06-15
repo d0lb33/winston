@@ -61,6 +61,7 @@ struct AccountSwitcherProvider<Content: View>: View {
   }
   
   @StateObject private var transmitter = AccountSwitcherTransmitter()
+  @Environment(\.displayScale) private var displayScale
   //  @State private var credIDToSelect: UUID? = nil
   @State private var accTransKit: AccountTransitionKit = .init()
   /// Live window size — drives the side-by-side mask so the app fills the window
@@ -159,7 +160,7 @@ struct AccountSwitcherProvider<Content: View>: View {
         AccountSwitcherOverlayView(fingerPosition: positionInfo, appear: transmitter.showing, transmitter: transmitter).equatable().zIndex(3).allowsHitTesting(false)
           .zIndex(3)
           .onAppear { transmitter.showing = true }
-          .onChange(of: transmitter.showing) { if !$0 { selectAccount() } }
+          .onChange(of: transmitter.showing) { _, showing in if !showing { selectAccount() } }
           .allowsHitTesting(false)
       }
     }
@@ -170,9 +171,9 @@ struct AccountSwitcherProvider<Content: View>: View {
     // refresh the live metrics and use `.screenSize` (the key window's bounds) as the size.
     .onGeometryChange(for: CGSize.self) { proxy in
       proxy.size
-    } action: { _ in
-      ScreenMetrics.refresh()
-      windowSize = .screenSize
+    } action: { newSize in
+      ScreenMetrics.refresh(size: newSize, scale: displayScale)
+      windowSize = newSize
     }
     .allowsHitTesting(!(showOverlay || accTransKit.passLens))
   }

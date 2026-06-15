@@ -18,8 +18,37 @@ import SwiftUI
 import Defaults
 import CoreData
 
+private enum AuroraSidebarItem: Hashable {
+  case feed(String)
+  case search
+  case inbox
+  case me
+  case settings
+
+  var navTab: Nav.TabIdentifier {
+    switch self {
+    case .feed: return .posts
+    case .search: return .search
+    case .inbox: return .inbox
+    case .me: return .me
+    case .settings: return .settings
+    }
+  }
+
+  init(tab: Nav.TabIdentifier, fallbackFeedID: String) {
+    switch tab {
+    case .posts: self = .feed(fallbackFeedID)
+    case .search: self = .search
+    case .inbox: self = .inbox
+    case .me: self = .me
+    case .settings: self = .settings
+    }
+  }
+}
+
 struct AuroraRoot: View {
   @ObservedObject var router: Router
+  @ObservedObject private var nav = Nav.shared
   let accountID: UUID?
   /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
   var themeOverride: AuroraTheme? = nil
@@ -35,7 +64,7 @@ struct AuroraRoot: View {
   /// selecting a feed/post actually advances sidebar → feed → detail (without this
   /// the selection updates state but the view stays on the sidebar).
   @State private var preferredColumn: NavigationSplitViewColumn = .content
-  @State private var selectedSubID: String? = "popular"
+  @State private var selectedSidebarItem: AuroraSidebarItem? = .feed("popular")
   @State private var selectedPostID: String? = nil
   @State private var detailPost: Post? = nil
   @State private var detailHighlightID: String? = nil
@@ -94,6 +123,13 @@ struct AuroraRoot: View {
     return detailPost
   }
 
+  private var selectedFeedID: String {
+    if case .feed(let id)? = selectedSidebarItem {
+      return id
+    }
+    return model.subreddit.id
+  }
+
   var body: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
       sidebar
@@ -104,11 +140,7 @@ struct AuroraRoot: View {
       detailColumn
     }
     .navigationSplitViewStyle(.balanced)
-    .environment(\.auroraTheme, theme)
-    .tint(theme.accent)
-    .fontDesign(theme.fontDesign)
-    .preferredColorScheme(theme.colorScheme)
-    .background { AuroraBackdrop(theme: theme) }
+    .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
     .overlay(alignment: .topTrailing) {
       if let onClose {
@@ -121,23 +153,14 @@ struct AuroraRoot: View {
     .onAppear {
       consumeContextualDestinationIfNeeded()
     }
-    .onChange(of: selectedSubID) { _, newID in
-      // Ignore transient deselection (the sidebar List clears its selection when the
-      // CachedSub @FetchRequest re-syncs); only react to a real new pick.
-      guard let newID else { return }
-      let sub = resolve(newID).sub
-      AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
-      model.prepare(for: sub)
-      selectedPostID = nil
-      detailPost = nil
-      detailHighlightID = nil
-      feedPath = []
-      if !router.fullPath.isEmpty { router.fullPath = [] }
-      // Advance to the feed when a community/feed is picked from the sidebar.
-      preferredColumn = .content
+    .onChange(of: selectedSidebarItem) { _, newItem in
+      handleSidebarSelection(newItem)
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
+    }
+    .onChange(of: nav.activeTab) { _, newTab in
+      syncSidebarSelection(to: newTab)
     }
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
@@ -169,7 +192,7 @@ struct AuroraRoot: View {
   }
 
   private func resetAccountScopedState() {
-    selectedSubID = "popular"
+    selectedSidebarItem = .feed("popular")
     selectedPostID = nil
     detailPost = nil
     detailHighlightID = nil
@@ -178,6 +201,35 @@ struct AuroraRoot: View {
     model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
     if !router.fullPath.isEmpty { router.fullPath = [] }
     preferredColumn = .content
+  }
+
+  private func handleSidebarSelection(_ item: AuroraSidebarItem?) {
+    guard let item else { return }
+    if nav.activeTab != item.navTab {
+      nav.activeTab = item.navTab
+    }
+
+    switch item {
+    case .feed(let id):
+      let sub = resolve(id).sub
+      AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": id, "sub": sub.id])
+      model.prepare(for: sub)
+      selectedPostID = nil
+      detailPost = nil
+      detailHighlightID = nil
+      feedPath = []
+      if !router.fullPath.isEmpty { router.fullPath = [] }
+      preferredColumn = .content
+    case .search, .inbox, .me, .settings:
+      preferredColumn = .content
+    }
+  }
+
+  private func syncSidebarSelection(to tab: Nav.TabIdentifier) {
+    let next = AuroraSidebarItem(tab: tab, fallbackFeedID: selectedFeedID)
+    if selectedSidebarItem != next {
+      selectedSidebarItem = next
+    }
   }
 
   private func consumeContextualDestinationIfNeeded() {
@@ -220,6 +272,12 @@ struct AuroraRoot: View {
   }
 
   private func openContextualNonPost(_ destination: Router.NavDest) {
+    if case .reddit(.subFeed(let subreddit)) = destination, feedsAndSuch.contains(subreddit.id) {
+      selectedSidebarItem = .feed(subreddit.id)
+      preferredColumn = .content
+      return
+    }
+
     if selectedPost != nil || !router.fullPath.isEmpty {
       router.navigateTo(destination)
     } else {
@@ -253,12 +311,33 @@ struct AuroraRoot: View {
     }
   }
 
-  private var contentColumn: some View {
-    NavigationStack(path: $feedPath) {
-      feedContent
-        .injectInTabDestinations(viewControllerHolder: router.navController)
+  @ViewBuilder private var contentColumn: some View {
+    switch selectedSidebarItem ?? .feed("popular") {
+    case .feed:
+      NavigationStack(path: $feedPath) {
+        feedContent
+          .injectInTabDestinations(viewControllerHolder: router.navController)
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+    case .search:
+      WithAccountOnly {
+        Search(router: nav[.search])
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 500)
+    case .inbox:
+      WithAccountOnly {
+        Inbox(router: nav[.inbox])
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 500)
+    case .me:
+      WithAccountOnly {
+        Me(router: nav[.me])
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 500)
+    case .settings:
+      Settings(router: nav[.settings])
+        .navigationSplitViewColumnWidth(min: 360, ideal: 500)
     }
-    .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
 
   @ViewBuilder private var feedContent: some View {
@@ -297,7 +376,7 @@ struct AuroraRoot: View {
     if let name = post.data?.subreddit, !name.isEmpty {
       return Subreddit(id: name)
     }
-    return post.winstonData?.subreddit ?? Subreddit(id: selectedSubID ?? "")
+    return post.winstonData?.subreddit ?? Subreddit(id: selectedFeedID)
   }
 
   private func selectSavedPost(_ post: Post) {
@@ -320,7 +399,7 @@ struct AuroraRoot: View {
   // MARK: - Sidebar
 
   private var sidebar: some View {
-    List(selection: $selectedSubID) {
+    List(selection: $selectedSidebarItem) {
       Section {
         feedRow("Home", id: "home", systemImage: "house.fill")
         feedRow("Popular", id: "popular", systemImage: "chart.line.uptrend.xyaxis")
@@ -331,10 +410,7 @@ struct AuroraRoot: View {
       Section("Communities") {
         ForEach(subs.filter { $0.user_is_subscriber && $0.uuid != nil }, id: \.uuid) { sub in
           AuroraSidebarCommunityRow(cachedSub: sub)
-          // Tag with a plain String (not String?) so these rows share the fixed
-          // feeds' tag type — mixing String and String? tags silently breaks List
-          // selection for the inconsistent rows (here, the communities).
-          .tag(sub.uuid ?? "")
+          .tag(AuroraSidebarItem.feed(sub.uuid ?? ""))
           .listRowBackground(Color.clear)
         }
       }
@@ -354,8 +430,26 @@ struct AuroraRoot: View {
 
   private func feedRow(_ label: String, id: String, systemImage: String) -> some View {
     Label(label, systemImage: systemImage)
-      .tag(id)
+      .tag(AuroraSidebarItem.feed(id))
       .listRowBackground(Color.clear)
+  }
+
+}
+
+extension View {
+  func auroraMeasuredColumn(maxWidth: CGFloat = 1300) -> some View {
+    self
+      .frame(maxWidth: maxWidth)
+      .frame(maxWidth: .infinity)
+  }
+
+  func auroraShellChrome(theme: AuroraTheme) -> some View {
+    self
+      .environment(\.auroraTheme, theme)
+      .tint(theme.accent)
+      .fontDesign(theme.fontDesign)
+      .preferredColorScheme(theme.colorScheme)
+      .background { AuroraBackdrop(theme: theme) }
   }
 }
 

@@ -26,7 +26,7 @@ extension UIScreen {
 }
 
 extension CGFloat {
-  static var screenCornerRadius: CGFloat =  UIApplication.shared.windows.first?.screen.displayCornerRadius ?? 0
+  static var screenCornerRadius: CGFloat { ScreenMetrics.cornerRadius }
 }
 
 extension Double {

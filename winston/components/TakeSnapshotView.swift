@@ -13,10 +13,12 @@ struct TakeSnapshotView: UIViewRepresentable {
   func makeUIView(context: Context) -> UIView {
     context.coordinator.parent = self
     let view = UIView()
+    context.coordinator.hostView = view
     return view
   }
   func updateUIView(_ view: UIView, context: Context) {
     context.coordinator.parent = self
+    context.coordinator.hostView = view
     if takeScreenshot && screenshot == nil { context.coordinator.takeScreenshotAndSave() }
   }
   func makeCoordinator() -> Coordinator {
@@ -25,13 +27,14 @@ struct TakeSnapshotView: UIViewRepresentable {
   
   class Coordinator: NSObject {
     var parent: TakeSnapshotView
+    weak var hostView: UIView?
     
     init(parent: TakeSnapshotView) {
       self.parent = parent
     }
     
     func takeScreenshotAndSave() {
-      guard let view = UIApplication.shared.windows.first?.rootViewController?.view else {
+      guard let view = hostView?.window?.rootViewController?.view else {
         return
       }
       

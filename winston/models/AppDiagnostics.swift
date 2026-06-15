@@ -336,7 +336,7 @@ final class AppDiagnostics: ObservableObject {
       "systemVersion": device.systemVersion,
       "name": device.name,
       "identifierForVendor": device.identifierForVendor?.uuidString ?? "unknown",
-      "screen": "\(Int(UIScreen.main.bounds.width))x\(Int(UIScreen.main.bounds.height)) @\(UIScreen.main.scale)x",
+      "screen": "\(Int(ScreenMetrics.bounds.width))x\(Int(ScreenMetrics.bounds.height)) @\(ScreenMetrics.scale)x",
       "locale": Locale.current.identifier,
       "timeZone": TimeZone.current.identifier
     ]

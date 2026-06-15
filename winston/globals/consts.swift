@@ -11,13 +11,13 @@ import SwiftUI
 import HighlightedTextEditor
 import Lottie
 
-let IPAD = UIDevice.current.userInterfaceIdiom == .pad
+var IPAD: Bool { ScreenMetrics.bounds.width >= 700 }
 let spring = Animation.interpolatingSpring(stiffness: 300, damping: 30, initialVelocity: 0)
 let draggingAnimation = Animation.interpolatingSpring(stiffness: 1000, damping: 75, initialVelocity: 0)
 let collapsedPresentation = PresentationDetent.height(75)
 let redditApiSettingsUrl = URL(string: "https://www.reddit.com/prefs/apps")!
 let compactModeThumbSize: CGFloat = 75
-let screenScale = UIScreen.main.scale
+var screenScale: CGFloat { ScreenMetrics.scale }
 let colorLottieKeypath = AnimationKeypath(keypath: "**.Color")
 let emptyColorLottieKeypath = AnimationKeypath(keypath: "**.EmptyKeyPath")
 let feedsAndSuch = ["home", "saved", "all", "popular"]
@@ -25,12 +25,7 @@ let IMAGES_FORMATS = [".gif", ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff",
 let VIDEOS_FORMATS = [".mov", ".mp4", ".avi", ".mkv", ".flv", ".wmv", ".mpg", ".mpeg", ".webm"]
 
 func getSafeArea()->UIEdgeInsets{
-  let keyWindow = UIApplication
-    .shared
-    .connectedScenes
-    .compactMap { ($0 as? UIWindowScene)?.keyWindow }
-    .first
-  return (keyWindow?.safeAreaInsets) ?? UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+  ScreenMetrics.safeAreaInsets
 }
 
 extension String {

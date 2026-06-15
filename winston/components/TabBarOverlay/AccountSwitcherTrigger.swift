@@ -85,8 +85,8 @@ struct RadialMenuTriggerButton: UIViewRepresentable {
     }
     
     
-    func takeScreenshotAndSave() {
-      guard let view = UIApplication.shared.windows.first?.rootViewController?.view else {
+    func takeScreenshotAndSave(from sourceView: UIView?) {
+      guard let view = sourceView?.window?.rootViewController?.view else {
         return
       }
       let renderer = UIGraphicsImageRenderer(size: view.bounds.size)
@@ -103,12 +103,13 @@ struct RadialMenuTriggerButton: UIViewRepresentable {
     }
     
     @objc fileprivate func handleLongPress(_ sender: UILongPressGestureRecognizer) {
-      let location = sender.location(in: UIApplication.shared.windows.first?.rootViewController?.view)
+      let targetView = sender.view?.window?.rootViewController?.view ?? sender.view
+      let location = sender.location(in: targetView)
       switch sender.state {
       case .began:
         // Long press recognized, but the finger that hasn't moved yet
         //        parent.onPress?(true)
-        takeScreenshotAndSave()
+        takeScreenshotAndSave(from: sender.view)
         parent.onPressStarted?()
         parent.fingerPos = .init(location)
       case .changed:
@@ -125,4 +126,5 @@ struct RadialMenuTriggerButton: UIViewRepresentable {
     }
     
   }
+
 }

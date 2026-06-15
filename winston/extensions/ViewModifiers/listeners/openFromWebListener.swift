@@ -30,11 +30,8 @@ func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
 }
 
 private func openRedditDestination(_ destination: Router.NavDest) {
-  if Nav.shared.activeTab == .posts {
-    Nav.shared[.posts].navigateContextually(to: destination)
-  } else {
-    Nav.to(destination)
-  }
+  Nav.shared.activeTab = .posts
+  Nav.shared[.posts].navigateContextually(to: destination)
 }
 
 private let redditClipboardURLDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)
@@ -71,7 +68,7 @@ private struct ClipboardRedditLinkListenerModifier: ViewModifier {
       .onAppear {
         checkClipboardForRedditLink()
       }
-      .onChange(of: scenePhase) { newPhase in
+      .onChange(of: scenePhase) { _, newPhase in
         if newPhase == .active {
           checkClipboardForRedditLink()
         }

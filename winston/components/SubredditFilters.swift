@@ -84,9 +84,9 @@ struct SubredditFilters: View, Equatable {
               .frame(width: theme.postLinks.filterText.size - 2, height: theme.postLinks.filterText.size - 2)
               .opacity(0.8)
           }
-          .onChange(of: selectedPostStyle, perform: { value in
+          .onChange(of: selectedPostStyle) { _, value in
             setPostStyle(value)
-          })
+          }
           
           FlairFilter(filter: FilterData(text: "All", text_color: "000000", background_color: "D5D7D9"), filterFont: theme.postLinks.filterText, opacity: opacity, selected: selected, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter)
           
@@ -104,7 +104,7 @@ struct SubredditFilters: View, Equatable {
       .cornerRadius(4)
       .padding(.horizontal, paddingH)
     }
-    .frame(maxWidth: UIScreen.main.bounds.width)
+    .frame(maxWidth: .infinity)
     .padding(.vertical, theme.postLinks.filterPadding.vertical)
     .background(getBackgroundColor())
   }

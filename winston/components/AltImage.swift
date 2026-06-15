@@ -21,7 +21,7 @@ struct AltImage: UIViewRepresentable, Equatable {
     imageView.translatesAutoresizingMaskIntoConstraints = false
     imageView.clipsToBounds = true
     imageView.layer.shouldRasterize = true
-    imageView.layer.rasterizationScale = UIScreen.main.scale
+    imageView.layer.rasterizationScale = context.environment.displayScale
 //    imageView.scalesLargeContentImage
     imageView.contentMode = .scaleAspectFill
     
@@ -36,6 +36,7 @@ struct AltImage: UIViewRepresentable, Equatable {
   }
   
   func updateUIView(_ uiView: UIImageView, context: Context) {
+    uiView.layer.rasterizationScale = context.environment.displayScale
 //    uiView.frame.size = size ?? .zero
   }
 }

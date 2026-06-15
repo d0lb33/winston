@@ -19,22 +19,30 @@ import UIKit
 /// callers like `getPostDimensions` (which runs in `concurrentMap`) are fine —
 /// only `refresh()` touches UIKit, and only on the main thread.
 enum ScreenMetrics {
-  static var bounds: CGRect = UIScreen.main.bounds
-  static var scale: CGFloat = UIScreen.main.scale
+  static var bounds: CGRect = .zero
+  static var scale: CGFloat = 1
+  static var safeAreaInsets: UIEdgeInsets = .zero
+  static var cornerRadius: CGFloat = 0
 
   @MainActor
-  static func refresh() {
-    let scenes = UIApplication.shared.connectedScenes
-    let scene = (scenes.first { $0.activationState == .foregroundActive } as? UIWindowScene)
-      ?? (scenes.first { $0 is UIWindowScene } as? UIWindowScene)
-    guard let scene else { return }
+  static func refresh(windowScene scene: UIWindowScene) {
     let window = scene.keyWindow ?? scene.windows.first(where: { $0.isKeyWindow }) ?? scene.windows.first
     if let b = window?.bounds, b.width > 0, b.height > 0 {
       bounds = b
     } else {
       bounds = scene.screen.bounds
     }
+    safeAreaInsets = window?.safeAreaInsets ?? .zero
     scale = scene.screen.scale
+    cornerRadius = scene.screen.displayCornerRadius
+  }
+
+  @MainActor
+  static func refresh(size: CGSize, scale: CGFloat) {
+    if size.width > 0, size.height > 0 {
+      bounds = CGRect(origin: .zero, size: size)
+    }
+    self.scale = scale
   }
 }
 

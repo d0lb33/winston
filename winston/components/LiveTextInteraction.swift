@@ -55,7 +55,7 @@ class LiveTextImageView: UIImageView {
   // Use intrinsicContentSize to change the default image size
   // so that we can change the size in our SwiftUI View
   override var intrinsicContentSize: CGSize {
-    CGSize(width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height)
+    ScreenMetrics.bounds.size
   }
   
 }

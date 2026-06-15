@@ -24,7 +24,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 /// Image that you can share using a Share Sheet
 /// This will also display all the metadata correctly
-class ShareImage: UIActivityItemProvider {
+class ShareImage: UIActivityItemProvider, @unchecked Sendable {
   var image: UIImage
   
   override var item: Any {
@@ -48,12 +48,7 @@ class ShareImage: UIActivityItemProvider {
     let metadata = LPLinkMetadata()
     metadata.title = "Image"
     
-    var thumbnail: NSSecureCoding = NSNull()
-    if let imageData = self.image.pngData() {
-      thumbnail = NSData(data: imageData)
-    }
-    
-    metadata.imageProvider = NSItemProvider(item: thumbnail, typeIdentifier: "public.png")
+    metadata.imageProvider = NSItemProvider(object: self.image)
     
     return metadata
   }
@@ -66,15 +61,17 @@ class ShareUtils {
     
     DispatchQueue.main.async {
       let activityViewController = UIActivityViewController(activityItems: [url], applicationActivities: nil)
+      let presentingView = sourceView ?? UIApplication.shared.firstKeyWindow?.rootViewController?.view
       
       // Set the source view for iPad
       if let popoverController = activityViewController.popoverPresentationController {
-        popoverController.sourceView = sourceView ?? UIApplication.shared.windows.first
-        popoverController.sourceRect = sourceView?.bounds ?? CGRect(x: UIScreen.main.bounds.midX, y: UIScreen.main.bounds.midY, width: 0, height: 0)
+        let sourceBounds = presentingView?.bounds ?? .zero
+        popoverController.sourceView = presentingView
+        popoverController.sourceRect = sourceView?.bounds ?? CGRect(x: sourceBounds.midX, y: sourceBounds.midY, width: 0, height: 0)
         popoverController.permittedArrowDirections = []
       }
       
-      UIApplication.shared.windows.first?.rootViewController?.present(activityViewController, animated: true, completion: nil)
+      presentingView?.window?.rootViewController?.present(activityViewController, animated: true, completion: nil)
     }
   }
 }
