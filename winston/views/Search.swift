@@ -615,7 +615,7 @@ struct Search: View {
   
   @State private var searchViewLoaded: Bool = false
   @State private var listWidth: CGFloat = 0
-  @State private var splitNavigation: RedditSplitNavigationModel?
+  @State private var splitNavigation: ColumnNav?
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth

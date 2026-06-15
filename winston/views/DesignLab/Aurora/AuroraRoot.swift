@@ -45,8 +45,6 @@ struct AuroraRoot: View {
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
-  @State private var forwardSnapshotHost = ForwardEdgeSnapshotHost()
-  @State private var forwardSnapshotCache = AuroraForwardSnapshotCache()
 
   init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     self.router = router
@@ -113,14 +111,8 @@ struct AuroraRoot: View {
     .navigationSplitViewStyle(.balanced)
     .forwardEdgeSwipe(
       isActive: hSize != .regular,
-      canGoForward: { posts.nextForwardPreview != nil },
-      previewSnapshot: { posts.nextForwardPreview },
-      goForward: { posts.goForward() }
+      navigation: posts
     )
-    .background {
-      ForwardEdgeSnapshotAccessor(host: forwardSnapshotHost)
-        .allowsHitTesting(false)
-    }
     .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
     .overlay(alignment: .topTrailing) {
@@ -135,7 +127,6 @@ struct AuroraRoot: View {
       reloadSavedListSummaries()
       consumeContextualDestinationIfNeeded()
       consumeRouterPathIfNeeded(router.fullPath)
-      cacheForwardSnapshot(for: posts.snapshot)
     }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
@@ -166,27 +157,13 @@ struct AuroraRoot: View {
       posts.selectFeedPost(post)
       AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
     }
-    .onChange(of: posts.snapshot) { old, new in
+    .onChange(of: posts.forwardSnapshot) { old, new in
       // Record genuine user back-navigation so "go forward" can replay it. Purely
       // additive — never mutates the real nav paths.
-      let livePreview = forwardSnapshotHost.snapshot()
-      posts.recordTransition(from: old, to: new, preview: livePreview ?? forwardSnapshotCache.image(for: old))
-      cacheForwardSnapshot(for: new)
+      posts.recordForwardTransition(from: old, to: new)
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
-    }
-  }
-
-  private func cacheForwardSnapshot(for snapshot: PostsNav.Snapshot) {
-    scheduleForwardSnapshotCapture(for: snapshot, delay: 0.12)
-    scheduleForwardSnapshotCapture(for: snapshot, delay: 0.45)
-  }
-
-  private func scheduleForwardSnapshotCapture(for snapshot: PostsNav.Snapshot, delay: TimeInterval) {
-    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-      guard posts.snapshot == snapshot, let image = forwardSnapshotHost.snapshot() else { return }
-      forwardSnapshotCache.store(image, for: snapshot)
     }
   }
 
@@ -416,50 +393,6 @@ extension View {
       .fontDesign(theme.fontDesign)
       .preferredColorScheme(theme.colorScheme)
       .background { AuroraBackdrop(theme: theme) }
-  }
-}
-
-@MainActor
-private final class AuroraForwardSnapshotCache {
-  private var images: [String: UIImage] = [:]
-  private var accessOrder: [String] = []
-  private let limit = 16
-
-  func image(for snapshot: PostsNav.Snapshot) -> UIImage? {
-    let key = key(for: snapshot)
-    guard let image = images[key] else { return nil }
-    markAccessed(key)
-    return image
-  }
-
-  func store(_ image: UIImage, for snapshot: PostsNav.Snapshot) {
-    let key = key(for: snapshot)
-    images[key] = image
-    markAccessed(key)
-    trimIfNeeded()
-  }
-
-  private func key(for snapshot: PostsNav.Snapshot) -> String {
-    [
-      snapshot.preferredColumn.diagnosticsName,
-      snapshot.selectedPostID ?? "nil",
-      snapshot.detailPostID ?? "nil",
-      snapshot.detailHighlightID ?? "nil",
-      snapshot.contentPath.map(\.diagnosticsName).joined(separator: ">"),
-      snapshot.detailPath.map(\.diagnosticsName).joined(separator: ">")
-    ].joined(separator: "|")
-  }
-
-  private func markAccessed(_ key: String) {
-    accessOrder.removeAll { $0 == key }
-    accessOrder.append(key)
-  }
-
-  private func trimIfNeeded() {
-    while accessOrder.count > limit, let oldest = accessOrder.first {
-      accessOrder.removeFirst()
-      images[oldest] = nil
-    }
   }
 }
 

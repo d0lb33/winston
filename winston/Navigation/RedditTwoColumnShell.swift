@@ -2,79 +2,120 @@
 //  RedditTwoColumnShell.swift
 //  winston
 //
-//  Reusable split shell for Reddit roots whose source view is the leading column
-//  (Search, Me/profile, and similar non-sidebar surfaces).
+//  Reusable native split shell for Reddit roots whose leading column is a source view
+//  (Search, Me/profile, and similar non-sidebar surfaces). Rebuilt on `ColumnNav`: the
+//  detail stack is owned in the model (`detailPath`), so `NavigationSplitView` owns all
+//  compact↔regular collapse/expand and there is nothing to reconcile across size-class
+//  transitions. The legacy `Router` still delivers deep links (`Nav.to` / contextual);
+//  this shell observes it as a write-only inbox and translates into `nav`.
+//
+//  The same forward-history recorder used by Posts is attached here so compact-width
+//  users can swipe from the trailing edge to replay the most recent back navigation.
 //
 
 import SwiftUI
 
 struct RedditTwoColumnShell<Source: View>: View {
   @ObservedObject var router: Router
-  @State private var navigation = RedditSplitNavigationModel(contentColumn: .sidebar)
+  @State private var nav = ColumnNav()
   @Environment(\.auroraTheme) private var auroraTheme
+  @Environment(\.horizontalSizeClass) private var hSize
 
-  @ViewBuilder var source: (RedditSplitNavigationModel) -> Source
+  @ViewBuilder var source: (ColumnNav) -> Source
 
   var body: some View {
-    @Bindable var navigation = navigation
+    @Bindable var nav = nav
 
-    NavigationSplitView(columnVisibility: $navigation.columnVisibility, preferredCompactColumn: $navigation.preferredColumn) {
-      NavigationStack(path: $navigation.contentPath) {
-        source(navigation)
-          .injectInTabDestinations(viewControllerHolder: router.navController)
-          .redditNavigation(navigation, origin: .content)
+    NavigationSplitView(preferredCompactColumn: $nav.preferredColumn) {
+      NavigationStack(path: $nav.contentPath) {
+        source(nav)
+          .redditNavigation(nav, origin: .content)
+          .navigationDestination(for: Router.NavDest.self) { destination in
+            RouterDestinationView(destination: destination)
+          }
+          .toolbar { forwardToolbarItem }
       }
       .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
-      NavigationStack(path: $router.fullPath) {
-        RedditDetailColumnContent(navigation: navigation)
-          .injectInTabDestinations(viewControllerHolder: router.navController)
-          .redditNavigation(navigation, origin: .detail)
+      NavigationStack(path: $nav.detailPath) {
+        ColumnDetailContent(nav: nav)
+          .redditNavigation(nav, origin: .detail)
+          .navigationDestination(for: Router.NavDest.self) { destination in
+            RouterDestinationView(destination: destination)
+          }
+          .toolbar { forwardToolbarItem }
       }
     }
     .navigationSplitViewStyle(.balanced)
-    .redditForwardNavigationGesture(navigation: navigation) {
-      source(navigation)
-        .redditNavigation(navigation, origin: .content)
-    }
+    .forwardEdgeSwipe(
+      isActive: hSize != .regular,
+      navigation: nav
+    )
     .environment(\.auroraTheme, auroraTheme)
     .tint(auroraTheme.accent)
     .fontDesign(auroraTheme.fontDesign)
     .preferredColorScheme(auroraTheme.colorScheme)
     .onAppear {
-      navigation.attach(router: router)
-      _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
+      consumeContextualDestinationIfNeeded()
+      consumeRouterPathIfNeeded(router.fullPath)
     }
-    .onChange(of: router.fullPath) { oldPath, path in
-      navigation.recordRouterPathChange(from: oldPath, to: path)
-      if navigation.absorbRootNavigationPathIfNeeded(router: router) {
-        return
-      }
-      if path.isEmpty {
-        if navigation.detailPost == nil {
-          navigation.focusContent()
+    .onChange(of: router.contextualDestination) { _, _ in
+      consumeContextualDestinationIfNeeded()
+    }
+    .onChange(of: router.fullPath) { _, path in
+      consumeRouterPathIfNeeded(path)
+    }
+    .onChange(of: nav.forwardSnapshot) { old, new in
+      nav.recordForwardTransition(from: old, to: new)
+    }
+  }
+
+  @ToolbarContentBuilder private var forwardToolbarItem: some ToolbarContent {
+    if nav.canGoForward {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button { nav.goForward() } label: {
+          Image(systemName: "chevron.forward")
         }
-      } else {
-        navigation.focusDetail()
+        .accessibilityLabel("Go forward")
       }
     }
-    .onChange(of: navigation.preferredColumn) { oldColumn, newColumn in
-      navigation.recordPreferredColumnChange(from: oldColumn, to: newColumn)
+  }
+
+  /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
+  private func consumeContextualDestinationIfNeeded() {
+    guard let destination = router.contextualDestination else { return }
+    router.contextualDestination = nil
+    openExternalDestination(destination)
+  }
+
+  /// `Nav.to(...)` appends to the active tab's `Router.fullPath`. Translate anything that
+  /// lands there into `nav` and clear the Router (it no longer drives this surface).
+  private func consumeRouterPathIfNeeded(_ path: [Router.NavDest]) {
+    guard !path.isEmpty else { return }
+    for destination in path { openExternalDestination(destination) }
+    router.resetNavPath()
+  }
+
+  private func openExternalDestination(_ destination: Router.NavDest) {
+    if let detail = PostsNav.postDetail(from: destination) {
+      nav.openPostInDetail(detail.post, highlightID: detail.highlightID)
+    } else {
+      nav.navigate(destination, from: .content)
     }
   }
 }
 
-struct RedditDetailColumnContent: View {
-  let navigation: RedditSplitNavigationModel
+struct ColumnDetailContent: View {
+  let nav: ColumnNav
 
   var body: some View {
-    if let post = navigation.detailPost {
+    if let post = nav.detailPost {
       AuroraPostDetail(
         post: post,
         subreddit: detailSubreddit(for: post),
-        highlightID: navigation.detailHighlightID
+        highlightID: nav.detailHighlightID
       )
-      .id("\(post.id)-\(navigation.detailHighlightID ?? "root")")
+      .id("\(post.id)-\(nav.detailHighlightID ?? "root")")
       .diagnosticScreen("reddit.detail.\(post.id)")
     } else {
       AuroraDetailPlaceholder()
