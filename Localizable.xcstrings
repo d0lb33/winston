@@ -1729,6 +1729,9 @@
         }
       }
     },
+    "Go forward" : {
+
+    },
     "Gotcha!" : {
       "extractionState" : "stale",
       "localizations" : {

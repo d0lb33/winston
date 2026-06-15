@@ -104,26 +104,48 @@ final class PostsNav: RedditNavigator {
   // `goForward()`, so it cannot affect back/resize/fold correctness. Worst case is a rare
   // missed forward entry, never broken navigation.
 
-  enum ForwardEntry: Hashable {
+  enum ForwardEntry: Equatable {
     case detailPush(Router.NavDest)
     case contentPush(Router.NavDest)
-    case focusDetail
+    /// Re-focus a column the user backed away from (compact: detail → content → sidebar).
+    case focusColumn(NavigationSplitViewColumn)
   }
 
-  private(set) var forwardStack: [ForwardEntry] = []
+  struct ForwardRecord: Equatable {
+    let id = UUID()
+    let entry: ForwardEntry
+    let preview: UIImage?
+
+    static func == (lhs: ForwardRecord, rhs: ForwardRecord) -> Bool {
+      lhs.id == rhs.id
+    }
+  }
+
+  private(set) var forwardStack: [ForwardRecord] = []
   @ObservationIgnored private var suppressNextRecording = false
 
   var canGoForward: Bool { !forwardStack.isEmpty }
+  var nextForwardPreview: UIImage? { forwardStack.last?.preview }
 
   /// The nav state the recorder diffs. Equatable so the view can `.onChange(of:)` it.
   struct Snapshot: Equatable {
+    var selectedPostID: String?
+    var detailPostID: String?
+    var detailHighlightID: String?
     var contentPath: [Router.NavDest]
     var detailPath: [Router.NavDest]
     var preferredColumn: NavigationSplitViewColumn
   }
 
   var snapshot: Snapshot {
-    Snapshot(contentPath: contentPath, detailPath: detailPath, preferredColumn: preferredColumn)
+    Snapshot(
+      selectedPostID: selectedPostID,
+      detailPostID: detailPost?.id,
+      detailHighlightID: detailHighlightID,
+      contentPath: contentPath,
+      detailPath: detailPath,
+      preferredColumn: preferredColumn
+    )
   }
 
   // MARK: RedditNavigator
@@ -185,7 +207,11 @@ final class PostsNav: RedditNavigator {
 
   /// Replay the most recent thing the user backed out of.
   func goForward() {
-    guard let entry = forwardStack.popLast() else { return }
+    guard let record = forwardStack.popLast() else { return }
+    applyForwardEntry(record.entry)
+  }
+
+  private func applyForwardEntry(_ entry: ForwardEntry) {
     suppressNextRecording = true
     switch entry {
     case .detailPush(let destination):
@@ -194,27 +220,40 @@ final class PostsNav: RedditNavigator {
     case .contentPush(let destination):
       contentPath.append(destination)
       preferredColumn = .content
-    case .focusDetail:
-      preferredColumn = .detail
+    case .focusColumn(let column):
+      preferredColumn = column
     }
   }
 
   /// Driven from the view's `.onChange(of: posts.snapshot)`. Records the inverse of a
   /// genuine user back-navigation so `goForward()` can replay it.
-  func recordTransition(from old: Snapshot, to new: Snapshot) {
+  func recordTransition(from old: Snapshot, to new: Snapshot, preview: UIImage?) {
     if suppressNextRecording {
       suppressNextRecording = false
       return
     }
     if let popped = Self.poppedSuffix(old.detailPath, new.detailPath) {
-      forwardStack.append(contentsOf: popped.reversed().map(ForwardEntry.detailPush))
+      appendForwardEntries(popped.reversed().map(ForwardEntry.detailPush), preview: preview)
     }
     if let popped = Self.poppedSuffix(old.contentPath, new.contentPath) {
-      forwardStack.append(contentsOf: popped.reversed().map(ForwardEntry.contentPush))
+      appendForwardEntries(popped.reversed().map(ForwardEntry.contentPush), preview: preview)
     }
-    if old.preferredColumn == .detail, new.preferredColumn != .detail, detailPost != nil {
-      forwardStack.append(.focusDetail)
+    // Column back: the user moved to a shallower column (sidebar < content < detail), so
+    // forward can re-focus the deeper one they just left. This is what makes forward
+    // replay each step (… → feed → post) instead of jumping straight to the deepest one.
+    // Skip re-focusing an empty detail (nothing to show there).
+    if Self.columnDepth(new.preferredColumn) < Self.columnDepth(old.preferredColumn),
+       !(old.preferredColumn == .detail && detailPost == nil) {
+      appendForwardEntries([.focusColumn(old.preferredColumn)], preview: preview)
     }
+  }
+
+  /// Compact stack depth, so a "back" (decreasing depth) is distinguishable from a
+  /// "forward" (increasing depth) column move. sidebar < content < detail.
+  private static func columnDepth(_ column: NavigationSplitViewColumn) -> Int {
+    if column == .detail { return 2 }
+    if column == .content { return 1 }
+    return 0 // sidebar / automatic
   }
 
   // MARK: Internals
@@ -224,6 +263,10 @@ final class PostsNav: RedditNavigator {
   private func beginUserNavigation() {
     forwardStack = []
     suppressNextRecording = true
+  }
+
+  private func appendForwardEntries(_ entries: [ForwardEntry], preview: UIImage?) {
+    forwardStack.append(contentsOf: entries.map { ForwardRecord(entry: $0, preview: preview) })
   }
 
   private static func poppedSuffix(_ old: [Router.NavDest], _ new: [Router.NavDest]) -> [Router.NavDest]? {

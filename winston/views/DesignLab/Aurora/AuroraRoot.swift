@@ -7,11 +7,18 @@
 //  (fold closed / iPhone), expands to 2–3 panes when wide (fold open / iPad / Stage
 //  Manager). The same value-based selections drive both layouts.
 //
-//  Wired to real data: the sidebar reads the signed-in account's CachedSub
-//  subscriptions, the feed paginates real posts, and the detail renders the real
-//  post + comment engine. The detail column hosts a NavigationStack bound to the
-//  tab's Router so deep links (comment-author profiles, crossposts, pushed feeds)
-//  flow through the existing Nav / injectInTabDestinations machinery.
+//  Navigation rebuild: the surface's entire navigation state lives in one `PostsNav`
+//  (`@State`, owned here). The detail stack is `posts.detailPath` — owned in the model,
+//  not an external `Router.fullPath` — so there is nothing to reconcile across
+//  size-class transitions; `NavigationSplitView` re-renders straight from `posts` on
+//  resize/fold. `preferredCompactColumn` is the single framework-blessed knob for which
+//  column the collapsed layout shows; the framework moves it back on the system back
+//  button, and selecting a post moves it forward.
+//
+//  Legacy deep links (`Nav.to`, shortcuts, URL opens) still arrive via the tab `Router`
+//  (`contextualDestination` / `fullPath`); this view observes that Router as a write-only
+//  inbox and translates anything that lands there into `posts`. That bridge is removed
+//  when `Router` is finally deleted.
 //
 
 import SwiftUI
@@ -28,15 +35,18 @@ struct AuroraRoot: View {
   @Default(.auroraThemeID) private var auroraThemeID
   private var theme: AuroraTheme { themeOverride ?? auroraThemeID.theme }
 
+  @Environment(\.horizontalSizeClass) private var hSize
+
   @FetchRequest private var subs: FetchedResults<CachedSub>
 
-  /// Shared content/detail navigation state. Drives which single column is shown
-  /// when the split collapses and keeps content-origin links out of the detail stack.
-  @State private var navigation = RedditSplitNavigationModel(contentColumn: .content)
-  @State private var selectedSubID: String? = "popular"
+  /// Single source of truth for this surface's navigation. The detail stack lives inside
+  /// it, so the split re-renders straight from this on resize/fold.
+  @State private var posts = PostsNav()
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
+  @State private var forwardSnapshotHost = ForwardEdgeSnapshotHost()
+  @State private var forwardSnapshotCache = AuroraForwardSnapshotCache()
 
   init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     self.router = router
@@ -71,7 +81,7 @@ struct AuroraRoot: View {
   }
 
   /// Title + community derive from the feed the model is ACTUALLY showing, not from
-  /// `selectedSubID` — the sidebar List selection is flaky (it clears transiently when
+  /// `posts.community` — the sidebar List selection is flaky (it clears transiently when
   /// the CachedSub @FetchRequest re-syncs), and deriving display state from it made the
   /// header snap back to Popular. `model.subreddit` is the stable source of truth.
   private var currentCommunity: Subreddit? {
@@ -83,16 +93,16 @@ struct AuroraRoot: View {
   }
 
   private var selectedPost: Post? {
-    if let selectedPostID = navigation.selectedPostID, let post = model.post(id: selectedPostID) {
+    if let id = posts.selectedPostID, let post = model.post(id: id) {
       return post
     }
-    return navigation.detailPost
+    return posts.detailPost
   }
 
   var body: some View {
-    @Bindable var navigation = navigation
+    @Bindable var posts = posts
 
-    NavigationSplitView(columnVisibility: $navigation.columnVisibility, preferredCompactColumn: $navigation.preferredColumn) {
+    NavigationSplitView(preferredCompactColumn: $posts.preferredColumn) {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
@@ -101,8 +111,15 @@ struct AuroraRoot: View {
       detailColumn
     }
     .navigationSplitViewStyle(.balanced)
-    .redditForwardNavigationGesture(navigation: navigation) {
-      contentColumn
+    .forwardEdgeSwipe(
+      isActive: hSize != .regular,
+      canGoForward: { posts.nextForwardPreview != nil },
+      previewSnapshot: { posts.nextForwardPreview },
+      goForward: { posts.goForward() }
+    )
+    .background {
+      ForwardEdgeSnapshotAccessor(host: forwardSnapshotHost)
+        .allowsHitTesting(false)
     }
     .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
@@ -115,24 +132,23 @@ struct AuroraRoot: View {
     }
     .diagnosticScreen("aurora.posts")
     .onAppear {
-      navigation.attach(router: router)
-      _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
       reloadSavedListSummaries()
       consumeContextualDestinationIfNeeded()
+      consumeRouterPathIfNeeded(router.fullPath)
+      cacheForwardSnapshot(for: posts.snapshot)
     }
-    .onChange(of: selectedSubID) { _, newID in
+    .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
       // CachedSub @FetchRequest re-syncs); only react to a real new pick.
       guard let newID else { return }
       if newID == SavedListsRoute.overviewID || SavedListsRoute.listID(from: newID) != nil {
-        navigation.resetContentPathAndDetail()
+        posts.resetContentAndDetail()
         return
       }
       let sub = resolve(newID).sub
       AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
       model.prepare(for: sub)
-      navigation.resetContentPathAndDetail()
-      // Advance to the feed when a community/feed is picked from the sidebar.
+      posts.resetContentAndDetail()
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
@@ -141,130 +157,112 @@ struct AuroraRoot: View {
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
     }
-    .onChange(of: navigation.selectedPostID) { _, newID in
-      // Advance to the post detail when a card is selected.
-      if let newID {
-        if let post = model.post(id: newID) {
-          navigation.selectFeedPost(post)
-        }
-        AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
-      }
+    .onChange(of: router.fullPath) { _, path in
+      consumeRouterPathIfNeeded(path)
     }
-    .onChange(of: router.fullPath) { oldPath, path in
-      navigation.recordRouterPathChange(from: oldPath, to: path)
-      if navigation.absorbRootNavigationPathIfNeeded(router: router) {
-        return
-      }
-      // Any push (comment-author profile, crosspost, a sub/user tapped from a card)
-      // advances the collapsed phone layout to the detail column.
-      if path.isEmpty {
-        if selectedPost == nil {
-          navigation.focusContent()
-        }
-      } else {
-        navigation.focusDetail()
-      }
+    .onChange(of: posts.selectedPostID) { _, newID in
+      // Advance to the post detail when a card is selected (regular width).
+      guard let newID, let post = model.post(id: newID) else { return }
+      posts.selectFeedPost(post)
+      AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
     }
-    .onChange(of: navigation.preferredColumn) { oldColumn, newColumn in
-      navigation.recordPreferredColumnChange(from: oldColumn, to: newColumn)
+    .onChange(of: posts.snapshot) { old, new in
+      // Record genuine user back-navigation so "go forward" can replay it. Purely
+      // additive — never mutates the real nav paths.
+      let livePreview = forwardSnapshotHost.snapshot()
+      posts.recordTransition(from: old, to: new, preview: livePreview ?? forwardSnapshotCache.image(for: old))
+      cacheForwardSnapshot(for: new)
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
     }
   }
 
+  private func cacheForwardSnapshot(for snapshot: PostsNav.Snapshot) {
+    scheduleForwardSnapshotCapture(for: snapshot, delay: 0.12)
+    scheduleForwardSnapshotCapture(for: snapshot, delay: 0.45)
+  }
+
+  private func scheduleForwardSnapshotCapture(for snapshot: PostsNav.Snapshot, delay: TimeInterval) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+      guard posts.snapshot == snapshot, let image = forwardSnapshotHost.snapshot() else { return }
+      forwardSnapshotCache.store(image, for: snapshot)
+    }
+  }
+
+  /// Forward affordance shared by the content and detail columns. Appears only when
+  /// there is something to go forward to; replays the most recent back-navigation.
+  @ToolbarContentBuilder private var forwardToolbarItem: some ToolbarContent {
+    if posts.canGoForward {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button { posts.goForward() } label: {
+          Image(systemName: "chevron.forward")
+        }
+        .accessibilityLabel("Go forward")
+      }
+    }
+  }
+
+  // MARK: - Account / external navigation bridges
+
   private func resetAccountScopedState() {
-    selectedSubID = "popular"
-    navigation.resetContentPathAndDetail()
+    posts.community = "popular"
+    posts.resetContentAndDetail()
     sort = .hot
     model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
   }
 
+  /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
   private func consumeContextualDestinationIfNeeded() {
     guard let destination = router.contextualDestination else { return }
     router.contextualDestination = nil
-    openContextualDestination(destination)
+    openExternalDestination(destination)
   }
 
-  private func openContextualDestination(_ destination: Router.NavDest) {
-    promoteLeadingPostPathToDetailIfNeeded()
-
-    switch navigation.postDetail(from: destination) {
-    case .some(let detail):
-      openContextualPost(detail.post, highlightID: detail.highlightID)
-    case .none:
-      openContextualNonPost(destination)
-    }
+  /// `Nav.to(...)` appends to the active tab's `Router.fullPath`. Translate anything that
+  /// lands there into `posts` and clear the Router (it no longer drives this surface).
+  private func consumeRouterPathIfNeeded(_ path: [Router.NavDest]) {
+    guard !path.isEmpty else { return }
+    for destination in path { openExternalDestination(destination) }
+    router.resetNavPath()
   }
 
-  private func openContextualPost(_ post: Post, highlightID: String?) {
-    let destination: Router.NavDest
-    if let highlightID {
-      destination = .reddit(.postHighlighted(post, highlightID))
+  private func openExternalDestination(_ destination: Router.NavDest) {
+    if let detail = PostsNav.postDetail(from: destination) {
+      posts.openPostInDetail(detail.post, highlightID: detail.highlightID)
+    } else if case .reddit(.subFeed(let sub)) = destination, feedsAndSuch.contains(sub.id) {
+      posts.community = sub.id
     } else {
-      destination = .reddit(.post(post))
-    }
-
-    if selectedPost != nil || !router.fullPath.isEmpty {
-      navigation.navigate(destination, from: .detail)
-    } else if !navigation.contentPath.isEmpty {
-      navigation.clearForwardHistoryForNewBranch()
-      navigation.contentPath.append(destination)
-      navigation.focusContent()
-    } else {
-      navigation.openPostInDetail(post, highlightID: highlightID)
+      posts.navigate(destination, from: .content)
     }
   }
 
-  private func openContextualNonPost(_ destination: Router.NavDest) {
-    if case .reddit(.subFeed(let subreddit)) = destination, feedsAndSuch.contains(subreddit.id) {
-      selectedSubID = subreddit.id
-      navigation.focusContent()
-      return
-    }
-
-    if selectedPost != nil || !router.fullPath.isEmpty {
-      navigation.navigate(destination, from: .detail)
-    } else {
-      navigation.clearForwardHistoryForNewBranch()
-      navigation.contentPath.append(destination)
-      navigation.focusContent()
-    }
-  }
-
-  private func promoteLeadingPostPathToDetailIfNeeded() {
-    guard selectedPost == nil,
-          let first = router.fullPath.first,
-          let detail = navigation.postDetail(from: first)
-    else { return }
-
-    navigation.detailPost = detail.post
-    navigation.detailHighlightID = detail.highlightID
-    navigation.replaceRouterPathWithoutForwardRecording(Array(router.fullPath.dropFirst()))
-    navigation.focusDetail()
-  }
+  // MARK: - Columns
 
   private var contentColumn: some View {
-    @Bindable var navigation = navigation
+    @Bindable var posts = posts
 
-    return NavigationStack(path: $navigation.contentPath) {
-      feedContent
-        .injectInTabDestinations(viewControllerHolder: router.navController)
-        .redditNavigation(navigation, origin: .content)
+    return NavigationStack(path: $posts.contentPath) {
+      feedContent(selectedPostID: $posts.selectedPostID)
+        .redditNavigation(posts, origin: .content)
+        .navigationDestination(for: Router.NavDest.self) { destination in
+          RouterDestinationView(destination: destination)
+        }
+        .toolbar { forwardToolbarItem }
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
 
-  @ViewBuilder private var feedContent: some View {
-    if selectedSubID == SavedListsRoute.overviewID {
+  @ViewBuilder private func feedContent(selectedPostID: Binding<String?>) -> some View {
+    if posts.community == SavedListsRoute.overviewID {
       SavedListsOverviewScreen(
         mode: .manage,
-        onListSelected: { list in selectedSubID = SavedListsRoute.id(for: list.id) },
+        onListSelected: { list in posts.community = SavedListsRoute.id(for: list.id) },
         onPostSelected: selectSavedPost,
         onCommentSelected: selectSavedComment
       )
       .diagnosticScreen("aurora.savedLists")
-    } else if let listID = SavedListsRoute.listID(from: selectedSubID) {
+    } else if let listID = SavedListsRoute.listID(from: posts.community) {
       SavedListDetailScreen(
         listID: listID,
         onPostSelected: selectSavedPost,
@@ -276,24 +274,29 @@ struct AuroraRoot: View {
         .diagnosticScreen("aurora.saved")
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                 selectedPostID: $navigation.selectedPostID, sort: $sort) { destination in
-        navigation.navigate(destination, from: .content)
+                 selectedPostID: selectedPostID, sort: $sort) { destination in
+        posts.navigate(destination, from: .content)
       }
     }
   }
 
   private var detailColumn: some View {
-    NavigationStack(path: $router.fullPath) {
+    @Bindable var posts = posts
+
+    return NavigationStack(path: $posts.detailPath) {
       detailContent
-        .injectInTabDestinations(viewControllerHolder: router.navController)
-        .redditNavigation(navigation, origin: .detail)
+        .redditNavigation(posts, origin: .detail)
+        .navigationDestination(for: Router.NavDest.self) { destination in
+          RouterDestinationView(destination: destination)
+        }
+        .toolbar { forwardToolbarItem }
     }
   }
 
   @ViewBuilder private var detailContent: some View {
     if let selectedPost {
-      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: navigation.detailHighlightID)
-        .id("\(selectedPost.id)-\(navigation.detailHighlightID ?? "root")")
+      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: posts.detailHighlightID)
+        .id("\(selectedPost.id)-\(posts.detailHighlightID ?? "root")")
         .diagnosticScreen("aurora.post.\(selectedPost.id)")
     } else {
       AuroraDetailPlaceholder()
@@ -307,22 +310,24 @@ struct AuroraRoot: View {
     if let name = post.data?.subreddit, !name.isEmpty {
       return Subreddit(id: name)
     }
-    return post.winstonData?.subreddit ?? Subreddit(id: selectedSubID ?? "")
+    return post.winstonData?.subreddit ?? Subreddit(id: posts.community ?? "")
   }
 
   private func selectSavedPost(_ post: Post) {
-    navigation.openPostInDetail(post)
+    posts.openPostInDetail(post)
   }
 
   private func selectSavedComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-    navigation.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
+    posts.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
   }
 
   // MARK: - Sidebar
 
   private var sidebar: some View {
-    List(selection: $selectedSubID) {
+    @Bindable var posts = posts
+
+    return List(selection: $posts.community) {
       Section {
         Color.clear
           .frame(height: 44)
@@ -414,6 +419,50 @@ extension View {
   }
 }
 
+@MainActor
+private final class AuroraForwardSnapshotCache {
+  private var images: [String: UIImage] = [:]
+  private var accessOrder: [String] = []
+  private let limit = 16
+
+  func image(for snapshot: PostsNav.Snapshot) -> UIImage? {
+    let key = key(for: snapshot)
+    guard let image = images[key] else { return nil }
+    markAccessed(key)
+    return image
+  }
+
+  func store(_ image: UIImage, for snapshot: PostsNav.Snapshot) {
+    let key = key(for: snapshot)
+    images[key] = image
+    markAccessed(key)
+    trimIfNeeded()
+  }
+
+  private func key(for snapshot: PostsNav.Snapshot) -> String {
+    [
+      snapshot.preferredColumn.diagnosticsName,
+      snapshot.selectedPostID ?? "nil",
+      snapshot.detailPostID ?? "nil",
+      snapshot.detailHighlightID ?? "nil",
+      snapshot.contentPath.map(\.diagnosticsName).joined(separator: ">"),
+      snapshot.detailPath.map(\.diagnosticsName).joined(separator: ">")
+    ].joined(separator: "|")
+  }
+
+  private func markAccessed(_ key: String) {
+    accessOrder.removeAll { $0 == key }
+    accessOrder.append(key)
+  }
+
+  private func trimIfNeeded() {
+    while accessOrder.count > limit, let oldest = accessOrder.first {
+      accessOrder.removeFirst()
+      images[oldest] = nil
+    }
+  }
+}
+
 private struct AuroraSidebarCommunityRow: View {
   @ObservedObject var cachedSub: CachedSub
   @Environment(\.auroraTheme) private var theme
@@ -501,8 +550,9 @@ struct AuroraDetailPlaceholder: View {
   }
 }
 
-/// Standalone Aurora shell for the Design Lab preview (owns a throwaway router so
-/// deep navigation still works inside the full-screen cover).
+/// Standalone Aurora shell for the Design Lab preview (owns a throwaway router so deep
+/// navigation still works inside the full-screen cover; the rebuilt AuroraRoot owns its
+/// own PostsNav, so the preview is automatically isolated from the live Posts tab).
 struct AuroraDesignLabPreview: View {
   let theme: AuroraTheme
   let onClose: () -> Void
