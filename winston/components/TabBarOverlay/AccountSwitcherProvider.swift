@@ -149,11 +149,17 @@ struct AccountSwitcherProvider<Content: View>: View {
         .allowsHitTesting(false)
       }
       .mask(
-        SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft, size: windowSize) {
-          RR(showOverlay ? accTransKit.focusCloser ? 40 : 48 : .screenCornerRadius, .black).padding(.all, focusFramePadding)
+        Group {
+          if somethingGoinOnYet || accTransKit.passLens {
+            SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft, size: windowSize) {
+              RR(accTransKit.focusCloser ? 40 : 48, .black).padding(.all, focusFramePadding)
+            }
+          } else {
+            Rectangle().fill(.black)
+          }
         }
       )
-      .background(Color(.primaryInverted))
+      .background((somethingGoinOnYet || accTransKit.passLens) ? Color(.primaryInverted) : Color.clear)
       .animation(.spring, value: transmitter.showing)
       
       if let positionInfo = transmitter.positionInfo {
