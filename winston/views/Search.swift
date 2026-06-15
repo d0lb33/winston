@@ -615,34 +615,43 @@ struct Search: View {
   
   @State private var searchViewLoaded: Bool = false
   @State private var listWidth: CGFloat = 0
+  @State private var splitNavigation: RedditSplitNavigationModel?
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.isSearching) private var isSearching
   
   var body: some View {
-    NavigationStack(path: $router.fullPath) {
-	      List {
-	        listContent
-	          .listRowSeparator(.hidden)
-	          .listRowBackground(Color.clear)
-	          .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
-	      }
-	      .onGeometryChange(for: CGFloat.self) { geometry in
-	        geometry.size.width
-	      } action: { newWidth in
-	        let measuredWidth = max(1, newWidth)
-	        guard abs(measuredWidth - listWidth) > 0.5 else { return }
-	        var transaction = Transaction()
-	        transaction.disablesAnimations = true
-	        withTransaction(transaction) {
-	          listWidth = measuredWidth
-	        }
-	      }
-	      .scrollContentBackground(.hidden)
-	      .listStyle(.plain)
+    RedditTwoColumnShell(router: router) { navigation in
+      searchRoot
+        .onAppear {
+          splitNavigation = navigation
+        }
+    }
+//    .swipeAnywhere()
+  }
+
+  private var searchRoot: some View {
+    List {
+      listContent
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+    }
+    .onGeometryChange(for: CGFloat.self) { geometry in
+      geometry.size.width
+    } action: { newWidth in
+      let measuredWidth = max(1, newWidth)
+      guard abs(measuredWidth - listWidth) > 0.5 else { return }
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) {
+        listWidth = measuredWidth
+      }
+    }
+    .scrollContentBackground(.hidden)
+    .listStyle(.plain)
       .loader(model.loadingInitial, model.showEmpty)
-      .injectInTabDestinations(viewControllerHolder: router.navController)
       .scrollDismissesKeyboard(.automatic)
       .searchable(text: $searchQuery.text, placement: .toolbar)
       .autocorrectionDisabled(true)
@@ -729,8 +738,6 @@ struct Search: View {
       .onDisappear {
         model.cancel()
       }
-    }
-//    .swipeAnywhere()
   }
 
   @ViewBuilder private var listContent: some View {
@@ -886,20 +893,20 @@ struct Search: View {
   }
 
   private func selectPost(_ post: Post) {
-    router.fullPath.append(.reddit(.post(post)))
+    navigateRedditDestination(.reddit(.post(post)), model: splitNavigation, origin: .content)
   }
 
   private func selectComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-    router.fullPath.append(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
+    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: splitNavigation, origin: .content)
   }
 
   private func selectSubreddit(_ subreddit: Subreddit) {
-    router.fullPath.append(.reddit(.subFeed(subreddit)))
+    navigateRedditDestination(.reddit(.subFeed(subreddit)), model: splitNavigation, origin: .content)
   }
 
   private func selectUser(_ user: User) {
-    router.fullPath.append(.reddit(.user(user)))
+    navigateRedditDestination(.reddit(.user(user)), model: splitNavigation, origin: .content)
   }
 
   private func shows(_ scope: SearchScope) -> Bool {

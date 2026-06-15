@@ -13,7 +13,7 @@ struct Me: View {
   
   @State private var loading = true
   var body: some View {
-    NavigationStack(path: $router.fullPath) {
+    RedditTwoColumnShell(router: router) { _ in
       Group {
         if let user = wire.me {
           UserView(user: user)
@@ -30,7 +30,6 @@ struct Me: View {
             }
         }
       }
-      .injectInTabDestinations(viewControllerHolder: router.navController)
     }
 //    .swipeAnywhere()
   }

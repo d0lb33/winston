@@ -12,6 +12,8 @@ struct ShortCommentPostLink: View {
   @State var openedPost = false
   @State var openedSub = false
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   var body: some View {
     if let data = comment.data, let _ = data.link_id, let _ = data.subreddit {
       VStack(alignment: .leading, spacing: 6) {
@@ -41,6 +43,6 @@ struct ShortCommentPostLink: View {
 
   private func openCommentPost(data: CommentData) {
     guard let linkID = data.link_id, let subID = data.subreddit else { return }
-    Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
+    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 }

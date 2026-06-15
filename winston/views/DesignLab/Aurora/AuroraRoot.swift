@@ -30,16 +30,10 @@ struct AuroraRoot: View {
 
   @FetchRequest private var subs: FetchedResults<CachedSub>
 
-  @State private var columnVisibility: NavigationSplitViewVisibility = .all
-  /// Drives which single column is shown when the split collapses on a phone, so
-  /// selecting a feed/post actually advances sidebar → feed → detail (without this
-  /// the selection updates state but the view stays on the sidebar).
-  @State private var preferredColumn: NavigationSplitViewColumn = .content
+  /// Shared content/detail navigation state. Drives which single column is shown
+  /// when the split collapses and keeps content-origin links out of the detail stack.
+  @State private var navigation = RedditSplitNavigationModel(contentColumn: .content)
   @State private var selectedSubID: String? = "popular"
-  @State private var selectedPostID: String? = nil
-  @State private var detailPost: Post? = nil
-  @State private var detailHighlightID: String? = nil
-  @State private var feedPath: [Router.NavDest] = []
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
@@ -89,14 +83,16 @@ struct AuroraRoot: View {
   }
 
   private var selectedPost: Post? {
-    if let selectedPostID, let post = model.post(id: selectedPostID) {
+    if let selectedPostID = navigation.selectedPostID, let post = model.post(id: selectedPostID) {
       return post
     }
-    return detailPost
+    return navigation.detailPost
   }
 
   var body: some View {
-    NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $preferredColumn) {
+    @Bindable var navigation = navigation
+
+    NavigationSplitView(columnVisibility: $navigation.columnVisibility, preferredCompactColumn: $navigation.preferredColumn) {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
@@ -116,6 +112,8 @@ struct AuroraRoot: View {
     }
     .diagnosticScreen("aurora.posts")
     .onAppear {
+      navigation.attach(router: router)
+      _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
       reloadSavedListSummaries()
       consumeContextualDestinationIfNeeded()
     }
@@ -124,24 +122,14 @@ struct AuroraRoot: View {
       // CachedSub @FetchRequest re-syncs); only react to a real new pick.
       guard let newID else { return }
       if newID == SavedListsRoute.overviewID || SavedListsRoute.listID(from: newID) != nil {
-        selectedPostID = nil
-        detailPost = nil
-        detailHighlightID = nil
-        feedPath = []
-        if !router.fullPath.isEmpty { router.fullPath = [] }
-        collapseSidebarToContent()
+        navigation.resetContentPathAndDetail()
         return
       }
       let sub = resolve(newID).sub
       AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
       model.prepare(for: sub)
-      selectedPostID = nil
-      detailPost = nil
-      detailHighlightID = nil
-      feedPath = []
-      if !router.fullPath.isEmpty { router.fullPath = [] }
+      navigation.resetContentPathAndDetail()
       // Advance to the feed when a community/feed is picked from the sidebar.
-      collapseSidebarToContent()
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
@@ -150,28 +138,27 @@ struct AuroraRoot: View {
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
     }
-    .onChange(of: selectedPostID) { _, newID in
+    .onChange(of: navigation.selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected.
       if let newID {
         if let post = model.post(id: newID) {
-          detailPost = post
+          navigation.selectFeedPost(post)
         }
-        detailHighlightID = nil
-        // A new feed selection resets the detail column to that post's root.
-        if !router.fullPath.isEmpty { router.fullPath = [] }
         AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
-        preferredColumn = .detail
       }
     }
     .onChange(of: router.fullPath) { _, path in
+      if navigation.absorbRootNavigationPathIfNeeded(router: router) {
+        return
+      }
       // Any push (comment-author profile, crosspost, a sub/user tapped from a card)
       // advances the collapsed phone layout to the detail column.
       if path.isEmpty {
         if selectedPost == nil {
-          preferredColumn = .content
+          navigation.focusContent()
         }
       } else {
-        preferredColumn = .detail
+        navigation.focusDetail()
       }
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
@@ -181,21 +168,9 @@ struct AuroraRoot: View {
 
   private func resetAccountScopedState() {
     selectedSubID = "popular"
-    selectedPostID = nil
-    detailPost = nil
-    detailHighlightID = nil
-    feedPath = []
+    navigation.resetContentPathAndDetail()
     sort = .hot
     model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
-    if !router.fullPath.isEmpty { router.fullPath = [] }
-    preferredColumn = .content
-  }
-
-  private func collapseSidebarToContent() {
-    withAnimation {
-      preferredColumn = .content
-      columnVisibility = .doubleColumn
-    }
   }
 
   private func consumeContextualDestinationIfNeeded() {
@@ -207,7 +182,7 @@ struct AuroraRoot: View {
   private func openContextualDestination(_ destination: Router.NavDest) {
     promoteLeadingPostPathToDetailIfNeeded()
 
-    switch postDetail(from: destination) {
+    switch navigation.postDetail(from: destination) {
     case .some(let detail):
       openContextualPost(detail.post, highlightID: detail.highlightID)
     case .none:
@@ -225,61 +200,47 @@ struct AuroraRoot: View {
 
     if selectedPost != nil || !router.fullPath.isEmpty {
       router.navigateTo(destination)
-    } else if !feedPath.isEmpty {
-      feedPath.append(destination)
-      preferredColumn = .content
+    } else if !navigation.contentPath.isEmpty {
+      navigation.contentPath.append(destination)
+      navigation.focusContent()
     } else {
-      selectedPostID = nil
-      detailPost = post
-      detailHighlightID = highlightID
-      if !router.fullPath.isEmpty { router.fullPath = [] }
-      preferredColumn = .detail
+      navigation.openPostInDetail(post, highlightID: highlightID)
     }
   }
 
   private func openContextualNonPost(_ destination: Router.NavDest) {
     if case .reddit(.subFeed(let subreddit)) = destination, feedsAndSuch.contains(subreddit.id) {
       selectedSubID = subreddit.id
-      preferredColumn = .content
+      navigation.focusContent()
       return
     }
 
     if selectedPost != nil || !router.fullPath.isEmpty {
       router.navigateTo(destination)
     } else {
-      feedPath.append(destination)
-      preferredColumn = .content
+      navigation.contentPath.append(destination)
+      navigation.focusContent()
     }
   }
 
   private func promoteLeadingPostPathToDetailIfNeeded() {
     guard selectedPost == nil,
           let first = router.fullPath.first,
-          let detail = postDetail(from: first)
+          let detail = navigation.postDetail(from: first)
     else { return }
 
-    selectedPostID = nil
-    detailPost = detail.post
-    detailHighlightID = detail.highlightID
+    navigation.detailPost = detail.post
+    navigation.detailHighlightID = detail.highlightID
     router.fullPath = Array(router.fullPath.dropFirst())
-    preferredColumn = .detail
-  }
-
-  private func postDetail(from destination: Router.NavDest) -> (post: Post, highlightID: String?)? {
-    guard case .reddit(let reddit) = destination else { return nil }
-    switch reddit {
-    case .post(let post):
-      return (post, nil)
-    case .postHighlighted(let post, let highlightID):
-      return (post, highlightID)
-    default:
-      return nil
-    }
+    navigation.focusDetail()
   }
 
   private var contentColumn: some View {
-    NavigationStack(path: $feedPath) {
+    @Bindable var navigation = navigation
+
+    return NavigationStack(path: $navigation.contentPath) {
       feedContent
+        .redditNavigation(navigation, origin: .content)
         .injectInTabDestinations(viewControllerHolder: router.navController)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
@@ -306,8 +267,8 @@ struct AuroraRoot: View {
         .diagnosticScreen("aurora.saved")
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                 selectedPostID: $selectedPostID, sort: $sort) { destination in
-        feedPath.append(destination)
+                 selectedPostID: $navigation.selectedPostID, sort: $sort) { destination in
+        navigation.navigate(destination, from: .content)
       }
     }
   }
@@ -315,14 +276,15 @@ struct AuroraRoot: View {
   private var detailColumn: some View {
     NavigationStack(path: $router.fullPath) {
       detailContent
+        .redditNavigation(navigation, origin: .detail)
         .injectInTabDestinations(viewControllerHolder: router.navController)
     }
   }
 
   @ViewBuilder private var detailContent: some View {
     if let selectedPost {
-      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: detailHighlightID)
-        .id("\(selectedPost.id)-\(detailHighlightID ?? "root")")
+      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: navigation.detailHighlightID)
+        .id("\(selectedPost.id)-\(navigation.detailHighlightID ?? "root")")
         .diagnosticScreen("aurora.post.\(selectedPost.id)")
     } else {
       AuroraDetailPlaceholder()
@@ -340,20 +302,12 @@ struct AuroraRoot: View {
   }
 
   private func selectSavedPost(_ post: Post) {
-    selectedPostID = nil
-    detailPost = post
-    detailHighlightID = nil
-    if !router.fullPath.isEmpty { router.fullPath = [] }
-    preferredColumn = .detail
+    navigation.openPostInDetail(post)
   }
 
   private func selectSavedComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-    selectedPostID = nil
-    detailPost = Post(id: linkID, subID: subID)
-    detailHighlightID = comment.id
-    if !router.fullPath.isEmpty { router.fullPath = [] }
-    preferredColumn = .detail
+    navigation.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
   }
 
   // MARK: - Sidebar

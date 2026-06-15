@@ -25,6 +25,8 @@ struct UserView: View {
   @State private var reachedEndOfOverview = false
   @State private var lastItemId: String? = nil
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   @State private var dataTypeFilter: String = "" // Handles filtering for only posts or only comments.
   @State private var loadNextData: Bool = false
@@ -222,7 +224,7 @@ struct UserView: View {
                 switch item {
                 case .second(let comment):
                   if let data = comment.data, let link_id = data.link_id, let subID = data.subreddit {
-                    Nav.to(.reddit(.postHighlighted(Post(id: link_id, subID: subID), comment.id)))
+                    navigateRedditDestination(.reddit(.postHighlighted(Post(id: link_id, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
                   }
                 default:
                   return

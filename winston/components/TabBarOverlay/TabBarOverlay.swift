@@ -12,37 +12,25 @@ import SwiftUI
 struct TabBarOverlay: View {
   var meTabTap: () -> ()
   
-  @State private var bottomSafeArea = getSafeArea().bottom
-  
   @Environment(\.tabBarHeight) private var tabBarHeight
   var body: some View {
     if let tabBarHeight {
       GeometryReader { geo in
         let overlaySize = CGSize(width: geo.size.width, height: max(0, (tabBarHeight)))
-        HStack(spacing: 0) {
-          ForEach(Nav.TabIdentifier.allCases, id: \.rawValue) { tab in
-            if tab == .me {
-              AccountSwitcherTrigger(onTap: { Nav.shared.activeTab = .me }) {
-                Color.clear
-                  .frame(width: .screenW / 5, height: max(0, (tabBarHeight)))
-                  .background(Color.hitbox)
-                  .contentShape(Rectangle())
-              }
-            } else {
-              Color.clear
-                .frame(width: .screenW / 5, height: max(0, (tabBarHeight)))
-                .background(Color.hitbox)
-                .contentShape(Rectangle())
-                .overlay { SimpleTappableView { Nav.shared.activeTab = tab } }
-            }
-          }
+        let tabs = Nav.TabIdentifier.allCases
+        let tabWidth = overlaySize.width / CGFloat(tabs.count)
+        let meIndex = tabs.firstIndex(of: .me) ?? 0
+        let meCenterX = (CGFloat(meIndex) + 0.5) * tabWidth
+        let meHitWidth = min(tabWidth, 96)
+        let bottomSafeArea = max(geo.safeAreaInsets.bottom, getSafeArea().bottom)
+        AccountSwitcherTrigger(onTap: meTabTap) {
+          Color.clear
+            .frame(width: meHitWidth, height: overlaySize.height)
+            .background(Color.hitbox)
+            .contentShape(Rectangle())
         }
-        .frame(overlaySize)
-        .swipeAnywhere(size: overlaySize)
-        .frame(overlaySize)
-        .contentShape(Rectangle())
-        .padding(.bottom, bottomSafeArea)
-        .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+        .frame(width: meHitWidth, height: overlaySize.height)
+        .position(x: meCenterX, y: geo.size.height - bottomSafeArea - (overlaySize.height / 2))
       }
       .ignoresSafeArea(.all)
     }

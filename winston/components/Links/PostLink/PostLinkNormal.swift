@@ -33,6 +33,8 @@ struct PostLinkClean: View, Equatable, Identifiable {
   @EnvironmentObject var post: Post
   @EnvironmentObject var winstonData: PostWinstonData
   @EnvironmentObject var sub: Subreddit
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   var id: String
   weak var controller: UIViewController?
   var theme: SubPostsListTheme
@@ -52,13 +54,13 @@ struct PostLinkClean: View, Equatable, Identifiable {
   }
 
   func openPost() {
-    Nav.to(.reddit(.post(post)))
+    navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 
   func openSubreddit() {
     if let subName = post.data?.subreddit {
       withAnimation {
-        Nav.to(.reddit(.subFeed(Subreddit(id: subName))))
+        navigateRedditDestination(.reddit(.subFeed(Subreddit(id: subName))), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
     }
   }
@@ -220,6 +222,8 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   @EnvironmentObject var post: Post
   @EnvironmentObject var winstonData: PostWinstonData
   @EnvironmentObject var sub: Subreddit
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   var id: String
   weak var controller: UIViewController?
   var theme: SubPostsListTheme
@@ -239,13 +243,13 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   }
 
   func openPost() {
-    Nav.to(.reddit(.post(post)))
+    navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 
   func openSubreddit() {
     if let subName = post.data?.subreddit {
       withAnimation {
-        Nav.to(.reddit(.subFeed(Subreddit(id: subName))))
+        navigateRedditDestination(.reddit(.subFeed(Subreddit(id: subName))), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
     }
   }

@@ -20,6 +20,8 @@ struct SubredditLink: View {
   var noHPad = false
   var sub: Subreddit
   @State private var opened = false
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   var body: some View {
     if let data = sub.data {
       @State var isSubbed = data.user_is_subscriber ?? false
@@ -50,7 +52,7 @@ struct SubredditLink: View {
       .themedListRowLikeBG(disableBG: noHPad)
       .mask(RR(20, .black))
       .onTapGesture {
-        Nav.to(.reddit(.subFeed(sub)))
+        navigateRedditDestination(.reddit(.subFeed(sub)), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
     }
   }

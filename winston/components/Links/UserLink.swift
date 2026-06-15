@@ -18,6 +18,8 @@ struct UserLinkContainer: View {
 struct UserLink: View {
   var noHPad = false
   var user: User
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
     var body: some View {
       if let data = user.data {
         HStack(spacing: 12) {
@@ -40,7 +42,7 @@ struct UserLink: View {
         .themedListRowLikeBG()
         .mask(RR(20, .black))
         .onTapGesture {
-          Nav.to(.reddit(.user(user)))
+          navigateRedditDestination(.reddit(.user(user)), model: redditNavigationModel, origin: redditNavigationOrigin)
         }
       }
     }

@@ -11,6 +11,8 @@ import Defaults
 struct InboxNotificationLink: View {
   @State private var pressed = false
   @Environment(\.openURL) private var openURL
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   let notification: InboxNotification
   let markRead: () async -> Void
@@ -31,9 +33,9 @@ struct InboxNotificationLink: View {
         if let postID = notification.postBareID {
           let post = notification.subredditName.map { Post(id: postID, subID: $0) } ?? Post(id: postID)
           if let highlightID = notification.commentFullname {
-            Nav.to(.reddit(.postHighlighted(post, highlightID)))
+            navigateRedditDestination(.reddit(.postHighlighted(post, highlightID)), model: redditNavigationModel, origin: redditNavigationOrigin)
           } else {
-            Nav.to(.reddit(.post(post)))
+            navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
           }
         } else if let urlString = notification.deeplinkURL, let url = URL(string: urlString) {
           openURL(url)

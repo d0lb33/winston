@@ -235,7 +235,7 @@ struct VideoPlayerPost: View, Equatable {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "controller", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
           prepareForInlineDisplay(sharedVideo)
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
           recordVideoEvent(.debug, message: "VideoPlayerPost scene phase changed", sharedVideo: sharedVideo, extra: ["newPhase": scenePhaseDescription(newPhase), "branch": "controller"])
           if newPhase == .active {
             prepareForInlineDisplay(sharedVideo)
@@ -246,7 +246,7 @@ struct VideoPlayerPost: View, Equatable {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "controller"])
           handleInlineDisappear(sharedVideo)
         }
-        .onChange(of: fullscreen) { val in
+        .onChange(of: fullscreen) { _, val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
           syncInlineState(sharedVideo)
         }
@@ -273,7 +273,7 @@ struct VideoPlayerPost: View, Equatable {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
           prepareForInlineDisplay(sharedVideo)
         }
-        .onChange(of: scenePhase) { newPhase in
+        .onChange(of: scenePhase) { _, newPhase in
           recordVideoEvent(.debug, message: "VideoPlayerPost scene phase changed", sharedVideo: sharedVideo, extra: ["newPhase": scenePhaseDescription(newPhase), "branch": "swiftuiVideoPlayer"])
           if newPhase == .active {
             prepareForInlineDisplay(sharedVideo)
@@ -284,7 +284,7 @@ struct VideoPlayerPost: View, Equatable {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer"])
           handleInlineDisappear(sharedVideo)
         }
-        .onChange(of: fullscreen) { val in
+        .onChange(of: fullscreen) { _, val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
           syncInlineState(sharedVideo)
         }

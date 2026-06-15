@@ -74,9 +74,11 @@ struct BadgeView: View, Equatable {
   var likes: Bool? = nil
   var openSub: (() -> ())? = nil
   var subName: String? = nil
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
     
-  nonisolated func openUser() {
-    Nav.to(.reddit(.user(User(id: author))))
+  func openUser() {
+    navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
   
   var body: some View {

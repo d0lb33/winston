@@ -23,12 +23,14 @@ struct PostContent: View, Equatable {
   @State private var collapsed = false
   @Default(.PostPageDefSettings) private var defSettings
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   var contentWidth: CGFloat { .screenW - (selectedTheme.posts.padding.horizontal * 2) }
   
   func openSubreddit() {
     if let subName = post.data?.subreddit {
-      Nav.to(.reddit(.subFeed(Subreddit(id: subName))))
+      navigateRedditDestination(.reddit(.subFeed(Subreddit(id: subName))), model: redditNavigationModel, origin: redditNavigationOrigin)
     }
   }
   

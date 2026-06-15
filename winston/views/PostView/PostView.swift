@@ -338,6 +338,8 @@ private struct Toolbar: ToolbarContent {
   var subreddit: Subreddit
   var post: Post
   @Binding var sort: CommentSortOption
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   var body: some ToolbarContent {
     if !IPAD {
@@ -359,7 +361,9 @@ private struct Toolbar: ToolbarContent {
 
         if let data = subreddit.data, !feedsAndSuch.contains(subreddit.id) {
           SubredditIcon(subredditIconKit: data.subredditIconKit)
-            .onTapGesture { Nav.to(.reddit(.subInfo(subreddit))) }
+            .onTapGesture {
+              navigateRedditDestination(.reddit(.subInfo(subreddit)), model: redditNavigationModel, origin: redditNavigationOrigin)
+            }
         }
       }
       .animation(nil, value: sort)

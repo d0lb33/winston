@@ -21,6 +21,8 @@ struct PostLinkNative: View, Equatable, Identifiable {
   @EnvironmentObject var post: Post
   @EnvironmentObject var winstonData: PostWinstonData
   @EnvironmentObject var sub: Subreddit
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   var id: String
   weak var controller: UIViewController?
   var theme: SubPostsListTheme
@@ -36,17 +38,21 @@ struct PostLinkNative: View, Equatable, Identifiable {
 
   func markAsRead() async { await post.toggleSeen(true) }
 
-  func openPost() { Nav.to(.reddit(.post(post))) }
+  func openPost() {
+    navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+  }
 
   func openSubreddit() {
     if let subName = post.data?.subreddit {
-      withAnimation { Nav.to(.reddit(.subFeed(Subreddit(id: subName)))) }
+      withAnimation {
+        navigateRedditDestination(.reddit(.subFeed(Subreddit(id: subName))), model: redditNavigationModel, origin: redditNavigationOrigin)
+      }
     }
   }
 
   func openAuthor() {
     if let author = post.data?.author, !author.isEmpty, author != "[deleted]" {
-      Nav.to(.reddit(.user(User(id: author))))
+      navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
     }
   }
 

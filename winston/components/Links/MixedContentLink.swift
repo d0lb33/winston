@@ -19,6 +19,8 @@ struct MixedContentLink: View, Equatable {
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
   @Default(.CommentLinkDefSettings) private var commentLinkDefSettings
   @Environment(\.contentWidth) private var contentWidth
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   var body: some View {
     switch content {
@@ -50,6 +52,6 @@ struct MixedContentLink: View, Equatable {
 
   private func openCommentPost(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-    Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
+    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 }

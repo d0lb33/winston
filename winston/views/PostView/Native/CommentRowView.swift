@@ -27,6 +27,8 @@ struct CommentRowView: View {
 
   @State private var swipePresented = false
   @State private var loadingMore = false
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   private var indent: CGFloat { CGFloat(row.depth) * ThreadRails.step }
   private var bodyWidth: CGFloat { max(1, contentWidth - 32 - indent) }
@@ -127,7 +129,7 @@ struct CommentRowView: View {
           if row.isCollapsed {
             toggleCollapse()
           } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
-            Nav.to(.reddit(.user(User(id: author))))
+            navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
           }
         }
         .accessibilityAddTraits(.isButton)
@@ -253,9 +255,9 @@ struct CommentRowView: View {
       // Deep-link to the parent comment's context (cursor pagination loops on
       // these "too deep" continuations, so load the parent thread fresh instead).
       if let parentID = comment.data?.parent_id, parentID.hasPrefix("t1_") {
-        Nav.to(.reddit(.postHighlighted(post, parentID)))
+        navigateRedditDestination(.reddit(.postHighlighted(post, parentID)), model: redditNavigationModel, origin: redditNavigationOrigin)
       } else {
-        Nav.to(.reddit(.post(post)))
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
     } label: {
       HStack(spacing: 6) {

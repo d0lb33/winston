@@ -18,6 +18,8 @@ struct AuroraSubFeedScreen: View {
   @State private var model: AuroraFeedModel
   @State private var sort: SubListingSortOption = .hot
   @State private var selectedPostID: String?
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   init(subreddit: Subreddit) {
     self.subreddit = subreddit
@@ -32,11 +34,11 @@ struct AuroraSubFeedScreen: View {
       if subreddit.id == "saved" {
         AuroraSavedScreen(
           onPostSelected: { post in
-            Nav.to(.reddit(.post(post)))
+            navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
           },
           onCommentSelected: { comment in
             guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-            Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
+            navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
           }
         )
       } else {
@@ -57,7 +59,7 @@ struct AuroraSubFeedScreen: View {
       // Stack-push the post rather than driving a detail pane.
       if let id, let post = model.post(id: id) {
         selectedPostID = nil
-        Nav.to(.reddit(.post(post)))
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
     }
   }

@@ -164,13 +164,13 @@ struct AccountSwitcherProvider<Content: View>: View {
       
       if let positionInfo = transmitter.positionInfo {
         AccountSwitcherOverlayView(fingerPosition: positionInfo, appear: transmitter.showing, transmitter: transmitter).equatable().zIndex(3).allowsHitTesting(false)
+          .ignoresSafeArea(.all)
           .zIndex(3)
           .onAppear { transmitter.showing = true }
           .onChange(of: transmitter.showing) { _, showing in if !showing { selectAccount() } }
           .allowsHitTesting(false)
       }
     }
-    .ignoresSafeArea(.all)
     // A geometry change (rotation / resize / fold) is only used as a re-render TRIGGER —
     // `proxy.size` here reports the safe-area-inset size, which would make the mask shorter
     // than the window and clip the top/bottom. The mask must cover the FULL window, so we

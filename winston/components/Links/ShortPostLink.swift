@@ -12,6 +12,8 @@ struct ShortPostLink: View {
   var noHPad = false
   var post: Post
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   private func openPost(data: PostData) {
     if post.winstonData == nil || post.winstonData?.titleAttr == nil || post.winstonData?.subreddit == nil {
@@ -24,7 +26,7 @@ struct ShortPostLink: View {
       message: "ShortPostLink tapped",
       metadata: diagnosticsMetadata(data: data)
     )
-    Nav.to(.reddit(.post(post)))
+    navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 
   var body: some View {
@@ -49,7 +51,7 @@ struct ShortPostLink: View {
                   message: "ShortPostLink subreddit tapped",
                   metadata: diagnosticsMetadata(data: data)
                 )
-                Nav.to(.reddit(.subFeed(Subreddit(id: data.subreddit))))
+                navigateRedditDestination(.reddit(.subFeed(Subreddit(id: data.subreddit))), model: redditNavigationModel, origin: redditNavigationOrigin)
               })
           }
         }

@@ -29,6 +29,8 @@ struct MultiPostsView: View {
   
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.contentWidth) private var contentWidth
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 //  @Environment(\.colorScheme) private var cs
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
@@ -156,7 +158,7 @@ struct MultiPostsView: View {
 
         ForEach(filteredPosts) { post in
           AuroraPostCardRow(post: post, availableRowWidth: rowWidth) {
-            Nav.to(.reddit(.post(post)))
+            navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
           }
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
@@ -213,13 +215,13 @@ struct MultiPostsView: View {
         }
       }
     }
-    .onChange(of: sort) { _ in clearAndReloadData() }
+    .onChange(of: sort) { clearAndReloadData() }
 //    .searchable(text: $searchText, prompt: "Search r/\(subreddit.data?.display_name ?? subreddit.id)")
 //    .onChange(of: cs) { _ in updatePostsCalcs(selectedTheme) }
-    .onChange(of: subredditFeedDefSettings.compactPerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
-    .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
-    .onChange(of: postLinkDefSettings) { _ in updatePostsCalcs(selectedTheme) }
-    .onChange(of: selectedTheme, perform: updatePostsCalcs)
+    .onChange(of: subredditFeedDefSettings.compactPerSubreddit) { updatePostsCalcs(selectedTheme) }
+    .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { updatePostsCalcs(selectedTheme) }
+    .onChange(of: postLinkDefSettings) { updatePostsCalcs(selectedTheme) }
+    .onChange(of: selectedTheme) { _, newTheme in updatePostsCalcs(newTheme) }
     .navigationTitle(multi.data?.name ?? "MultiZ")
     //.background(.thinMaterial)
   }

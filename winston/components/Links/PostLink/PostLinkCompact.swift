@@ -39,6 +39,8 @@ struct PostLinkCompact: View, Equatable, Identifiable {
   @EnvironmentObject var post: Post
   @EnvironmentObject var winstonData: PostWinstonData
   @EnvironmentObject var sub: Subreddit
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   weak var controller: UIViewController?
   var theme: SubPostsListTheme
   var showSub = false
@@ -52,12 +54,12 @@ struct PostLinkCompact: View, Equatable, Identifiable {
   }
   
   func openPost() {
-    Nav.to(.reddit(.post(post)))
+    navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
   }
   
   func openSubreddit() {
     if let subName = post.data?.subreddit {
-      Nav.to(.reddit(.subFeed(Subreddit(id: subName))))
+      navigateRedditDestination(.reddit(.subFeed(Subreddit(id: subName))), model: redditNavigationModel, origin: redditNavigationOrigin)
     }
   }
   

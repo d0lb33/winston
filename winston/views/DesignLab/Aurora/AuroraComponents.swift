@@ -384,6 +384,8 @@ private struct AuroraPostCardSurface: View {
   @Environment(\.auroraTheme) private var theme
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.horizontalSizeClass) private var hSize
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Default(.PostLinkDefSettings) private var defSettings
 
   /// Media is sized from the row-owned card width. The card never measures itself,
@@ -506,7 +508,7 @@ private struct AuroraPostCardSurface: View {
     if hSize == .compact, let onCompactNavigate {
       onCompactNavigate(destination)
     } else {
-      Nav.to(destination)
+      navigateRedditDestination(destination, model: redditNavigationModel, origin: redditNavigationOrigin)
     }
   }
 
@@ -608,6 +610,8 @@ struct AuroraCrosspostCard: View {
   let contentWidth: CGFloat
   var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
   @Environment(\.horizontalSizeClass) private var hSize
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   private var cardWidth: CGFloat {
     max(1, contentWidth)
@@ -648,7 +652,7 @@ struct AuroraCrosspostCard: View {
     if hSize == .compact, let onCompactNavigate {
       onCompactNavigate(.reddit(.post(repost)))
     } else {
-      Nav.to(.reddit(.post(repost)))
+      navigateRedditDestination(.reddit(.post(repost)), model: redditNavigationModel, origin: redditNavigationOrigin)
     }
   }
 }

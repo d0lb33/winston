@@ -22,12 +22,28 @@ struct TabBarMeasurerAccessor: UIViewControllerRepresentable {
   
   private class ViewController: UIViewController {
     var callback: (Double) -> Void = { _ in }
+    private var lastHeight: Double?
     
     override func viewWillAppear(_ animated: Bool) {
       super.viewWillAppear(animated)
+      publishTabBarHeightIfNeeded()
+    }
+
+    override func viewDidLayoutSubviews() {
+      super.viewDidLayoutSubviews()
+      publishTabBarHeightIfNeeded()
+    }
+
+    private func publishTabBarHeightIfNeeded() {
       if let tabBar = self.tabBarController {
-        Task(priority: .background) {
-          self.callback(tabBar.tabBar.bounds.height - getSafeArea().bottom)
+        let bottomSafeArea = tabBar.view.safeAreaInsets.bottom
+        let height = max(0, tabBar.tabBar.bounds.height - bottomSafeArea)
+        guard lastHeight == nil || abs((lastHeight ?? 0) - height) > 0.5 else {
+          return
+        }
+        lastHeight = height
+        DispatchQueue.main.async {
+          self.callback(height)
         }
       }
     }

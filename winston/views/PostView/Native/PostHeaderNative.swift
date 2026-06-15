@@ -19,6 +19,8 @@ struct PostHeaderNative: View {
   @ObservedObject var winstonData: PostWinstonData
   var sub: Subreddit
   @Default(.PostPageDefSettings) private var defSettings
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   var body: some View {
     let data = post.data ?? emptyPostData
@@ -131,6 +133,8 @@ struct CrosspostCardNative: View {
   @Default(.PostPageDefSettings) private var defSettings
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   private var constrainedWidth: CGFloat? {
     contentWidth.map { max(1, $0) }
@@ -153,7 +157,9 @@ struct CrosspostCardNative: View {
         .font(.caption)
         .foregroundStyle(.secondary)
         .contentShape(Rectangle())
-        .onTapGesture { Nav.to(.reddit(.post(repost))) }
+        .onTapGesture {
+          navigateRedditDestination(.reddit(.post(repost)), model: redditNavigationModel, origin: redditNavigationOrigin)
+        }
 
         Text(data.title)
           .font(.subheadline.weight(.semibold))

@@ -16,6 +16,8 @@ struct CommentLinkFull: View {
   @State private var loadMoreLoading = false
   @State private var id = UUID().uuidString
   @Environment(\.useTheme) private var selectedTheme
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   var body: some View {
     let curveColor = selectedTheme.comments.theme.indentColor()
@@ -49,7 +51,7 @@ struct CommentLinkFull: View {
       .background(curveColor)
       .contentShape(Rectangle())
       .onTapGesture {
-        Nav.to(.reddit(.post(post)))
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
       }
       .allowsHitTesting(!loadMoreLoading)
       .opacity(loadMoreLoading ? 0.5 : 1)
