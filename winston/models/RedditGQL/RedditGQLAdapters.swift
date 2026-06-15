@@ -255,6 +255,7 @@ extension CommentData {
     author_fullname = node.authorInfo?.id
     ups = node.score
     score = node.score
+    score_hidden = node.isScoreHidden
     likes = node.voteState == .up ? true : (node.voteState == .down ? false : nil)
     saved = node.isSaved
     let createdEpoch = PostData.epoch(fromISO8601: node.createdAt)

@@ -13,6 +13,7 @@ import SwiftUI
 struct NativeVoteControl: View {
   let likes: Bool?
   let score: Int
+  var scoreHidden: Bool = false
   /// Larger styling for the post action bar; compact for comment rows.
   var prominent: Bool = false
   let onUp: () async -> Void
@@ -40,11 +41,11 @@ struct NativeVoteControl: View {
       .accessibilityLabel("Upvote")
       .accessibilityValue(likes == true ? "Upvoted" : "Not upvoted")
 
-      Text(formatBigNumber(score))
+      Text(scoreHidden ? "-" : formatBigNumber(score))
         .font(scoreFont)
         .foregroundStyle(prominent ? (likes == nil ? .primary : scoreColor) : scoreColor)
         .contentTransition(.numericText())
-        .accessibilityLabel("Score: \(score)")
+        .accessibilityLabel(scoreHidden ? "Score hidden" : "Score: \(score)")
 
       Button {
         Task { await onDown() }

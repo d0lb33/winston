@@ -178,6 +178,7 @@ struct CommentRowView: View {
         NativeVoteControl(
           likes: data.likes,
           score: data.ups ?? 0,
+          scoreHidden: data.score_hidden == true,
           onUp: { _ = await comment.vote(action: .up) },
           onDown: { _ = await comment.vote(action: .down) }
         )
@@ -187,7 +188,7 @@ struct CommentRowView: View {
 
   private func collapsedAccessory(_ data: CommentData) -> some View {
     HStack(spacing: 6) {
-      Text(formatBigNumber(data.ups ?? 0))
+      Text(data.score_hidden == true ? "-" : formatBigNumber(data.ups ?? 0))
         .font(.footnote.weight(.medium).monospacedDigit())
         .foregroundStyle(.secondary)
       if row.hiddenReplyCount > 0 {

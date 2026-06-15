@@ -341,7 +341,7 @@ struct CommentLinkContent: View {
                   }
                 
                 let downup = Int(ups)
-                Text(formatBigNumber(downup))
+                Text(data.score_hidden == true ? "-" : formatBigNumber(downup))
                   .foregroundColor(data.likes != nil ? (data.likes! ? .orange : .blue) : .gray)
                   .contentTransition(.numericText())
                 

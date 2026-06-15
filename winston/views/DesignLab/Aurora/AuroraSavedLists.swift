@@ -181,6 +181,8 @@ private struct SavedListOverviewRowContent: View {
 }
 
 struct SavedListDetailScreen: View {
+  private static let hydrationBatchSize = 20
+
   let listID: UUID
   let onPostSelected: (Post) -> Void
   let onCommentSelected: (Comment) -> Void
@@ -188,14 +190,13 @@ struct SavedListDetailScreen: View {
   @State private var list: SavedListSummary?
   @State private var items: [SavedListItemSummary] = []
   @State private var hydratedPosts: [String: Post] = [:]
-  @State private var hydrateKey = ""
+  @State private var hydratingFullnames: Set<String> = []
 
   private let store = SavedListsStore.shared
 
   var body: some View {
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
-      let currentHydrateKey = items.filter { $0.kind == .post }.map(\.fullname).joined(separator: "|")
       List {
         if items.isEmpty {
           Section {
@@ -207,7 +208,10 @@ struct SavedListDetailScreen: View {
               SavedListItemRow(
                 item: item,
                 rowWidth: rowWidth,
-                hydratedPost: hydratedPosts[item.fullname],
+                hydratedPost: hydratedPost(for: item),
+                hydrate: {
+                  hydrateBatch(startingAt: item, contentWidth: rowWidth)
+                },
                 remove: {
                   store.remove(itemID: item.id)
                   reload()
@@ -221,9 +225,6 @@ struct SavedListDetailScreen: View {
             }
           }
         }
-      }
-      .task(id: currentHydrateKey) {
-        await hydratePosts(contentWidth: rowWidth, key: currentHydrateKey)
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
@@ -247,25 +248,92 @@ struct SavedListDetailScreen: View {
     hydratedPosts = hydratedPosts.filter { fullname, _ in
       items.contains { $0.fullname == fullname }
     }
+    hydratingFullnames = hydratingFullnames.filter { fullname in
+      items.contains { $0.fullname == fullname }
+    }
   }
 
-  private func hydratePosts(contentWidth: CGFloat, key: String) async {
-    guard !key.isEmpty, key != hydrateKey else { return }
-    hydrateKey = key
+  private func hydrateBatch(startingAt item: SavedListItemSummary, contentWidth: CGFloat) {
+    guard item.kind == .post else { return }
     let postItems = items.filter { $0.kind == .post }
-    let missing = postItems.filter { hydratedPosts[$0.fullname] == nil }
-    guard !missing.isEmpty else { return }
+    guard let startIndex = postItems.firstIndex(where: { $0.id == item.id }) else { return }
 
-    let fullnames = missing.map(\.fullname)
-    let datas = await RedditWire.shared.postData(forIDs: fullnames)
-    var hydrated = hydratedPosts
-    for data in datas {
-      let post = Post(data: data, contentWidth: contentWidth)
-      hydrated[data.name] = post
-      hydrated["t3_\(data.id)"] = post
-      hydrated[data.id] = post
+    let batch = postItems
+      .dropFirst(startIndex)
+      .prefix(Self.hydrationBatchSize)
+      .filter { hydratedPost(for: $0) == nil && !hydratingFullnames.contains($0.fullname) }
+
+    guard !batch.isEmpty else { return }
+    let fullnames = batch.map(\.fullname)
+    hydratingFullnames.formUnion(fullnames)
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "savedLists.hydration",
+      message: "Hydrating saved-list post batch",
+      metadata: [
+        "listID": listID.uuidString,
+        "startFullname": item.fullname,
+        "batchCount": "\(fullnames.count)",
+        "requested": fullnames.prefix(12).joined(separator: ",")
+      ]
+    )
+
+    Task {
+      let datas = await RedditWire.shared.postData(forIDs: fullnames)
+      let posts = Post.initMultiple(datas: datas, contentWidth: contentWidth)
+      await MainActor.run {
+        var hydrated = hydratedPosts
+        for post in posts {
+          if let data = post.data {
+            for key in lookupKeys(fullname: data.name, postID: data.id) {
+              hydrated[key] = post
+            }
+          }
+        }
+        hydratedPosts = hydrated
+        hydratingFullnames.subtract(fullnames)
+        AppDiagnostics.asyncRecord(
+          posts.isEmpty ? .warning : .info,
+          category: "savedLists.hydration",
+          message: "Saved-list post batch hydrated",
+          metadata: [
+            "listID": listID.uuidString,
+            "requested": "\(fullnames.count)",
+            "recovered": "\(posts.count)",
+            "recoveredIDs": posts.compactMap { $0.data?.name }.prefix(12).joined(separator: ",")
+          ]
+        )
+      }
     }
-    hydratedPosts = hydrated
+  }
+
+  private func hydratedPost(for item: SavedListItemSummary) -> Post? {
+    for key in lookupKeys(fullname: item.fullname, postID: item.postID) {
+      if let post = hydratedPosts[key] {
+        return post
+      }
+    }
+    return nil
+  }
+
+  private func lookupKeys(fullname: String, postID: String?) -> [String] {
+    var keys: [String] = []
+    func append(_ key: String?) {
+      guard let key, !key.isEmpty, !keys.contains(key) else { return }
+      keys.append(key)
+    }
+    append(fullname)
+    append(fullname.trimmingCharacters(in: .whitespacesAndNewlines))
+    if fullname.hasPrefix("t3_") {
+      append(String(fullname.dropFirst(3)))
+    } else {
+      append("t3_\(fullname)")
+    }
+    if let postID {
+      append(postID)
+      append("t3_\(postID)")
+    }
+    return keys
   }
 }
 
@@ -273,6 +341,7 @@ private struct SavedListItemRow: View {
   let item: SavedListItemSummary
   let rowWidth: CGFloat
   let hydratedPost: Post?
+  let hydrate: () -> Void
   let remove: () -> Void
   let selectPost: (Post) -> Void
   let selectComment: (Comment) -> Void
@@ -289,6 +358,7 @@ private struct SavedListItemRow: View {
             selectPost(openPost)
           }
           .contextMenu { menuItems(post: openPost, comment: nil) }
+          .onAppear(perform: hydrate)
         }
       case .comment:
         if let comment = store.openComment(from: item) {
