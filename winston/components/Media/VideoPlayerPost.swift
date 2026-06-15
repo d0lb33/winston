@@ -153,14 +153,14 @@ struct VideoPlayerPost: View, Equatable {
   private var pauseBackgroundAudioOnFullscreen: Bool { videoDefSettings.pauseBGAudioOnFullscreen }
 
   /// Whether this inline player should be actively playing right now. In a gated feed
-  /// (feedItemKey != nil) only the single centered video plays, and nothing plays while
-  /// fast scrolling. Outside a gated feed (feedItemKey == nil — e.g. post detail,
-  /// comments) behavior is unchanged: autoplay setting alone decides.
+  /// (feedItemKey != nil) only the current active video plays. Scrolling does not pause
+  /// the active media; the coordinator elects a new active video when the feed settles.
+  /// Outside a gated feed (feedItemKey == nil — e.g. post detail, comments) behavior is
+  /// unchanged: autoplay setting alone decides.
   private var shouldPlayInline: Bool {
     guard autoPlayVideos, !fullscreen else { return false }
     guard let feedItemKey else { return true }
-    let coordinator = InlineVideoCoordinator.shared
-    return !coordinator.isFastScrolling && coordinator.isActive(feedItemKey)
+    return InlineVideoCoordinator.shared.isActive(feedItemKey)
   }
 
   /// Whether to mount the live AVPlayer layer at all. Off-center feed videos render only
@@ -491,8 +491,7 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   /// Re-evaluate playback against the current coordinator state. Called when the
-  /// active video or scrolling state changes. Pauses without re-showing the poster
-  /// on transient scroll (avoids flicker); the poster only returns on disappear.
+  /// active video or warm set changes. The poster only returns on disappear.
   func applyInlinePlaybackState(_ sharedVideo: SharedVideo) {
     guard !fullscreen else { return }
     guard shouldMountPlayer else {
@@ -682,8 +681,8 @@ struct VideoPlayerPost: View, Equatable {
 
   func refreshInlineVideoSurface(reason: String, sharedVideo: SharedVideo) {
     // Recreating the AVPlayerLayer view (via the .id change below) is expensive. Skip it
-    // while scrolling — nothing plays during a scroll, and stalled posters on a fast
-    // media feed would otherwise thrash layer teardown/recreation every frame.
+    // while scrolling; stalled posters on a fast media feed would otherwise thrash layer
+    // teardown/recreation every frame.
     guard !InlineVideoCoordinator.shared.isScrolling else { return }
     // Off-center videos have no mounted player to refresh; touching it would create one.
     guard shouldMountPlayer else { return }
@@ -979,7 +978,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
 /// Tiny `Color.clear` view whose only job is to subscribe to the `InlineVideoCoordinator`'s
 /// `@Observable` state. Because Observation tracking is per-view-body, keeping these
 /// `onChange` handlers HERE (rather than on the heavy `VideoPlayerPost` body) means a global
-/// coordinator tick (e.g. `warmVideoKeys` updating every 0.15s during scroll) re-evaluates
+/// coordinator tick (e.g. `warmVideoKeys` updating as scroll settles) re-evaluates
 /// only this trivial view across every visible video cell — the expensive video body stays
 /// put unless its own derived mount state actually changes.
 private struct InlineVideoCoordinatorObserver: View {
@@ -989,8 +988,6 @@ private struct InlineVideoCoordinatorObserver: View {
     let coordinator = InlineVideoCoordinator.shared
     Color.clear
       .allowsHitTesting(false)
-      .onChange(of: coordinator.isScrolling) { _, _ in onCoordinatorChange() }
-      .onChange(of: coordinator.isFastScrolling) { _, _ in onCoordinatorChange() }
       .onChange(of: coordinator.activeVideoKey) { _, _ in onCoordinatorChange() }
       .onChange(of: coordinator.warmVideoKeys) { _, _ in onCoordinatorChange() }
   }

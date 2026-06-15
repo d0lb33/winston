@@ -218,7 +218,7 @@ extension Waterfall {
       cell.detach()
     }
 
-    // MARK: - Inline video coordination (single active video + pause while scrolling)
+    // MARK: - Inline video coordination (single active video + scroll-stable playback)
 
     func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
       InlineVideoCoordinator.shared.setScrolling(true)

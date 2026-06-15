@@ -3,13 +3,12 @@
 //  winston
 //
 //  Coordinates inline video playback across the feed so that only ONE video
-//  (the one nearest the viewport center) autoplays at a time, and so that all
-//  inline players pause while the feed is actively scrolling. This collapses
+//  (the one nearest the viewport center) autoplays at a time. This collapses
 //  N simultaneous AVPlayer decoders down to 1, which is the main cause of
 //  scroll hitches in video-heavy subreddits.
 //
-//  Autoplay is not removed — it is gated. When scrolling settles, the centered
-//  video resumes; the rest keep their already-rendered frame (or poster).
+//  Autoplay is not removed — it is gated. The active video keeps playing during
+//  scroll, and when scrolling settles the centered video becomes active.
 //
 
 import SwiftUI
@@ -157,8 +156,8 @@ final class InlineVideoCoordinator {
   /// be ready before they become centered. This stays tiny and is cleared on fast scroll.
   private(set) var warmVideoKeys: Set<String> = []
 
-  /// True while the feed scroll view is interacting/decelerating. While true,
-  /// inline playback is paused regardless of which video is active.
+  /// True while the feed scroll view is interacting/decelerating. Used to defer
+  /// expensive media setup; it does not pause the active inline player.
   private(set) var isScrolling: Bool = false
 
   /// True when center updates indicate the feed is moving quickly enough that mounting
@@ -189,7 +188,6 @@ final class InlineVideoCoordinator {
     ScrollPerfProbe.shared.bump(scrolling ? "scrollBegan" : "scrollEnded")
     isScrolling = scrolling
     if scrolling {
-      setActive(nil)
       updateWarmVideoKeys(forceEmpty: true)
     }
   }
@@ -204,7 +202,7 @@ final class InlineVideoCoordinator {
   }
 
   /// Cheap per-frame sink for row centers. Does NOT elect (and does not invalidate
-  /// views) — election is deferred to rest, since nothing plays while scrolling.
+  /// views) — election is deferred to rest so scroll updates do not churn playback.
   func updateCenters(_ centers: [InlineVideoCenter]) {
     ScrollPerfProbe.shared.bump("inlineCenterUpdate")
     latestCenters = centers.sorted { $0.midY < $1.midY }
@@ -347,9 +345,9 @@ extension View {
     modifier(InlineVideoCenterTracker(key: key, coordinateSpace: coordinateSpace, enabled: enabled))
   }
 
-  /// Drive the coordinator from a scrollable feed: report scroll phase (for isScrolling)
-  /// and elect the centered video when the feed settles. No per-frame election work —
-  /// nothing plays while scrolling, so the centered choice only matters at rest.
+  /// Drive the coordinator from a scrollable feed: report scroll phase (for deferring
+  /// expensive work) and elect the centered video when the feed settles. No per-frame
+  /// election work, so the active video is stable while scrolling.
   func driveInlineVideoCoordinator(coordinateSpace: String) -> some View {
     self
       .modifier(FeedScrollCoordinatorDriver(coordinateSpace: coordinateSpace))
