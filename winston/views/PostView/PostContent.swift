@@ -25,8 +25,9 @@ struct PostContent: View, Equatable {
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+  @Environment(\.contentWidth) private var availableContentWidth
   
-  var contentWidth: CGFloat { .screenW - (selectedTheme.posts.padding.horizontal * 2) }
+  var contentWidth: CGFloat { max(1, availableContentWidth - (selectedTheme.posts.padding.horizontal * 2)) }
   
   func openSubreddit() {
     if let subName = post.data?.subreddit {
@@ -45,7 +46,7 @@ struct PostContent: View, Equatable {
         VStack {
           ProgressView()
             .progressViewStyle(.circular)
-            .frame(maxWidth: .infinity, minHeight: .screenH - 200 )
+            .frame(maxWidth: .infinity, minHeight: 240)
             .id("post-loading")
         }
       }

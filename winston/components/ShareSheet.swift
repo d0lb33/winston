@@ -54,24 +54,3 @@ class ShareImage: UIActivityItemProvider, @unchecked Sendable {
   }
   
 }
-
-class ShareUtils {
-  static func shareItem(item: String, sourceView: UIView? = nil) {
-    guard let url = URL(string: item) else { return }
-    
-    DispatchQueue.main.async {
-      let activityViewController = UIActivityViewController(activityItems: [url], applicationActivities: nil)
-      let presentingView = sourceView ?? UIApplication.shared.firstKeyWindow?.rootViewController?.view
-      
-      // Set the source view for iPad
-      if let popoverController = activityViewController.popoverPresentationController {
-        let sourceBounds = presentingView?.bounds ?? .zero
-        popoverController.sourceView = presentingView
-        popoverController.sourceRect = sourceView?.bounds ?? CGRect(x: sourceBounds.midX, y: sourceBounds.midY, width: 0, height: 0)
-        popoverController.permittedArrowDirections = []
-      }
-      
-      presentingView?.window?.rootViewController?.present(activityViewController, animated: true, completion: nil)
-    }
-  }
-}

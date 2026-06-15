@@ -1195,7 +1195,7 @@ final class RedditWire: ObservableObject {
 
   /// Search all over GraphQL. DynamicSearch currently returns compact pages,
   /// so the UI consumes this cursor-aware wrapper for incremental loading.
-  func searchAllPage(_ query: String, cursors: SearchCursors? = nil, contentWidth: CGFloat = .screenW) async -> RedditSearchPageResults {
+  func searchAllPage(_ query: String, cursors: SearchCursors? = nil, contentWidth: CGFloat = defaultContentWidth) async -> RedditSearchPageResults {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .empty }
 
@@ -1243,7 +1243,7 @@ final class RedditWire: ObservableObject {
   }
 
   /// Search all over GraphQL. Kept as an array-returning compatibility wrapper.
-  func searchAll(_ query: String, contentWidth: CGFloat = .screenW) async -> RedditSearchResults {
+  func searchAll(_ query: String, contentWidth: CGFloat = defaultContentWidth) async -> RedditSearchResults {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .empty }
     let posts = await searchPosts(trimmed, contentWidth: contentWidth, pageLimit: 2)
@@ -1272,7 +1272,7 @@ final class RedditWire: ObservableObject {
     }
   }
 
-  func searchPostsPage(_ query: String, after: String? = nil, contentWidth: CGFloat = .screenW) async -> SearchPage<Post> {
+  func searchPostsPage(_ query: String, after: String? = nil, contentWidth: CGFloat = defaultContentWidth) async -> SearchPage<Post> {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return .empty }
     do {
@@ -1293,7 +1293,7 @@ final class RedditWire: ObservableObject {
     }
   }
 
-  func searchPosts(_ query: String, contentWidth: CGFloat = .screenW, pageLimit: Int = 4) async -> [Post] {
+  func searchPosts(_ query: String, contentWidth: CGFloat = defaultContentWidth, pageLimit: Int = 4) async -> [Post] {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }
     var after: String?

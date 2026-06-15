@@ -31,7 +31,6 @@ struct AccountSwitcherOverlayView: View, Equatable {
     ZStack(alignment: .bottom) {
       //        if let screenshot = screenshot {
       //          Image(uiImage: screenshot)
-      //            .frame(.screenSize,  .bottom)
       //            .opacity(showOverlay ? 0.9 : 1.0)
       //            .blur(radius: showOverlay ? 2 : 0)
       //            .saturation(showOverlay ? 1.5 : 1.0)

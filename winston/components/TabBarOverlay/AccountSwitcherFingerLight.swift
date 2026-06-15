@@ -33,7 +33,5 @@ struct AccountSwitcherFingerLight: View, Equatable {
       .aspectRatio(contentMode: .fit)
       .frame(200)
 //    .drawingGroup()
-//    .offset(y: 25 - getSafeArea().bottom)
   }
 }
-

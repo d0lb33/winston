@@ -186,7 +186,6 @@ struct NewPostGalleryItem: Codable {
 //  
 //  var body: some View {
 //    let isEmpty = postData.text.isEmpty && postData.title.isEmpty && (postData.url?.isEmpty ?? true)
-//    NavigationView {
 //      VStack(alignment: .leading) {
 //        TextField("Title", text: $postData.title, prompt: Text("Post title"))
 //          .textFieldStyle(.plain)

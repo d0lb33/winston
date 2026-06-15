@@ -167,7 +167,7 @@ final class InlineVideoCoordinator {
   // Latest per-row centers and viewport height, updated as the feed reports geometry.
   // ObservationIgnored: written every frame during scroll — must not invalidate views.
   @ObservationIgnored private var latestCenters: [InlineVideoCenter] = []
-  @ObservationIgnored var viewportHeight: CGFloat = .screenH
+  @ObservationIgnored var viewportHeight: CGFloat = 1
   @ObservationIgnored private var lastCentersMeanY: CGFloat?
   @ObservationIgnored private var lastCentersTimestamp: TimeInterval?
   @ObservationIgnored private var lastScrollDeltaY: CGFloat = 0

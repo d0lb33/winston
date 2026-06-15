@@ -15,9 +15,11 @@ struct SubItemButton: View, Equatable {
   var data: SubredditData
   var action: () -> ()
   var body: some View {
+    let displayName = data.display_name ?? ""
+
     Button(action: action) {
         HStack {
-          Text(data.display_name ?? "")
+          Text(displayName)
           SubredditIcon(subredditIconKit: data.subredditIconKit)
         }
       }
@@ -31,6 +33,7 @@ struct SubItem: View {
   @ObservedObject var cachedSub: CachedSub
   var onFavoriteChanged: ((Bool) -> ())?
   @State private var isFavorited: Bool
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
   init(isActive: Bool, selectSub: @escaping (Subreddit) -> (), sub: Subreddit, cachedSub: CachedSub, onFavoriteChanged: ((Bool) -> ())? = nil) {
     self.isActive = isActive
@@ -51,13 +54,14 @@ struct SubItem: View {
   
   var body: some View {
     if let data = sub.data {
+      let displayName = data.display_name ?? ""
 //      let isActive = selectedSub == .reddit(.subFeed(sub))
-      WListButton(showArrow: !IPAD, active: isActive) {
+      WListButton(showArrow: horizontalSizeClass == .compact, active: isActive) {
         selectSub(sub)
       } label: {
         HStack {
           Label {
-            Text(data.display_name ?? "")
+            Text(displayName)
               .foregroundStyle(isActive ? .white : .primary)
           } icon: {
             SubredditIcon(subredditIconKit: data.subredditIconKit)

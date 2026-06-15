@@ -112,13 +112,13 @@ private struct ImageMediaSinglePreview: View {
     if compact { return scaledCompactModeThumbSize(compact: compact) }
     let availableWidth = max(contentWidth, 1)
     guard image.size.width > 0, image.size.height > 0 else {
-      let configuredMaxHeight = (maxMediaHeightScreenPercentage / 100) * .screenH
+      let configuredMaxHeight = (maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth)
       let maxHeight = maxMediaHeightScreenPercentage == 110 || configuredMaxHeight <= 0 ? availableWidth : configuredMaxHeight
       return min(maxHeight, availableWidth)
     }
     let proportionalHeight = (availableWidth * image.size.height) / image.size.width
     guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
-    return min((maxMediaHeightScreenPercentage / 100) * .screenH, proportionalHeight)
+    return min((maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth), proportionalHeight)
   }
 
   private var mediaSizeWorkKey: String {

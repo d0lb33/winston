@@ -192,10 +192,8 @@ struct VideoPlayerPost: View, Equatable {
     self.feedItemKey = feedItemKey
   }
   
-  var safe: Double { getSafeArea().top + getSafeArea().bottom }
-
   private var renderedVideoSize: CGSize {
-    let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * (.screenH)
+    let maxHeight: CGFloat = (maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, contentWidth)
     let sourceWidth = size.width
     let sourceHeight = size.height
     let propHeight = sourceWidth > 0 && sourceHeight > 0 && contentWidth > 0 ? (contentWidth * sourceHeight) / sourceWidth : contentWidth * 9 / 16
@@ -212,7 +210,7 @@ struct VideoPlayerPost: View, Equatable {
     
     if let sharedVideo = sharedVideo {
       let videoSize = renderedVideoSize
-      if let controller = controller {
+      if controller != nil {
         ZStack {
           inlineVideoPlaceholder()
           inlineVideoLayer(sharedVideo: sharedVideo, videoSize: videoSize)
@@ -741,10 +739,11 @@ struct VideoPlayerPost: View, Equatable {
       observedVideoKey = cacheKey
       recordVideoEvent(.debug, message: "Installing video observers", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
 
+      let resetVideo = self.resetVideo
       let endObserver = NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemDidPlayToEndTime,
+        forName: AVPlayerItem.didPlayToEndTimeNotification,
         object: sharedVideo.player.currentItem,
-        queue: nil) { notif in
+        queue: nil) { _ in
           if AppDiagnostics.isEnabled(.debug, category: "ui.video") {
             AppDiagnostics.asyncRecord(.debug, category: "ui.video", message: "AVPlayer item ended", metadata: ["cacheKeyHash": "\(cacheKey.hashValue)", "context": diagnosticContext ?? "nil"])
           }
@@ -755,21 +754,21 @@ struct VideoPlayerPost: View, Equatable {
         }
       
       let failedObserver = NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemFailedToPlayToEndTime,
+        forName: AVPlayerItem.failedToPlayToEndTimeNotification,
         object: sharedVideo.player.currentItem,
-        queue: nil) { notif in
+        queue: nil) { _ in
           AppDiagnostics.asyncRecord(.warning, category: "ui.video", message: "AVPlayer item failed to play to end", metadata: ["cacheKeyHash": "\(cacheKey.hashValue)", "context": diagnosticContext ?? "nil"])
-          Task(priority: .background) {
+          Task { @MainActor in
             resetVideo?(sharedVideo)
           }
         }
       
       let stalledObserver = NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemPlaybackStalled,
+        forName: AVPlayerItem.playbackStalledNotification,
         object: sharedVideo.player.currentItem,
-        queue: nil) { notif in
+        queue: nil) { _ in
           AppDiagnostics.asyncRecord(.warning, category: "ui.video", message: "AVPlayer item playback stalled", metadata: ["cacheKeyHash": "\(cacheKey.hashValue)", "context": diagnosticContext ?? "nil"])
-          Task(priority: .background) {
+          Task { @MainActor in
             resetVideo?(sharedVideo)
           }
         }
@@ -1013,6 +1012,7 @@ struct FullScreenVP: View {
   @State private var timeObserver: Any?
   @State private var isPlaying = false
   @State private var isMuted = false
+  @State private var viewportWidth: CGFloat = 1
 
   private enum Axis {
     case horizontal
@@ -1044,15 +1044,18 @@ struct FullScreenVP: View {
       .frame(maxWidth: .infinity, maxHeight: .infinity)
       .background(Color.black)
       .background(
-        sharedVideo.size != .zero
-        ? nil
-        : GeometryReader { geo in
+        GeometryReader { geo in
           Color.clear
-            .onAppear { altSize = geo.size }
-            .onChange(of: geo.size) { _, newValue in altSize = newValue }
+            .onAppear {
+              viewportWidth = max(geo.size.width, 1)
+              if sharedVideo.size == .zero { altSize = geo.size }
+            }
+            .onChange(of: geo.size) { _, newValue in
+              viewportWidth = max(newValue.width, 1)
+              if sharedVideo.size == .zero { altSize = newValue }
+            }
         }
       )
-    //      .pinchToZoom(size: sharedVideo.size == .zero ? altSize : sharedVideo.size, isPinching: $isPinching, scale: $scale, anchor: $anchor, offset: $offset)
       .scaleEffect(interpolate([1, 0.9], true))
       .offset(cancelDrag ?? false ? .zero : drag)
       .onAppear {
@@ -1155,7 +1158,7 @@ struct FullScreenVP: View {
     guard videoDuration > 0 else { return }
     let startProgress = videoScrubStartProgress ?? currentVideoProgress
     videoScrubStartProgress = startProgress
-    seekVideo(to: min(max(startProgress + Double(translationWidth / max(.screenW, 1)), 0), 1), interactive: true)
+    seekVideo(to: min(max(startProgress + Double(translationWidth / viewportWidth), 0), 1), interactive: true)
   }
 
   private func finishVideoScrub() {
@@ -1543,9 +1546,9 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     }
     if videoDefSettings.loop, let player = self.player {
       NotificationCenter.default.addObserver(
-        forName: .AVPlayerItemDidPlayToEndTime,
+        forName: AVPlayerItem.didPlayToEndTimeNotification,
         object: player.currentItem,
-        queue: nil) { [weak self] notif in
+        queue: nil) { [weak self] _ in
           guard let _ = self else { return }
           player.seek(to: .zero)
           player.play()
@@ -1578,7 +1581,7 @@ class NiceAVPlayer: AVPlayerViewController, AVPlayerViewControllerDelegate {
     if let player = self.player {
       NotificationCenter.default.removeObserver(
         self,
-        name: .AVPlayerItemDidPlayToEndTime,
+        name: AVPlayerItem.didPlayToEndTimeNotification,
         object: player.currentItem)
     }
     if !showsPlaybackControls {

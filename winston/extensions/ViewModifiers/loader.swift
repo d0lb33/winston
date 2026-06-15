@@ -14,7 +14,7 @@ extension View {
         Group {
           if loading {
             ProgressView()
-              .frame(.screenSize)
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
               .ignoresSafeArea()
               .onAppear {
                 if let onAppear = onAppear {
@@ -24,7 +24,7 @@ extension View {
           } else if hideSpinner {
             Text("*No results found*")
               .foregroundColor(.secondary)
-              .frame(.screenSize)
+              .frame(maxWidth: .infinity, maxHeight: .infinity)
               .ignoresSafeArea()
               .onAppear {
                 if let onAppear = onAppear {

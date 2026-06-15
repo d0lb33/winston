@@ -36,7 +36,7 @@ struct CommentsTreeView: View {
     swipeActions: SwipeActionsSet,
     swipeAnywhere: Bool,
     maxMediaHeightPct: CGFloat,
-    contentWidth: CGFloat = .screenW
+    contentWidth: CGFloat = 0
   ) {
     self.model = model
     self.loading = loading

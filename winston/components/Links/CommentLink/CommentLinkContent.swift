@@ -224,12 +224,14 @@ struct CommentLinkContentPreview: View {
   var post: Post?
   var comment: Comment
   var avatarsURL: [String:String]?
+  @Environment(\.contentWidth) private var contentWidth
+
   var body: some View {
     if let data = comment.data, let winstonData = comment.winstonData {
       VStack(alignment: .leading, spacing: 0) {
         CommentLinkContent(forcedBodySize: sizer.size, showReplies: showReplies, arrowKinds: arrowKinds, indentLines: indentLines, lineLimit: lineLimit, post: post, comment: comment, winstonData: winstonData, avatarsURL: avatarsURL)
       }
-      .frame(width: .screenW, height: sizer.size.height + CGFloat((data.depth != 0 ? 42 : 30) + 16))
+      .frame(width: contentWidth, height: sizer.size.height + CGFloat((data.depth != 0 ? 42 : 30) + 16))
     }
   }
 }

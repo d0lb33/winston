@@ -9,8 +9,6 @@ import SwiftUI
 import SpriteKit
 import AVKit
 
-//let dustScene = DustScene(size: .init(width: .screenW, height: .screenH))
-
 struct AccountSwitcherParticles: View, Equatable {
   static var player = AVLooperPlayer(url: Bundle.main.url(forResource: "particle", withExtension: "mov")!)
 //  static var player = AVLooperPlayer(url: Bundle.main.url(forResource: "space", withExtension: "mov")!)
@@ -18,10 +16,10 @@ struct AccountSwitcherParticles: View, Equatable {
   static func == (lhs: AccountSwitcherParticles, rhs: AccountSwitcherParticles) -> Bool { true }
   //  @State var player = AVPlayer(url: Bundle.main.url(forResource: "particles-1", withExtension: "mp4")!)
   var body: some View {
-//    GeometryReader { proxy in
-    PPlayer(player: Self.player)
-        .frame(.screenSize,  .bottom)
-        .task { Self.player.play() }
+	//    GeometryReader { proxy in
+	    PPlayer(player: Self.player)
+	        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+	        .task { Self.player.play() }
         .onDisappear {
           let time = CMTime(seconds: Double(arc4random_uniform(16)), preferredTimescale: 1) // Random time between 0 and 15 seconds
           Self.player.seek(to: time)

@@ -39,12 +39,13 @@ struct LinkImageCardNative: View, Equatable {
   /// Pre-decoded once upstream.
   let maxMediaHeightPct: CGFloat
   let cornerRadius: CGFloat
+  @Environment(\.openURL) private var openURL
 
   private var widthBucket: Int { Int((columnWidth / 2).rounded()) }
 
   private var height: CGFloat {
     let w = max(columnWidth, 1)
-    let cap = maxMediaHeightPct == 110 ? .greatestFiniteMagnitude : (maxMediaHeightPct / 100) * .screenH
+    let cap = maxMediaHeightPct == 110 ? .greatestFiniteMagnitude : (maxMediaHeightPct / 100) * max(ScreenMetrics.bounds.height, w)
     guard sourceSize.width > 0, sourceSize.height > 0 else { return min(w, cap) }
     let proportional = (w * sourceSize.height) / sourceSize.width
     return min(cap, proportional)
@@ -81,9 +82,9 @@ struct LinkImageCardNative: View, Equatable {
     .contentShape(Rectangle())
     .highPriorityGesture(TapGesture().onEnded {
       if let newURL = URL(string: displayURL.absoluteString.replacingOccurrences(of: "https://reddit.com/", with: "winstonapp://")) {
-        Nav.openURL(newURL)
+        openURL(newURL)
       } else {
-        Nav.openURL(displayURL)
+        openURL(displayURL)
       }
     })
   }

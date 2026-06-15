@@ -26,7 +26,7 @@ extension Multi {
     return nil
   }
   
-  func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
+  func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, contentWidth: CGFloat = defaultContentWidth) async -> ([Post]?, String?)? {
     if let data = data {
       let (datas, nextAfter) = await RedditWire.shared.multiPosts(path: data.path, sort: sort, after: after)
       return (Post.initMultiple(datas: datas, contentWidth: contentWidth), nextAfter)

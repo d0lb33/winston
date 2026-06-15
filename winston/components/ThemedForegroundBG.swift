@@ -34,8 +34,10 @@ struct ThemedForegroundRawBG<S: Shape>: View, Equatable {
   var shiny: Gradient? = nil
   var shadowStyle: ShadowStyle? = nil
   @Environment(\.brighterBG) private var brighter
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
   var body: some View {
-    let isActive = active && IPAD
+    let isRegularWidth = horizontalSizeClass == .regular
+    let isActive = active && isRegularWidth
     Group {
       ZStack {
         if shiny == nil {
@@ -54,6 +56,6 @@ struct ThemedForegroundRawBG<S: Shape>: View, Equatable {
         }
       }
     }
-    .overlay(shape.fill(isActive ? Color.accentColor : .primary.opacity(pressed || (!IPAD && active) ? 0.1 : 0)).brightness(brighter ? 0.075 : 0).animation(.default.speed(2), value: active))
+    .overlay(shape.fill(isActive ? Color.accentColor : .primary.opacity(pressed || (!isRegularWidth && active) ? 0.1 : 0)).brightness(brighter ? 0.075 : 0).animation(.default.speed(2), value: active))
   }
 }

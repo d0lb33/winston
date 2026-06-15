@@ -9,11 +9,11 @@ import Foundation
 import SwiftUI
 import Defaults
 
-func getPostContentWidth(contentWidth: Double = .screenW, secondary: Bool = false, theme: WinstonTheme? = nil) -> CGFloat {
+func getPostContentWidth(contentWidth: Double = Double(defaultContentWidth), secondary: Bool = false, theme: WinstonTheme? = nil) -> CGFloat {
   let selectedTheme = theme ?? getEnabledTheme()
   let theme = selectedTheme.postLinks.theme
   var value: CGFloat = 0
-  if IPAD {
+  if contentWidth >= 700 {
     value = (contentWidth / 2) - ((theme.innerPadding.horizontal * (secondary ? 2 : 1)) * 2) - 24
   } else {
     value = contentWidth - (((theme.innerPadding.horizontal * (secondary ? 2 : 1)) + theme.outerHPadding) * 2)
@@ -60,7 +60,7 @@ struct PostDimensions: Hashable, Equatable {
   }
 }
 
-func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWidth: Double = .screenW, secondary: Bool = false, rawTheme: WinstonTheme? = nil, compact: Bool? = nil, subId: String? = nil) -> PostDimensions {
+func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWidth: Double = Double(defaultContentWidth), secondary: Bool = false, rawTheme: WinstonTheme? = nil, compact: Bool? = nil, subId: String? = nil) -> PostDimensions {
   ScrollPerfProbe.shared.bump("dimensions")
   if let data = post.data {
     let selectedTheme = rawTheme ?? getEnabledTheme()
@@ -73,7 +73,7 @@ func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWi
     let compact = compact ?? (postLinkDefSettings.resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact)
     let showAuthorOnPostLinks = postLinkDefSettings.showAuthor
     let maxDefaultHeight: CGFloat = postLinkDefSettings.maxMediaHeightScreenPercentage
-    let maxHeight: CGFloat = (maxDefaultHeight / 100) * (.screenH)
+    let maxHeight: CGFloat = (maxDefaultHeight / 100) * max(ScreenMetrics.bounds.height, columnWidth)
     let extractedMedia = compact ? winstonData?.extractedMedia : winstonData?.extractedMediaForcedNormal
     let compactImgSize = scaledCompactModeThumbSize(compact: compact)
     let theme = selectedTheme.postLinks.theme
@@ -85,7 +85,7 @@ func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWi
     var ACC_bodyHeight: Double = 0
     
     var contentWidth: CGFloat = 0
-    if IPAD {
+    if columnWidth >= 700 {
       contentWidth = (columnWidth / 2) - ((theme.innerPadding.horizontal * (secondary ? 2 : 1)) * 2) - 24
     } else {
       contentWidth = columnWidth - (((theme.innerPadding.horizontal * (secondary ? 2 : 1)) + theme.outerHPadding) * 2)

@@ -50,7 +50,6 @@ struct FilteredSubredditsSettings: View {
           }
         }
       )
-      .navigationViewStyle(StackNavigationViewStyle())
     }
     .alert("Enter a subreddit", isPresented: $addSubredditAlert) {
       TextField("Meow", text: $newSubreddit)

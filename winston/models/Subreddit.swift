@@ -227,7 +227,7 @@ extension Subreddit {
     await RedditWire.shared.subredditRules(name: data?.display_name ?? id)
   }
   
-  func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
+  func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = defaultContentWidth) async -> ([Post]?, String?)? {
     let isHome = id == "home"
     let name = isHome ? "" : feedName
 
@@ -242,7 +242,7 @@ extension Subreddit {
     return (Post.initMultiple(datas: datas, sub: self, contentWidth: contentWidth), nextAfter)
   }
   
-  func fetchSavedPosts(after: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
+  func fetchSavedPosts(after: String? = nil, contentWidth: CGFloat = defaultContentWidth) async -> ([Post]?, String?)? {
     let (savedPostData, nextAfter) = await RedditWire.shared.savedPosts(after: after)
     await MainActor.run {
       self.loading = false

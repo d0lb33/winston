@@ -50,7 +50,7 @@ struct PreviewLinkContentRaw: View, Equatable {
       if !compact {
         VStack(alignment: .leading, spacing: 2) {
           VStack(alignment: .leading, spacing: 0) {
-            Text(title?.escape ?? "No title detected")
+            Text((title ?? "No title detected").escape)
               .fontSize(17, .medium)
               .lineLimit(1)
               .truncationMode(.tail)
@@ -62,7 +62,7 @@ struct PreviewLinkContentRaw: View, Equatable {
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           
-          Text(description?.escape ?? "No description detected")
+          Text((description ?? "No description detected").escape)
             .fontSize(14)
             .lineLimit(2)
             .opacity(0.75)
@@ -108,7 +108,7 @@ struct PreviewLinkContentRaw: View, Equatable {
     }
     .highPriorityGesture(TapGesture().onEnded {
       if let newURL = URL(string: url.absoluteString.replacingOccurrences(of: "https://reddit.com/", with: "winstonapp://")) {
-        Nav.openURL(newURL)
+        openURL(newURL)
       }
     })
   }

@@ -25,12 +25,11 @@ struct ThemedListRowLikeBGModifier: ViewModifier {
   /// - Parameter content: The content to which the modifier is applied.
   /// - Returns: A modified version of the content.
   func body(content: Content) -> some View {
-    let isActive = active && IPAD
-    return content
+    content
       .padding(.horizontal, enablePadding ? 16 : 0)
       .padding(.vertical, enablePadding ? 8 : 0)
       .frame(maxWidth: .infinity, minHeight: 45, alignment: .leading)
-      .background(disableBG ? nil : ThemedForegroundBG(theme: theme.lists.foreground, active: isActive, pressed: pressed, shiny: shiny).equatable().opacity(opacity))
+      .background(disableBG ? nil : ThemedForegroundBG(theme: theme.lists.foreground, active: active, pressed: pressed, shiny: shiny).equatable().opacity(opacity))
   }
 }
 

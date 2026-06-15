@@ -58,8 +58,14 @@ private enum ClipboardRedditLinkAlert: Identifiable, Equatable {
   }
 }
 
+private struct ExternalImagePresentation: Identifiable, Equatable {
+  let url: URL
+  var id: URL { url }
+}
+
 private struct ClipboardRedditLinkListenerModifier: ViewModifier {
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.openURL) private var openURL
   @Default(.BehaviorDefSettings) private var behaviorDefSettings
 
   @State private var lastHandledPasteboardChangeCount: Int?
@@ -91,7 +97,7 @@ private struct ClipboardRedditLinkListenerModifier: ViewModifier {
             title: Text("Unsupported Reddit link"),
             message: Text("Winston cannot open this link directly."),
             primaryButton: .default(Text("Open in Safari")) {
-              Nav.openURL(url)
+              openURL(url)
             },
             secondaryButton: .cancel()
           )
@@ -109,21 +115,13 @@ private struct ClipboardRedditLinkListenerModifier: ViewModifier {
       return
     }
 
-    pasteboard.detectPatterns(for: [.probableWebURL]) { result in
-      DispatchQueue.main.async {
-        guard behaviorDefSettings.openRedditLinksFromClipboard else { return }
-        guard lastHandledPasteboardChangeCount != changeCount else { return }
-        lastHandledPasteboardChangeCount = changeCount
+    lastHandledPasteboardChangeCount = changeCount
+    guard let string = pasteboard.string, let candidate = firstRedditLinkCandidate(in: string) else { return }
 
-        guard case .success(let patterns) = result, patterns.contains(.probableWebURL) else { return }
-        guard let string = pasteboard.string, let candidate = firstRedditLinkCandidate(in: string) else { return }
-
-        if isSupportedParsedRedditURL(candidate.parsed) {
-          pendingAlert = .supported(url: candidate.url, parsed: candidate.parsed)
-        } else if candidate.isRedditOwned {
-          pendingAlert = .unsupported(url: candidate.url)
-        }
-      }
+    if isSupportedParsedRedditURL(candidate.parsed) {
+      pendingAlert = .supported(url: candidate.url, parsed: candidate.parsed)
+    } else if candidate.isRedditOwned {
+      pendingAlert = .unsupported(url: candidate.url)
     }
   }
 
@@ -172,26 +170,36 @@ private func isRedditOwnedURL(_ url: URL) -> Bool {
     || host.hasSuffix(".reddit.app.link")
 }
 
-extension View {
-  func openFromWebListener() -> some View {
-    self
+private struct OpenFromWebListenerModifier: ViewModifier {
+  @Environment(\.openURL) private var openURL
+  @State private var externalImage: ExternalImagePresentation?
+
+  func body(content: Content) -> some View {
+    content
       .onOpenURL { url in
         let parsed = parseRedditURL(url.absoluteString)
         if !openParsedRedditURL(parsed) {
           let urlStringWithoutScheme = url.absoluteString.replacingOccurrences(of: "winstonapp://", with: "")
-          
+
           if let safariURL = URL(string: "https://" + urlStringWithoutScheme) {
             if isImageUrl(safariURL.absoluteString) {
-              let imageView = ImageView(url: safariURL)
-              let hostingController = UIHostingController(rootView: imageView)
-              hostingController.overrideUserInterfaceStyle = .dark
-              UIApplication.shared.firstKeyWindow?.rootViewController?.present(hostingController, animated: true)
+              externalImage = ExternalImagePresentation(url: safariURL)
             } else {
-              Nav.openURL(safariURL)
+              openURL(safariURL)
             }
           }
         }
       }
+      .sheet(item: $externalImage) { item in
+        ImageView(url: item.url)
+          .preferredColorScheme(.dark)
+      }
+  }
+}
+
+extension View {
+  func openFromWebListener() -> some View {
+    modifier(OpenFromWebListenerModifier())
   }
 
   func clipboardRedditLinkListener() -> some View {

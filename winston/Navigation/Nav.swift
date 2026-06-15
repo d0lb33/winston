@@ -7,7 +7,6 @@
 
 import Foundation
 import Combine
-import SafariServices
 import UIKit
 
 class Nav: ObservableObject, Identifiable, Equatable {
@@ -141,8 +140,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   }
   
   static func openURL(_ url: URL) {
-    let vc = SFSafariViewController(url: url)
-    UIApplication.shared.firstKeyWindow?.rootViewController?.present(vc, animated: true)
+    UIApplication.shared.open(url)
   }
 
 

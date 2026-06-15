@@ -27,7 +27,7 @@ enum AuroraPostPresentation {
 }
 
 extension Post {
-  func setupAuroraData(data: PostData? = nil, sub: Subreddit? = nil, contentWidth: Double = .screenW, fetchAvatar: Bool = true) {
+  func setupAuroraData(data: PostData? = nil, sub: Subreddit? = nil, contentWidth: Double = Double(defaultContentWidth), fetchAvatar: Bool = true) {
     setupWinstonData(data: data, contentWidth: contentWidth, theme: AuroraPostPresentation.winstonTheme, sub: sub, fetchAvatar: fetchAvatar)
   }
 }

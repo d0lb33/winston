@@ -123,7 +123,7 @@ func isDirectMediaURL(_ rawURL: URL) -> Bool {
     || redditHostedVideoURL(from: url.absoluteString) != nil
 }
 
-func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = .screenW, diagnosticContext: String? = nil) -> MediaExtractedType? {
+func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = Double(defaultContentWidth), diagnosticContext: String? = nil) -> MediaExtractedType? {
   let typeURL = rootURL(rawURL) ?? rawURL
   let url = loadableMediaURL(rawURL)
   let ext = typeURL.pathExtension.lowercased()
@@ -157,7 +157,7 @@ func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = .scre
 
 
 // ORDER MATTERS!
-func mediaExtractor(compact: Bool, contentWidth: Double = .screenW, _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
+func mediaExtractor(compact: Bool, contentWidth: Double = Double(defaultContentWidth), _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
   ScrollPerfProbe.shared.bump("mediaExtract")
   guard !data.is_self else { return nil }
 

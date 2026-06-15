@@ -138,10 +138,10 @@ struct SubredditPostsIPAD: View, Equatable {
       //        scrollView.backgroundColor = UIColor.systemGroupedBackground
       //      }
 			if loading {
-					ProgressView()
-						.progressViewStyle(.circular)
-						.frame(maxWidth: .infinity, minHeight: (posts.count > 0 || isFiltered) ? 50 : .screenH - 200 )
-						.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+						ProgressView()
+							.progressViewStyle(.circular)
+							.frame(maxWidth: .infinity, minHeight: (posts.count > 0 || isFiltered) ? 50 : 320)
+							.listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
 						.listRowSeparator(.hidden)
 						.listSectionSeparator(.hidden)
 						.listRowBackground(Color.clear)

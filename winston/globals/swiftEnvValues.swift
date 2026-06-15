@@ -34,7 +34,7 @@ private struct CurrentThemeKey: EnvironmentKey {
 }
 
 private struct ContentWidthKey: EnvironmentKey {
-  static let defaultValue: Double = .screenW
+  static let defaultValue: Double = Double(defaultContentWidth)
 }
 
 private struct DeferMediaWorkWhileScrollingKey: EnvironmentKey {

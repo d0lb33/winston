@@ -21,6 +21,7 @@ struct PostHeaderNative: View {
   @Default(.PostPageDefSettings) private var defSettings
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+  @Environment(\.contentWidth) private var contentWidth
 
   var body: some View {
     let data = post.data ?? emptyPostData
@@ -60,7 +61,7 @@ struct PostHeaderNative: View {
             imageURL: img.url,
             sourceSize: img.size,
             displayURL: previewModel.previewURL ?? img.url,
-            columnWidth: max(1, winstonData.postDimensionsForcedNormal.mediaSize?.width ?? .screenW),
+            columnWidth: max(1, winstonData.postDimensionsForcedNormal.mediaSize?.width ?? CGFloat(contentWidth)),
             maxMediaHeightPct: maxMediaHeightPct,
             cornerRadius: 12
           )

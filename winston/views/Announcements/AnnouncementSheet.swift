@@ -51,7 +51,7 @@ struct AnnouncementSheet: View {
             }
           })
           .padding()
-          .frame(width: .screenW)
+          .frame(maxWidth: .infinity)
           .background(
             Material.ultraThinMaterial
           )

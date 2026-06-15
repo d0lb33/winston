@@ -27,56 +27,54 @@ struct PreviewSheetModifier<T: View>: ViewModifier {
   @State private var initialDragOffset: CGFloat?
   @State private var currentStepIndex: Int = 0
   
-  var pointZero: CGFloat { .screenH - handlerHeight }
-  var stepPoints: [CGFloat] { [pointZero - forcedOffset, pointZero - (sheetContentSize.height / 2) - max(0, forcedOffset - (sheetContentSize.height / 2)), pointZero - sheetContentSize.height] }
-  
   func body(content: Content) -> some View {
     let dragOffset = dragOffsetRaw ?? 0
     let isDragging = initialDragOffset != nil
     let disabled = abs(sheetContentSize.height - forcedOffset) < 2
     let interpolate = interpolatorBuilder([handlerDashWidth, 0], value: abs(sheetContentSize.height - forcedOffset))
-    let dragGesture = DragGesture(minimumDistance: 0)
-      .updating($dragOffsetRaw) { val, state, trans in
-        let y = val.translation.height
-        if initialDragOffset == nil && y != 0 {
-          Task {
-            initialDragOffset = y
-          }
-        }
-        if let initialDragOffset = initialDragOffset {
-          trans.isContinuous = true
-          //          trans.animation = .interpolatingSpring(stiffness: 1000, damping: 100) 2349
-          trans.animation = .interactiveSpring()
-          withTransaction(trans) {
-            state = y - initialDragOffset
-          }
-        }
-      }
-      .onEnded({ val in
-        dragOffsetPersist = val.translation.height - (initialDragOffset ?? 0)
-        guard let nextI = stepPoints.closest(to: stepPoints[currentStepIndex] + val.predictedEndTranslation.height) else { return }
-        let newI = nextI
-        withAnimation(.spring()) {
-          currentStepIndex = newI
-          dragOffsetPersist = 0
-        }
-      })
-    
     
     content
       .overlay(
-        VStack {
-          sheetContent(handlerHeight)
-            .measure($sheetContentSize)
-//            .background(GeometryReader { g in Color.clear.onAppear { sheetContentSize = CGSize(width: g.size.width, height: g.size.height - handlerHeight) }.onChange(of: g.size) { sheetContentSize = CGSize(width: $0.width, height: $0.height - handlerHeight) } })
-          //            .measure($sheetContentSize)
-        }
-        //          .onChange(of: sheetContentSize, perform: { newValue in
-        //            print(newValue) 103 / 69
-        //          })
-        //          .padding(.top, handlerHeight)
-          .frame(.screenSize,  .top)
-          .mask(SheetShape(width: .screenW, height: .screenH).fill(.black))
+        GeometryReader { proxy in
+          let viewportSize = CGSize(width: max(proxy.size.width, 1), height: max(proxy.size.height, 1))
+          let pointZero = viewportSize.height - handlerHeight
+          let stepPoints = [
+            pointZero - forcedOffset,
+            pointZero - (sheetContentSize.height / 2) - max(0, forcedOffset - (sheetContentSize.height / 2)),
+            pointZero - sheetContentSize.height
+          ]
+          let dragGesture = DragGesture(minimumDistance: 0)
+            .updating($dragOffsetRaw) { val, state, trans in
+              let y = val.translation.height
+              if initialDragOffset == nil && y != 0 {
+                Task {
+                  initialDragOffset = y
+                }
+              }
+              if let initialDragOffset = initialDragOffset {
+                trans.isContinuous = true
+                trans.animation = .interactiveSpring()
+                withTransaction(trans) {
+                  state = y - initialDragOffset
+                }
+              }
+            }
+            .onEnded({ val in
+              dragOffsetPersist = val.translation.height - (initialDragOffset ?? 0)
+              guard let nextI = stepPoints.closest(to: stepPoints[currentStepIndex] + val.predictedEndTranslation.height) else { return }
+              let newI = nextI
+              withAnimation(.spring()) {
+                currentStepIndex = newI
+                dragOffsetPersist = 0
+              }
+            })
+
+          VStack {
+            sheetContent(handlerHeight)
+              .measure($sheetContentSize)
+          }
+          .frame(width: viewportSize.width, height: viewportSize.height, alignment: .top)
+          .mask(SheetShape(width: viewportSize.width, height: viewportSize.height).fill(.black))
           .overlay(
             Capsule(style: .continuous).fill(.ultraThinMaterial)
               .overlay(Capsule(style: .continuous).fill(.primary.opacity(!isDragging ? 0.15 : 0.3)))
@@ -87,13 +85,11 @@ struct PreviewSheetModifier<T: View>: ViewModifier {
             , alignment: .top
           )
           .background(
-            SheetShape(width: .screenW, height: .screenH)
+            SheetShape(width: viewportSize.width, height: viewportSize.height)
               .fill(AnyShapeStyle(bg))
               .shadow(radius: 16)
               .allowsHitTesting(!disabled)
           )
-//          .contentShape(.contextMenuPreview, SheetShape(width: .screenW, height: .screenH))
-//          .contentShape()
           .scaleEffect(1)
           .compositingGroup()
           .offset(y: max(stepPoints[stepPoints.count - 1], stepPoints[currentStepIndex] + dragOffset + dragOffsetPersist))
@@ -103,6 +99,7 @@ struct PreviewSheetModifier<T: View>: ViewModifier {
           .offset(y: disappear ? handlerHeight : 0)
           .onAppear { doThisAfter(0.3) { withAnimation(spring) { disappear = false } } }
           .onChange(of: dragOffsetRaw == nil) { _, newValue in if newValue { initialDragOffset = nil } }
+        }
         , alignment: .bottom
       )
   }

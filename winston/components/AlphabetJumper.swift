@@ -57,7 +57,7 @@ struct AlphabetJumper: View {
         }
     )
     .onChange(of: scrollLetter) { _, letter in scrollTo(letter) }
-    .frame(height: .screenH, alignment: .trailing)
+    .frame(maxHeight: .infinity, alignment: .trailing)
     .ignoresSafeArea()
     .foregroundStyle(Color.accentColor)
   }

@@ -22,7 +22,7 @@ struct TabBarOverlay: View {
         let meIndex = tabs.firstIndex(of: .me) ?? 0
         let meCenterX = (CGFloat(meIndex) + 0.5) * tabWidth
         let meHitWidth = min(tabWidth, 96)
-        let bottomSafeArea = max(geo.safeAreaInsets.bottom, getSafeArea().bottom)
+        let bottomSafeArea = geo.safeAreaInsets.bottom
         AccountSwitcherTrigger(onTap: meTabTap) {
           Color.clear
             .frame(width: meHitWidth, height: overlaySize.height)

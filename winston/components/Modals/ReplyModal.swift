@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import CoreData
 import HighlightedTextEditor
 import Defaults
 import NukeUI
@@ -131,7 +132,7 @@ struct ReplyModal<Content: View>: View {
   }
   
   var body: some View {
-    NavigationView {
+    NavigationStack {
       ScrollView {
         VStack(spacing: 12) {
           
@@ -173,12 +174,8 @@ struct ReplyModal<Content: View>: View {
             globalLoaderDismiss()
             if result {
               if let currentDraft = currentDraft {
-                Task {
-                  await viewContext.perform(schedule: .enqueued) {
-                    viewContext.delete(currentDraft)
-                    try? viewContext.save()
-                  }
-                }
+                viewContext.delete(currentDraft)
+                try? viewContext.save()
               }
             }
           }, textWrapper.replyText)
@@ -192,20 +189,12 @@ struct ReplyModal<Content: View>: View {
       )
       .onChange(of: textWrapper.debouncedTeplyText) { _, val in
         currentDraft?.replyText = val
-        Task {
-          await viewContext.perform(schedule: .enqueued) {
-            try? viewContext.save()
-          }
-        }
+        try? viewContext.save()
       }
       .onDisappear {
         if textWrapper.replyText == "", let currentDraft = currentDraft {
-          Task {
-            await viewContext.perform(schedule: .enqueued) {
-              viewContext.delete(currentDraft)
-              try? viewContext.save()
-            }
-          }
+          viewContext.delete(currentDraft)
+          try? viewContext.save()
         }
       }
       .onAppear {
@@ -239,12 +228,8 @@ struct ReplyModal<Content: View>: View {
                     dismiss()
                   }
                   if let currentDraft = currentDraft {
-                    Task {
-                      await viewContext.perform(schedule: .enqueued) {
-                        viewContext.delete(currentDraft)
-                        try? viewContext.save()
-                      }
-                    }
+                    viewContext.delete(currentDraft)
+                    try? viewContext.save()
                   }
                 },
                 .cancel()

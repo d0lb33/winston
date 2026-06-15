@@ -64,9 +64,8 @@ struct AccountSwitcherProvider<Content: View>: View {
   @Environment(\.displayScale) private var displayScale
   //  @State private var credIDToSelect: UUID? = nil
   @State private var accTransKit: AccountTransitionKit = .init()
-  /// Live window size — drives the side-by-side mask so the app fills the window
-  /// after a rotation / resize instead of being clipped to the frozen launch width.
-  @State private var windowSize: CGSize = .screenSize
+  /// Live window size — drives the side-by-side mask as the scene rotates/resizes.
+  @State private var windowSize: CGSize = CGSize(width: 1, height: 1)
 
   var content: () -> Content
   
@@ -110,7 +109,6 @@ struct AccountSwitcherProvider<Content: View>: View {
     //    let completelyFree = true
     let focusFramePadding: Double = accTransKit.focusCloser ? 40 : 0
     let frameSlideOffsetX = accTransKit.passLens ? (windowSize.width * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0
-    //    let parallaxW = .screenW * 0.25
     ZStack {
       
       ZStack {
@@ -172,26 +170,49 @@ struct AccountSwitcherProvider<Content: View>: View {
           .allowsHitTesting(false)
       }
     }
-    // A geometry change (rotation / resize / fold) is only used as a re-render TRIGGER —
+    // A geometry change (rotation / resize / fold) is only used as a re-render trigger.
     // `proxy.size` here reports the safe-area-inset size, which would make the mask shorter
     // than the window and clip the top/bottom. The mask must cover the FULL window, so we
-    // refresh the live metrics and use `.screenSize` (the key window's bounds) as the size.
-    .onGeometryChange(for: CGSize.self) { proxy in
-      proxy.size
-    } action: { newSize in
-      ScreenMetrics.refresh(size: newSize, scale: displayScale)
-      windowSize = ScreenMetrics.bounds.size
+    // refresh the live metrics and use the current window bounds as the size.
+    .onGeometryChange(for: AccountSwitcherViewportMetrics.self) { proxy in
+      AccountSwitcherViewportMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
+    } action: { metrics in
+      let fullSize = metrics.fullSize
+      ScreenMetrics.refresh(size: fullSize, scale: displayScale, safeAreaInsets: metrics.uiEdgeInsets)
+      windowSize = fullSize
     }
     .allowsHitTesting(!(showOverlay || accTransKit.passLens))
+  }
+}
+
+private struct AccountSwitcherViewportMetrics: Equatable {
+  let size: CGSize
+  let top: CGFloat
+  let leading: CGFloat
+  let bottom: CGFloat
+  let trailing: CGFloat
+
+  init(size: CGSize, safeAreaInsets: EdgeInsets) {
+    self.size = size
+    self.top = safeAreaInsets.top
+    self.leading = safeAreaInsets.leading
+    self.bottom = safeAreaInsets.bottom
+    self.trailing = safeAreaInsets.trailing
+  }
+
+  var fullSize: CGSize {
+    CGSize(width: size.width + leading + trailing, height: size.height + top + bottom)
+  }
+
+  var uiEdgeInsets: UIEdgeInsets {
+    UIEdgeInsets(top: top, left: leading, bottom: bottom, right: trailing)
   }
 }
 
 struct SideBySideWindow<C: View>: View {
   var passLens: Bool
   var willLensHeadLeft: Bool
-  /// Live window size, measured at render time by the parent. Using this instead of
-  /// the frozen `.screenW`/`.screenSize` is what lets the whole app fill the window
-  /// after a rotation / resize instead of being clipped to the launch (portrait) width.
+  /// Live window size, measured at render time by the parent.
   var size: CGSize
   @ViewBuilder var content: () -> C
   var body: some View {

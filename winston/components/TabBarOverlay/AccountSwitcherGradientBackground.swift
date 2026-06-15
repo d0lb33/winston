@@ -60,15 +60,17 @@ struct AccountSwitcherGradientBackgroundLayer: View, Equatable {
 //  private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
 
   var body: some View {
-    Rectangle()
-      .fill( EllipticalGradient(
-        stops: generateGradient(),
-        center: .bottom,
-        startRadiusFraction: 0,
-        endRadiusFraction: 1
-      ))
-//      .opacity(opacity)
-      .offset(y: .screenH / 4)
+    GeometryReader { proxy in
+      Rectangle()
+        .fill( EllipticalGradient(
+          stops: generateGradient(),
+          center: .bottom,
+          startRadiusFraction: 0,
+          endRadiusFraction: 1
+        ))
+  //      .opacity(opacity)
+        .offset(y: proxy.size.height / 4)
+    }
 //      .frame(maxWidth: .infinity, maxHeight: .infinity)
 //      .onDisappear {
 //        timer.d
@@ -94,7 +96,7 @@ struct AccountSwitcherFlatennedBG: View, Equatable {
 //      TimelineView(.animation) { context in
 //        let time = context.date.timeIntervalSince1970 - date.timeIntervalSince1970
         Image(uiImage: screenshot)
-          .frame(.screenSize,  .bottom)
+          .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
           .transition(.identity)
 //          .modifier(ComplexWaveModifierVFX(time: time))
 //      }
@@ -120,7 +122,7 @@ struct AccountSwitcherGradientBackground: View, Equatable {
 //      .blendMode(.overlay)
     }
     .ignoresSafeArea(.all)
-    .frame(.screenSize,  .bottom)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
     .onReceive(timer) { _ in
       withAnimation(.smooth) {
         let min: Double = 0.5

@@ -12,6 +12,7 @@ import Defaults
 struct PostInBoxLink: View {
   @Binding var initialSelected: Router.NavDest?
   @Default(.postsInBox) private var postsInBox
+  @Environment(\.contentWidth) private var contentWidth
   
   var postInBox: PostInBox
   @StateObject var post: Post
@@ -19,7 +20,9 @@ struct PostInBoxLink: View {
   @State private var dragging = false
   @State private var deleting = false
   @State private var offsetY: CGFloat?
+
   var body: some View {
+    let cardWidth = min(max(contentWidth / 1.75, 160), max(contentWidth, 1))
     //    Button {
     //      openPost(post)
     //    } label: {
@@ -94,14 +97,13 @@ struct PostInBoxLink: View {
     }
     .padding(.horizontal, 13)
     .padding(.vertical, 11)
-    .frame(width: (.screenW / 1.75), height: 120, alignment: .topLeading)
+    .frame(width: cardWidth, height: 120, alignment: .topLeading)
     .background(
       postInBox.img != nil && postInBox.img != ""
-      
       ? URLImage(url: URL(string: postInBox.img!)!)
         .scaledToFill()
         .opacity(0.15)
-        .frame(width: (.screenW / 1.75), height: 120)
+        .frame(width: cardWidth, height: 120)
         .clipped()
       : nil
     )

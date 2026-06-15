@@ -340,9 +340,10 @@ private struct Toolbar: ToolbarContent {
   @Binding var sort: CommentSortOption
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+  @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
   var body: some ToolbarContent {
-    if !IPAD {
+    if horizontalSizeClass == .compact {
       ToolbarItem(id: "postview-title", placement: .principal) {
         VStack {
           Text(title)

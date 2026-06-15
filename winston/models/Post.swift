@@ -59,7 +59,7 @@ extension Post {
     return id
   }
   
-  convenience init(data: T, sub: Subreddit? = nil, contentWidth: Double = .screenW, secondary: Bool = false, imgPriority: ImageRequest.Priority = .low, theme: WinstonTheme? = nil, fetchAvatar: Bool = true) {
+  convenience init(data: T, sub: Subreddit? = nil, contentWidth: Double = Double(defaultContentWidth), secondary: Bool = false, imgPriority: ImageRequest.Priority = .low, theme: WinstonTheme? = nil, fetchAvatar: Bool = true) {
     let theme = theme ?? getEnabledTheme()
     self.init(data: data, typePrefix: "\(Post.prefix)_")
     setupWinstonData(data: data, contentWidth: contentWidth, secondary: secondary, theme: theme, sub: sub, fetchAvatar: fetchAvatar)
@@ -79,7 +79,7 @@ extension Post {
     self.winstonData = newWinstonData
   }
   
-  func setupWinstonData(data: PostData? = nil, winstonData: PostWinstonData? = nil, contentWidth: Double = .screenW, secondary: Bool = false, theme: WinstonTheme, sub: Subreddit? = nil, styleKey: String? = nil, fetchAvatar: Bool = true) {
+  func setupWinstonData(data: PostData? = nil, winstonData: PostWinstonData? = nil, contentWidth: Double = Double(defaultContentWidth), secondary: Bool = false, theme: WinstonTheme, sub: Subreddit? = nil, styleKey: String? = nil, fetchAvatar: Bool = true) {
     if let data = data ?? self.data {
       let feedStyleKey = styleKey ?? sub?.id ?? data.subreddit
       let feedDefSettings = Defaults[.SubredditFeedDefSettings]

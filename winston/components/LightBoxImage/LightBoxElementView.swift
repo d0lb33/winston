@@ -26,6 +26,7 @@ struct LightBoxElementView: View {
   @Binding var gifPlaybackState: GIFPlaybackState?
   @Binding var isGifScrubbing: Bool
   var gifScrubProgressRequest: Double?
+  var viewportSize: CGSize
 
   private var isGIF: Bool {
     el.url.pathExtension.lowercased() == "gif"
@@ -69,7 +70,7 @@ struct LightBoxElementView: View {
       }
     }
     .id("\(el.id)\(altSize.width + altSize.height)")
-    .frame(width: .screenW)
+    .frame(width: viewportSize.width, height: viewportSize.height)
     .preferredColorScheme(.dark)
     .edgesIgnoringSafeArea(.all)
     .statusBar(hidden: true)

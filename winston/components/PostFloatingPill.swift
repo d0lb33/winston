@@ -20,6 +20,7 @@ struct PostFloatingPill: View {
   @State private var showReplyModal = false
   @State private var showAddedToast: Bool = false
   @State private var showRemovedToast: Bool = false
+  @State private var shareTarget: PostFloatingShareTarget?
   private var thisPinnedPost: Bool { postsInBox.contains { $0.id == post.id } }
   
   var body: some View {
@@ -34,7 +35,7 @@ struct PostFloatingPill: View {
                 HStack(spacing: -12) {
                   LightBoxButton(icon: "square.and.arrow.up.fill") {
                     Task { await post.markInteractedAsRead() }
-                    ShareUtils.shareItem(item: permalink)
+                    shareTarget = PostFloatingShareTarget(url: URL(string: permalink))
                   }
                   
                   
@@ -111,7 +112,7 @@ struct PostFloatingPill: View {
               
               LightBoxButton(icon: "square.and.arrow.up.fill") {
                 Task { await post.markInteractedAsRead() }
-                ShareUtils.shareItem(item: permalink)
+                shareTarget = PostFloatingShareTarget(url: URL(string: permalink))
               }
               .padding(.vertical, -2)
               
@@ -176,10 +177,23 @@ struct PostFloatingPill: View {
         }
       }
     }
+    .sheet(item: $shareTarget) { target in
+      ShareSheet(items: [target.url])
+    }
     .fontSize(20, .semibold)
     .foregroundColor(Color.accentColor)
     .sheet(isPresented: $showReplyModal) {
       ReplyModalPost(post: post, updateComments: updateComments)
     }
+  }
+}
+
+private struct PostFloatingShareTarget: Identifiable {
+  let url: URL
+  var id: URL { url }
+
+  init?(url: URL?) {
+    guard let url else { return nil }
+    self.url = url
   }
 }

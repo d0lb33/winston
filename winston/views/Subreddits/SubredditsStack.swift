@@ -17,16 +17,42 @@ struct SubredditsStack: View {
 
   var body: some View {
     GeometryReader { proxy in
+      let metrics = SubredditsViewportMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
+
       AuroraRoot(router: router, accountID: wire.accountScopeID)
         .environment(\.contentWidth, max(Double(proxy.size.width), 1))
         .onAppear {
-          ScreenMetrics.refresh(size: proxy.size, scale: displayScale)
+          ScreenMetrics.refresh(size: metrics.fullSize, scale: displayScale, safeAreaInsets: metrics.uiEdgeInsets)
         }
-        .onGeometryChange(for: CGSize.self) { geometry in
-          geometry.size
-        } action: { newSize in
-          ScreenMetrics.refresh(size: newSize, scale: displayScale)
+        .onGeometryChange(for: SubredditsViewportMetrics.self) { geometry in
+          SubredditsViewportMetrics(size: geometry.size, safeAreaInsets: geometry.safeAreaInsets)
+        } action: { newMetrics in
+          ScreenMetrics.refresh(size: newMetrics.fullSize, scale: displayScale, safeAreaInsets: newMetrics.uiEdgeInsets)
         }
     }
+  }
+}
+
+private struct SubredditsViewportMetrics: Equatable {
+  let size: CGSize
+  let top: CGFloat
+  let leading: CGFloat
+  let bottom: CGFloat
+  let trailing: CGFloat
+
+  init(size: CGSize, safeAreaInsets: EdgeInsets) {
+    self.size = size
+    self.top = safeAreaInsets.top
+    self.leading = safeAreaInsets.leading
+    self.bottom = safeAreaInsets.bottom
+    self.trailing = safeAreaInsets.trailing
+  }
+
+  var fullSize: CGSize {
+    CGSize(width: size.width + leading + trailing, height: size.height + top + bottom)
+  }
+
+  var uiEdgeInsets: UIEdgeInsets {
+    UIEdgeInsets(top: top, left: leading, bottom: bottom, right: trailing)
   }
 }
