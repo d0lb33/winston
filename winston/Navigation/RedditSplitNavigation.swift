@@ -63,6 +63,19 @@ extension NavigationSplitViewVisibility {
   }
 }
 
+/// Abstraction over a surface's navigation sink. Link/card taps route destinations
+/// through `navigateRedditDestination`, which calls into whichever navigator the surface
+/// injected via `.redditNavigation(_:origin:)` — the legacy `RedditSplitNavigationModel`
+/// (Me/Search/Settings) or the native `PostsNav` (Posts). This keeps the ~44 link call
+/// sites decoupled from any concrete model, so the implementation can be swapped per
+/// surface without touching them.
+@MainActor
+protocol RedditNavigator: AnyObject {
+  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin)
+}
+
+extension RedditSplitNavigationModel: RedditNavigator {}
+
 @Observable
 @MainActor
 final class RedditSplitNavigationModel {
@@ -389,7 +402,7 @@ final class RedditSplitNavigationModel {
 }
 
 private struct RedditNavigationModelKey: EnvironmentKey {
-  static let defaultValue: RedditSplitNavigationModel? = nil
+  static let defaultValue: (any RedditNavigator)? = nil
 }
 
 private struct RedditNavigationOriginKey: EnvironmentKey {
@@ -397,7 +410,7 @@ private struct RedditNavigationOriginKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-  var redditNavigationModel: RedditSplitNavigationModel? {
+  var redditNavigationModel: (any RedditNavigator)? {
     get { self[RedditNavigationModelKey.self] }
     set { self[RedditNavigationModelKey.self] = newValue }
   }
@@ -409,7 +422,7 @@ extension EnvironmentValues {
 }
 
 extension View {
-  func redditNavigation(_ model: RedditSplitNavigationModel, origin: RedditNavigationOrigin) -> some View {
+  func redditNavigation(_ model: any RedditNavigator, origin: RedditNavigationOrigin) -> some View {
     self
       .environment(\.redditNavigationModel, model)
       .environment(\.redditNavigationOrigin, origin)
@@ -419,7 +432,7 @@ extension View {
 @MainActor
 func navigateRedditDestination(
   _ destination: Router.NavDest,
-  model: RedditSplitNavigationModel?,
+  model: (any RedditNavigator)?,
   origin: RedditNavigationOrigin
 ) {
   AppDiagnostics.asyncBreadcrumb(
