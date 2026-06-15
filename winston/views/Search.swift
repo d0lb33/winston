@@ -607,6 +607,165 @@ private final class SearchViewModel: ObservableObject {
   }
 }
 
+private struct SearchListContent: View {
+  @ObservedObject var model: SearchViewModel
+  @Binding var searchScope: SearchScope
+
+  let listWidth: CGFloat
+  let activateSuggestion: (SearchSuggestion) -> Void
+  let selectPost: (Post) -> Void
+  let selectComment: (Comment) -> Void
+  let selectSubreddit: (Subreddit) -> Void
+  let selectUser: (User) -> Void
+  let searchAll: () -> Void
+  let loadMore: () -> Void
+
+  @Environment(\.auroraTheme) private var auroraTheme
+
+  var body: some View {
+    if model.showingNullState {
+      nullStateContent
+    } else if model.showingFullSearch {
+      fullSearchContent
+    } else {
+      quickSearchContent
+    }
+  }
+
+  @ViewBuilder private var nullStateContent: some View {
+    if !model.recentSuggestions.isEmpty {
+      Section(header: SearchRecentSectionHeader(clearAll: model.clearRecentSearches)) {
+        ForEach(model.recentSuggestions) { suggestion in
+          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: model.removeRecentSearch)
+        }
+      }
+    }
+
+    Section(header: AuroraResultSectionHeader(title: "Trending", count: nil)) {
+      if model.loadingNullState && model.trendingSuggestions.isEmpty {
+        AuroraLoadMoreFooter(loading: true)
+      } else {
+        ForEach(model.trendingSuggestions) { suggestion in
+          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: nil)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var fullSearchContent: some View {
+    scopePickerSection
+    postsSection
+    communitiesSection
+    commentsSection
+    usersSection
+    loadMoreSection
+  }
+
+  @ViewBuilder private var quickSearchContent: some View {
+    Section {
+      searchAllButton
+    }
+    communitiesSection
+  }
+
+  private var scopePickerSection: some View {
+    Section {
+      ScrollView(.horizontal, showsIndicators: false) {
+        HStack(spacing: 8) {
+          ForEach(SearchScope.allCases) { scope in
+            SearchOption(
+              activateScope: { searchScope = scope },
+              active: searchScope == scope,
+              scope: scope
+            )
+          }
+        }
+        .padding(.vertical, 2)
+      }
+    }
+  }
+
+  @ViewBuilder private var postsSection: some View {
+    if shows(.posts) && !model.visiblePosts.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Posts", count: model.visiblePosts.count)) {
+        ForEach(model.visiblePosts) { post in
+          AuroraPostResultRow(post: post, availableRowWidth: listWidth > 0 ? max(1, listWidth - 28) : nil, select: selectPost)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var communitiesSection: some View {
+    if shows(.subreddits) && !model.subreddits.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Communities", count: model.subreddits.count)) {
+        ForEach(model.subreddits) { sub in
+          AuroraCommunityResultRow(subreddit: sub, select: selectSubreddit)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var commentsSection: some View {
+    if shows(.comments) && !model.comments.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Comments", count: model.comments.count)) {
+        ForEach(model.comments) { comment in
+          AuroraCommentResultRow(comment: comment, select: selectComment)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var usersSection: some View {
+    if shows(.users) && !model.users.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Users", count: model.users.count)) {
+        ForEach(model.users) { user in
+          AuroraUserResultRow(user: user, select: selectUser)
+        }
+      }
+    }
+  }
+
+  @ViewBuilder private var loadMoreSection: some View {
+    if model.canLoadMore {
+      Section {
+        AuroraLoadMoreFooter(loading: model.loadingMore)
+          .onAppear(perform: loadMore)
+      }
+    }
+  }
+
+  private var searchAllButton: some View {
+    Button(action: searchAll) {
+      HStack(spacing: 12) {
+        Image(systemName: "magnifyingglass")
+          .font(.headline.weight(.semibold))
+          .foregroundStyle(auroraTheme.accent)
+          .frame(width: 30, height: 30)
+          .background(auroraTheme.chipFill, in: .circle)
+        Text("Search all")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.primary)
+        Spacer()
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(.tertiary)
+      }
+      .padding(14)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(auroraTheme.cardFill, in: RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous)
+          .stroke(auroraTheme.hairline, lineWidth: 0.7)
+      )
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func shows(_ scope: SearchScope) -> Bool {
+    searchScope == .all || searchScope == scope
+  }
+}
+
 struct Search: View {
   @ObservedObject var router: Router
   @State private var searchScope: SearchScope = .all
@@ -633,7 +792,18 @@ struct Search: View {
 
   private var searchRoot: some View {
     List {
-      listContent
+      SearchListContent(
+        model: model,
+        searchScope: $searchScope,
+        listWidth: listWidth,
+        activateSuggestion: activateSuggestion,
+        selectPost: selectPost,
+        selectComment: selectComment,
+        selectSubreddit: selectSubreddit,
+        selectUser: selectUser,
+        searchAll: searchAll,
+        loadMore: { model.loadMore(contentWidth: contentWidth) }
+      )
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
@@ -740,149 +910,10 @@ struct Search: View {
       }
   }
 
-  @ViewBuilder private var listContent: some View {
-    if model.showingNullState {
-      nullStateContent
-    } else if model.showingFullSearch {
-      fullSearchContent
-    } else {
-      quickSearchContent
-    }
-  }
-
-  @ViewBuilder private var nullStateContent: some View {
-    if !model.recentSuggestions.isEmpty {
-      Section(header: SearchRecentSectionHeader(clearAll: model.clearRecentSearches)) {
-        ForEach(model.recentSuggestions) { suggestion in
-          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: model.removeRecentSearch)
-        }
-      }
-    }
-
-    Section(header: AuroraResultSectionHeader(title: "Trending", count: nil)) {
-      if model.loadingNullState && model.trendingSuggestions.isEmpty {
-        AuroraLoadMoreFooter(loading: true)
-      } else {
-        ForEach(model.trendingSuggestions) { suggestion in
-          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: nil)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder private var fullSearchContent: some View {
-    scopePickerSection
-    postsSection
-    communitiesSection
-    commentsSection
-    usersSection
-    loadMoreSection
-  }
-
-  @ViewBuilder private var quickSearchContent: some View {
-    Section {
-      searchAllButton
-    }
-    communitiesSection
-  }
-
-  private var scopePickerSection: some View {
-    Section {
-      ScrollView(.horizontal, showsIndicators: false) {
-        HStack(spacing: 8) {
-          ForEach(SearchScope.allCases) { scope in
-            SearchOption(
-              activateScope: { searchScope = scope },
-              active: searchScope == scope,
-              scope: scope
-            )
-          }
-        }
-        .padding(.vertical, 2)
-      }
-    }
-  }
-
-	  @ViewBuilder private var postsSection: some View {
-	    if shows(.posts) && !model.visiblePosts.isEmpty {
-	      Section(header: AuroraResultSectionHeader(title: "Posts", count: model.visiblePosts.count)) {
-	        ForEach(model.visiblePosts) { post in
-	          AuroraPostResultRow(post: post, availableRowWidth: listWidth > 0 ? max(1, listWidth - 28) : nil, select: selectPost)
-	        }
-	      }
-	    }
-	  }
-
-  @ViewBuilder private var communitiesSection: some View {
-    if shows(.subreddits) && !model.subreddits.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Communities", count: model.subreddits.count)) {
-        ForEach(model.subreddits) { sub in
-          AuroraCommunityResultRow(subreddit: sub, select: selectSubreddit)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder private var commentsSection: some View {
-    if shows(.comments) && !model.comments.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Comments", count: model.comments.count)) {
-        ForEach(model.comments) { comment in
-          AuroraCommentResultRow(comment: comment, select: selectComment)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder private var usersSection: some View {
-    if shows(.users) && !model.users.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Users", count: model.users.count)) {
-        ForEach(model.users) { user in
-          AuroraUserResultRow(user: user, select: selectUser)
-        }
-      }
-    }
-  }
-
-  @ViewBuilder private var loadMoreSection: some View {
-    if model.canLoadMore {
-      Section {
-        AuroraLoadMoreFooter(loading: model.loadingMore)
-          .onAppear {
-            model.loadMore(contentWidth: contentWidth)
-          }
-      }
-    }
-  }
-
-  private var searchAllButton: some View {
-    Button {
-      searchScope = .all
-      model.recordRecentSearch(searchQuery.text)
-      model.refreshFullSearch(query: searchQuery.text, scope: .all, contentWidth: contentWidth)
-    } label: {
-      HStack(spacing: 12) {
-        Image(systemName: "magnifyingglass")
-          .font(.headline.weight(.semibold))
-          .foregroundStyle(auroraTheme.accent)
-          .frame(width: 30, height: 30)
-          .background(auroraTheme.chipFill, in: .circle)
-        Text("Search all")
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(.primary)
-        Spacer()
-        Image(systemName: "chevron.right")
-          .font(.caption.weight(.bold))
-          .foregroundStyle(.tertiary)
-      }
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(auroraTheme.cardFill, in: RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous)
-          .stroke(auroraTheme.hairline, lineWidth: 0.7)
-      )
-    }
-    .buttonStyle(.plain)
+  private func searchAll() {
+    searchScope = .all
+    model.recordRecentSearch(searchQuery.text)
+    model.refreshFullSearch(query: searchQuery.text, scope: .all, contentWidth: contentWidth)
   }
 
   private func activateSuggestion(_ suggestion: SearchSuggestion) {
@@ -909,7 +940,4 @@ struct Search: View {
     navigateRedditDestination(.reddit(.user(user)), model: splitNavigation, origin: .content)
   }
 
-  private func shows(_ scope: SearchScope) -> Bool {
-    searchScope == .all || searchScope == scope
-  }
 }

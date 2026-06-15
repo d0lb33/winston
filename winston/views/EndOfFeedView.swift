@@ -33,12 +33,10 @@ struct EndOfFeedView: View {
           self.handleTap()
         }
     }
-    .alert(isPresented: $showAlert) {
-      Alert(
-        title: Text("Secrets Unveiled"),
-        message: Text(QuirkyMessageUtil.quirkyGoAwayMessage()),
-        dismissButton: .default(Text("OK"))
-      )
+    .alert("Secrets Unveiled", isPresented: $showAlert) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(QuirkyMessageUtil.quirkyGoAwayMessage())
     }
   }
 

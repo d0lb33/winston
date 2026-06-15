@@ -266,7 +266,7 @@ struct CommentLinkContent: View {
   
   @Environment(\.useTheme) private var selectedTheme
   
-  @State var commentViewLoaded = false
+  @State private var commentViewLoaded = false
   
   nonisolated func haptic() {
     Task(priority: .background) {

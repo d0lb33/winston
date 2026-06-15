@@ -17,7 +17,7 @@ struct CustomFilterView: View {
   var subId: String
   @Binding var selected: String
   
-  @State var draftFilter: FilterData = .init()
+  @State private var draftFilter: FilterData = .init()
   
   func removeFromDefaults() {
     let context = PersistenceController.shared.container.newBackgroundContext()

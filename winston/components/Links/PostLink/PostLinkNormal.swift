@@ -292,8 +292,6 @@ struct PostLinkNormal: View, Equatable, Identifiable {
             )
             .background(Color.primary.opacity(0.05))
             .cornerRadius(theme.theme.mediaCornerRadius)
-            //                }
-            //            .swipyRev(size: repostWinstonData.postDimensions.size, actionsSet: postSwipeActions, entity: repost)
             .environmentObject(repost)
             .environmentObject(repostWinstonData)
             .environmentObject(repostSub)

@@ -15,7 +15,7 @@ struct Tabber: View, Equatable {
   @ObservedObject private var nav = Nav.shared
   @ObservedObject private var wire = RedditWire.shared
   
-  @State var tabBarHeight: Double? = nil
+  @State private var tabBarHeight: Double? = nil
   
   @Environment(\.useTheme) private var currentTheme
   @Environment(\.colorScheme) private var colorScheme

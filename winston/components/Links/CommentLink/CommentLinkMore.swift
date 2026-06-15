@@ -15,7 +15,7 @@ struct CommentLinkMore: View {
   var postFullname: String?
   var parentElement: CommentParentElement?
   var indentLines: Int?
-  @State var loadMoreLoading = false
+  @State private var loadMoreLoading = false
   
   @Environment(\.useTheme) private var selectedTheme
   

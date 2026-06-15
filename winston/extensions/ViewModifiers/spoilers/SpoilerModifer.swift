@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SpoilerModifer: ViewModifier {
-  @State var pixelate = 20.0
+  @State private var pixelate = 20.0
   
   func body(content: Content) -> some View {
     

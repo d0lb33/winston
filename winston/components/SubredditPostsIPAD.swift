@@ -101,7 +101,6 @@ struct SubredditPostsIPAD: View, Equatable {
           Group {
             if let sub = subreddit ?? post.winstonData?.subreddit, let winstonData = post.winstonData {
               PostLink(id: post.id, theme: selectedTheme.postLinks, showSub: showSub, compactPerSubreddit: feedDefSettings.compactPerSubreddit[styleKey], postStyleOverride: feedDefSettings.postStylePerSubreddit[styleKey], contentWidth: contentWidth, defSettings: postLinkDefSettings)
-//              .swipyRev(size: winstonData.postDimensions.size, actionsSet: postLinkDefSettings.swipeActions, entity: post)
               .environmentObject(post)
               .environmentObject(sub)
               .environmentObject(winstonData)

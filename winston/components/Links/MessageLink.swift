@@ -9,13 +9,32 @@ import SwiftUI
 import Defaults
 
 struct InboxNotificationLink: View {
-  @State private var pressed = false
   @Environment(\.openURL) private var openURL
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   let notification: InboxNotification
   let markRead: () async -> Void
+
+  private func markNotificationRead() {
+    Task(priority: .background) {
+      await markRead()
+    }
+  }
+
+  private func openNotificationDestination() {
+    markNotificationRead()
+    if let postID = notification.postBareID {
+      let post = notification.subredditName.map { Post(id: postID, subID: $0) } ?? Post(id: postID)
+      if let highlightID = notification.commentFullname {
+        navigateRedditDestination(.reddit(.postHighlighted(post, highlightID)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      } else {
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      }
+    } else if let urlString = notification.deeplinkURL, let url = URL(string: urlString) {
+      openURL(url)
+    }
+  }
   
   var body: some View {
     InboxNotificationRow(notification: notification)
@@ -26,25 +45,18 @@ struct InboxNotificationLink: View {
       .mask(RR(20, .black))
       .compositingGroup()
       .opacity(notification.isUnread ? 1 : 0.65)
-      .swipyActions(pressing: $pressed, onTap: {
-        Task(priority: .background) {
-          await markRead()
-        }
-        if let postID = notification.postBareID {
-          let post = notification.subredditName.map { Post(id: postID, subID: $0) } ?? Post(id: postID)
-          if let highlightID = notification.commentFullname {
-            navigateRedditDestination(.reddit(.postHighlighted(post, highlightID)), model: redditNavigationModel, origin: redditNavigationOrigin)
-          } else {
-            navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      .contentShape(Rectangle())
+      .onTapGesture(perform: openNotificationDestination)
+      .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+        if notification.isUnread {
+          Button {
+            markNotificationRead()
+          } label: {
+            Label("Mark Read", systemImage: "eye.fill")
           }
-        } else if let urlString = notification.deeplinkURL, let url = URL(string: urlString) {
-          openURL(url)
+          .tint(.orange)
         }
-      }, rightActionIcon: notification.isUnread ? "eye.fill" : "eye.slash.fill", rightActionHandler: {
-        Task(priority: .background) {
-          await markRead()
-        }
-      })
+      }
   }
 }
 
@@ -149,9 +161,3 @@ private extension InboxNotification {
     }
   }
 }
-
-//struct InboxNotification_Previews: PreviewProvider {
-//    static var previews: some View {
-//        InboxNotification()
-//    }
-//}

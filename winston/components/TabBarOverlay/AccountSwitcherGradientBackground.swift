@@ -135,7 +135,7 @@ struct AccountSwitcherGradientBackground: View, Equatable {
 
 private struct ComplexWaveModifierVFX: ViewModifier {
   var time: CGFloat
-  @State var go = false
+  @State private var go = false
   
   func body(content: Content) -> some View {
     content

@@ -55,8 +55,11 @@ struct AppContent: View {
           // Not authing, active and blur visible = Need to auth
           isAuthenticating = true
           biometrics.authenticateUser { success in
-            if success {
-              lockBlur = 0
+            Task { @MainActor in
+              if success {
+                lockBlur = 0
+              }
+              isAuthenticating = false
             }
           }
         }
@@ -64,7 +67,6 @@ struct AppContent: View {
           // Auth enabled but not active = blur
           lockBlur = 50
         }
-        isAuthenticating = false
       } else {
           // Auth not enabled = No blur
           lockBlur = 0
@@ -92,7 +94,7 @@ struct AppContent: View {
         break
       case .background:
         AppDiagnostics.shared.markSessionClean("background")
-        addQuickActions()
+        AppQuickActions.install()
       @unknown default:
         print("default")
       }
@@ -101,28 +103,5 @@ struct AppContent: View {
     .overlay {
       DiagnosticsHUD()
     }
-  }
-  
-  func addQuickActions() {
-    @FetchRequest(sortDescriptors: [NSSortDescriptor(key: "name", ascending: true)], animation: .default) var subreddits: FetchedResults<CachedSub>
-    
-    var searchUserInfo: [String: NSSecureCoding] {
-      return ["name" : "search" as NSSecureCoding]
-    }
-    var savedInfo: [String: NSSecureCoding] {
-      return ["name" : "saved" as NSSecureCoding]
-    }
-    var statususerInfo: [String: NSSecureCoding] {
-      return ["name" : "status" as NSSecureCoding]
-    }
-    var contactuserInfo: [String: NSSecureCoding] {
-      return ["name" : "contact" as NSSecureCoding]
-    }
-    
-    UIApplication.shared.shortcutItems = [
-      UIApplicationShortcutItem(type: "Search", localizedTitle: "Search", localizedSubtitle: "Search a Subreddit", icon: UIApplicationShortcutIcon(type: .search), userInfo: searchUserInfo),
-      UIApplicationShortcutItem(type: "Saved", localizedTitle: "Saved", localizedSubtitle: "", icon: UIApplicationShortcutIcon(type: .bookmark), userInfo: savedInfo),
-    ]
-    
   }
 }

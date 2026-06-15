@@ -27,7 +27,7 @@ private let placeholders: [String] = [
 
 struct MDEditor: View {
   @Binding var text: String
-  @State var placeholder: String = placeholders.randomElement()!
+  @State private var placeholder: String = placeholders.randomElement()!
     var body: some View {
       ZStack(alignment: .topLeading) {
         if text.isEmpty {
@@ -48,4 +48,3 @@ struct MDEditor: View {
       .animation(nil, value: text.isEmpty)
     }
 }
-

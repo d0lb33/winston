@@ -9,8 +9,8 @@ import SwiftUI
 import Defaults
 struct ShortCommentPostLink: View {
   var comment: Comment
-  @State var openedPost = false
-  @State var openedSub = false
+  @State private var openedPost = false
+  @State private var openedSub = false
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin

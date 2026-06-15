@@ -14,9 +14,9 @@ import UniformTypeIdentifiers
 struct GeneralPanel: View {
   @Default(.BehaviorDefSettings) var behaviorDefSettings
   @State private var totalCacheSize: String = ""
-  @State var isMoving: Bool = false
-  @State var settingsFileURL: String = ""
-  @State var doImport: Bool = false
+  @State private var isMoving: Bool = false
+  @State private var settingsFileURL: String = ""
+  @State private var doImport: Bool = false
   @State private var showResetReadHistoryAlert: Bool = false
   var body: some View {
     List{

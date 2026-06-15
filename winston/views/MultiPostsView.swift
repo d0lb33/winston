@@ -189,8 +189,8 @@ struct MultiPostsView: View {
       .refreshable { await asyncFetch(force: true) }
       .scrollContentBackground(.hidden)
     }
-    .navigationBarItems(
-      trailing:
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
         HStack {
           PostSortMenu(selection: $sort)
           
@@ -206,7 +206,8 @@ struct MultiPostsView: View {
           }
         }
         .animation(nil, value: sort)
-    )
+      }
+    }
     .onAppear {
       resetHiddenPosts()
       if posts.data.count == 0 {

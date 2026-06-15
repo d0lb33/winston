@@ -221,19 +221,17 @@ struct ReplyModal<Content: View>: View {
                 alertExit = true
               }
             }
-            .actionSheet(isPresented: $alertExit) {
-              ActionSheet(title: Text("Are you sure you wanna discard?"), buttons: [
-                .default(Text("Yes")) {
-                  withAnimation(spring) {
-                    dismiss()
-                  }
-                  if let currentDraft = currentDraft {
-                    viewContext.delete(currentDraft)
-                    try? viewContext.save()
-                  }
-                },
-                .cancel()
-              ])
+            .confirmationDialog("Are you sure you wanna discard?", isPresented: $alertExit, titleVisibility: .visible) {
+              Button("Yes") {
+                withAnimation(spring) {
+                  dismiss()
+                }
+                if let currentDraft = currentDraft {
+                  viewContext.delete(currentDraft)
+                  try? viewContext.save()
+                }
+              }
+              Button("Cancel", role: .cancel) {}
             }
             
             MasterButton(icon: "chevron.down", mode: .subtle, color: .primary, textColor: .primary, shrinkHoverEffect: true, height: 52, proportional: .circle) {

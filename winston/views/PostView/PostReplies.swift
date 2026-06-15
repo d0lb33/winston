@@ -20,7 +20,7 @@ struct PostReplies: View {
   var fetch: (_ full: Bool) async -> Void
   @Environment(\.useTheme) private var selectedTheme
 
-  @State var seenComments : String?
+  @State private var seenComments : String?
 
   @ObservedObject var comments: ObservableArray<Comment>
 

@@ -40,15 +40,15 @@ struct FilteredSubredditsSettings: View {
       }
       .nativeSettingsList()
       .navigationTitle("Filtered Subreddits")
-      .navigationBarItems(trailing:
-        HStack {
-          Button(action: {
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
             addSubredditAlert = true
-          }) {
+          } label: {
             Image(systemName: "plus")
           }
         }
-      )
+      }
     }
     .alert("Enter a subreddit", isPresented: $addSubredditAlert) {
       TextField("Meow", text: $newSubreddit)
