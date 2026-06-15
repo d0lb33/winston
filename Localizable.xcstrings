@@ -3258,6 +3258,12 @@
         }
       }
     },
+    "Reset read history" : {
+
+    },
+    "Reset read history?" : {
+
+    },
     "Restart required" : {
       "localizations" : {
         "de" : {
@@ -4061,6 +4067,9 @@
 
     },
     "This clears recent events, persisted diagnostic logs, and the Network Console." : {
+
+    },
+    "This clears the posts and comments Winston has marked as read." : {
 
     },
     "This is not working yet :(" : {

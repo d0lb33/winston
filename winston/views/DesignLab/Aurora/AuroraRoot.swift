@@ -20,6 +20,7 @@ import CoreData
 
 struct AuroraRoot: View {
   @ObservedObject var router: Router
+  let accountID: UUID?
   /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
   var themeOverride: AuroraTheme? = nil
   var onClose: (() -> Void)? = nil
@@ -42,11 +43,12 @@ struct AuroraRoot: View {
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
 
-  init(router: Router, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
+  init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     self.router = router
+    self.accountID = accountID
     self.themeOverride = themeOverride
     self.onClose = onClose
-    if let cid = Defaults[.GeneralDefSettings].redditCredentialSelectedID {
+    if let cid = accountID {
       _subs = FetchRequest<CachedSub>(
         sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
         predicate: NSPredicate(format: "winstonCredentialID == %@", cid as CVarArg),
@@ -55,6 +57,7 @@ struct AuroraRoot: View {
     } else {
       _subs = FetchRequest<CachedSub>(
         sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
+        predicate: NSPredicate(value: false),
         animation: .default
       )
     }
@@ -130,6 +133,9 @@ struct AuroraRoot: View {
       // Advance to the feed when a community/feed is picked from the sidebar.
       preferredColumn = .content
     }
+    .onChange(of: accountID) { _, _ in
+      resetAccountScopedState()
+    }
     .onChange(of: selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected.
       if let newID {
@@ -154,6 +160,18 @@ struct AuroraRoot: View {
         preferredColumn = .detail
       }
     }
+  }
+
+  private func resetAccountScopedState() {
+    selectedSubID = "popular"
+    selectedPostID = nil
+    detailPost = nil
+    detailHighlightID = nil
+    feedPath = []
+    sort = .hot
+    model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
+    if !router.fullPath.isEmpty { router.fullPath = [] }
+    preferredColumn = .content
   }
 
   private var contentColumn: some View {

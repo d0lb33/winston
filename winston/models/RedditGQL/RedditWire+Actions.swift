@@ -143,12 +143,15 @@ extension RedditWire {
 
   /// Refresh (or return the cached) signed-in user. Replaces REST `fetchMe`.
   @discardableResult
-  func fetchMe(force: Bool = false) async -> UserData? {
+  func fetchMe(force: Bool = false, for accountID: UUID? = nil) async -> UserData? {
+    let expectedAccountID = accountID ?? accountScopeID
+    if let expectedAccountID, accountScopeID != expectedAccountID { return nil }
     if !force, let data = me?.data { return data }
     guard let data = await accountProfile() else {
       if force { me = nil }
       return nil
     }
+    if let expectedAccountID, accountScopeID != expectedAccountID { return nil }
     me = User(data: data)
     Self.currentUserName = data.name
     return data
@@ -156,15 +159,15 @@ extension RedditWire {
 
   /// Sync the signed-in user's subscriptions into the CachedSub CoreData store,
   /// tagged by the selected account id. Replaces REST `fetchSubs`.
-  func fetchSubs() async {
-    guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return }
+  func fetchSubs(for accountID: UUID) async {
     let subs = await subscriptions()
+    guard accountScopeID == accountID else { return }
     let finalSubs = subs
       .map { ListingChild<SubredditData>(kind: "t5", data: $0) }
       .filter { $0.data?.subreddit_type != "user" }
     let context = PersistenceController.shared.container.viewContext
     let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
-    fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)
+    fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
     let results = (context.performAndWait { try? context.fetch(fetchRequest) }) ?? []
     results.forEach { cachedSub in
       context.performAndWait {
@@ -174,9 +177,9 @@ extension RedditWire {
     await context.perform(schedule: .enqueued) {
       cleanSubs(finalSubs).compactMap { $0.data }.forEach { x in
         if let found = results.first(where: { $0.uuid == x.name }) {
-          found.update(data: x, credentialID: currentCredentialID)
+          found.update(data: x, credentialID: accountID)
         } else {
-          _ = CachedSub(data: x, context: context, credentialID: currentCredentialID)
+          _ = CachedSub(data: x, context: context, credentialID: accountID)
         }
       }
     }
@@ -366,15 +369,15 @@ extension RedditWire {
 extension RedditWire {
   /// Sync the signed-in user's multireddits into the CachedMulti CoreData
   /// store. Replaces REST `fetchMyMultis`.
-  func fetchMyMultis() async {
-    guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return }
+  func fetchMyMultis(for accountID: UUID) async {
     do {
       let resp = try await client.myAuthoredMultiredditsResponse()
+      guard accountScopeID == accountID else { return }
       let multis = (resp.data?.rawData).map(Self.multiDatas(from:)) ?? []
       status = "multis → \(multis.count)"
       let context = PersistenceController.shared.container.newBackgroundContext()
       let multisFetchRequest = NSFetchRequest<CachedMulti>(entityName: "CachedMulti")
-      multisFetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)
+      multisFetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
       let multisResults = (context.performAndWait { try? context.fetch(multisFetchRequest) }) ?? []
       context.performAndWait {
         multisResults.forEach { cached in
@@ -384,9 +387,9 @@ extension RedditWire {
       multis.forEach { data in
         context.performAndWait {
           if let found = multisResults.first(where: { $0.uuid == data.id }) {
-            found.update(data, credentialID: currentCredentialID)
+            found.update(data, credentialID: accountID)
           } else {
-            _ = CachedMulti(data: data, context: context, credentialID: currentCredentialID)
+            _ = CachedMulti(data: data, context: context, credentialID: accountID)
           }
         }
       }

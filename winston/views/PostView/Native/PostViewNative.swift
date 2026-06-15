@@ -102,10 +102,10 @@ struct PostViewNative: View {
       .toolbar { sortToolbar }
       .toolbarMinimizeBehavior(.onScrollDown, for: .navigationBar)
       .refreshable { await fetch(true) }
-      .task {
+      .onAppear {
         ensureWinston()
         if model.rows.isEmpty || post.data == nil {
-          await fetch(post.data == nil)
+          Task { await fetch(post.data == nil) }
         }
       }
       .onChange(of: sort) { _, _ in

@@ -111,6 +111,9 @@ final class RedditWire: ObservableObject {
   @Published var accounts: [RedditAccount] = []
   /// The currently-selected account (mirrors `redditCredentialSelectedID`).
   @Published var account: RedditAccount?
+  /// Stable account scope for account-owned views and caches. Set before async
+  /// cache refreshes so UI can clear stale data immediately on account switches.
+  @Published private(set) var accountScopeID: UUID?
   /// True when there's a usable session for the selected account.
   @Published var connected = false
   @Published var status = "idle" {
@@ -147,6 +150,8 @@ final class RedditWire: ObservableObject {
     guard !accounts.isEmpty else {
       connected = false
       account = nil
+      accountScopeID = nil
+      clearAccountScopedMemory(clearPinnedPosts: true, resetNavigation: false)
       AppDiagnostics.shared.breadcrumb("RedditWire.restore no accounts")
       return
     }
@@ -160,6 +165,7 @@ final class RedditWire: ObservableObject {
       await store.setActive(nil)
       connected = false
       me = nil
+      accountScopeID = selected.id
       Self.currentUserName = nil
       status = "missing session for u/\(selected.username)"
       AppDiagnostics.shared.record(.warning, category: "reddit.session", message: "Selected account missing credentials", metadata: ["account": selected.username, "id": selected.id.uuidString])
@@ -168,7 +174,8 @@ final class RedditWire: ObservableObject {
 
     await store.setActive(selected.id)
     connected = true
-    await refreshSelectedIdentity()
+    beginAccountScope(selected.id, resetWorkspace: false, clearPinnedPosts: false)
+    await refreshSelectedIdentity(for: selected.id)
     AppDiagnostics.shared.breadcrumb("RedditWire.restore connected", metadata: ["account": selected.username])
   }
 
@@ -207,6 +214,7 @@ final class RedditWire: ObservableObject {
         }
         try? await store.clearCredentials(for: newID)
         await store.setActive(existing.id)
+        beginAccountScope(existing.id, resetWorkspace: true, clearPinnedPosts: true)
         applySelection(existing.id, profile: profile)
       } else {
         let acct = RedditAccount(
@@ -216,11 +224,14 @@ final class RedditWire: ObservableObject {
         )
         accounts.append(acct)
         Defaults[.graphQLAccounts] = accounts
+        beginAccountScope(newID, resetWorkspace: true, clearPinnedPosts: true)
         applySelection(newID, profile: profile)
       }
       connected = true
       dismissOnboarding()
-      await syncAppCaches()
+      if let selectedID = account?.id {
+        await syncAppCaches(for: selectedID)
+      }
       status = "connected ✅ u/\(username)"
       AppDiagnostics.shared.record(.info, category: "reddit.session", message: "Account connected", metadata: ["account": username])
     } catch {
@@ -238,10 +249,16 @@ final class RedditWire: ObservableObject {
   /// store at `id`, refreshes that account's identity, and reloads me + subs.
   func selectAccount(_ id: UUID) async {
     AppDiagnostics.shared.breadcrumb("RedditWire.selectAccount", metadata: ["id": id.uuidString])
-    guard accounts.contains(where: { $0.id == id }) else { return }
+    guard let selectedAccount = accounts.first(where: { $0.id == id }) else { return }
+    let isAccountChange = account?.id != id || accountScopeID != id
+    if isAccountChange {
+      account = selectedAccount
+      beginAccountScope(id, resetWorkspace: true, clearPinnedPosts: true)
+    }
     guard ((try? await store.loadCredentials(for: id)) != nil) else {
       Defaults[.GeneralDefSettings].redditCredentialSelectedID = id
-      account = accounts.first { $0.id == id }
+      account = selectedAccount
+      accountScopeID = id
       await store.setActive(nil)
       connected = false
       me = nil
@@ -253,9 +270,10 @@ final class RedditWire: ObservableObject {
 
     await store.setActive(id)
     Defaults[.GeneralDefSettings].redditCredentialSelectedID = id
-    account = accounts.first { $0.id == id }
+    account = selectedAccount
+    accountScopeID = id
     connected = true
-    await refreshSelectedIdentity()
+    await refreshSelectedIdentity(for: id)
     status = "switched → u/\(account?.username ?? "?")"
   }
 
@@ -272,8 +290,10 @@ final class RedditWire: ObservableObject {
     } else {
       account = nil
       connected = false
+      accountScopeID = nil
       await store.setActive(nil)
       Defaults[.GeneralDefSettings].redditCredentialSelectedID = nil
+      clearAccountScopedMemory(clearPinnedPosts: true, resetNavigation: true)
       status = "logged out"
     }
   }
@@ -315,6 +335,7 @@ final class RedditWire: ObservableObject {
     }
     accounts = []
     account = nil
+    accountScopeID = nil
     connected = false
     me = nil
     Self.currentUserName = nil
@@ -322,6 +343,7 @@ final class RedditWire: ObservableObject {
     Defaults[.graphQLAccounts] = []
     Defaults[.graphQLAccount] = nil
     Defaults[.GeneralDefSettings].redditCredentialSelectedID = nil
+    Defaults[.postsInBox] = []
     status = "GraphQL account state reset"
   }
 
@@ -336,23 +358,46 @@ final class RedditWire: ObservableObject {
         accounts[idx].avatarURL = profile.snoovatar_img ?? profile.icon_img ?? accounts[idx].avatarURL
       }
       account = accounts[idx]
+      accountScopeID = id
       Defaults[.graphQLAccounts] = accounts
     }
     Defaults[.GeneralDefSettings].redditCredentialSelectedID = id
   }
 
   /// Re-read the active account's profile and refresh app caches.
-  private func refreshSelectedIdentity() async {
-    guard let id = account?.id else { return }
+  private func refreshSelectedIdentity(for id: UUID) async {
     let profile = await accountProfile()
+    guard accountScopeID == id else { return }
     applySelection(id, profile: profile)
-    await syncAppCaches()
+    await syncAppCaches(for: id)
   }
 
-  private func syncAppCaches() async {
-    await fetchMe(force: true)
-    await fetchSubs()
-    await fetchMyMultis()
+  private func syncAppCaches(for accountID: UUID) async {
+    guard accountScopeID == accountID else { return }
+    await fetchMe(force: true, for: accountID)
+    guard accountScopeID == accountID else { return }
+    await fetchSubs(for: accountID)
+    guard accountScopeID == accountID else { return }
+    await fetchMyMultis(for: accountID)
+  }
+
+  private func beginAccountScope(_ id: UUID, resetWorkspace: Bool, clearPinnedPosts: Bool) {
+    accountScopeID = id
+    clearAccountScopedMemory(clearPinnedPosts: clearPinnedPosts, resetNavigation: resetWorkspace)
+  }
+
+  private func clearAccountScopedMemory(clearPinnedPosts: Bool, resetNavigation: Bool) {
+    me = nil
+    Self.currentUserName = nil
+    profileCursorByAfterKey.removeAll(keepingCapacity: true)
+    moreCursorByStubID.removeAll(keepingCapacity: true)
+    moreStubCounter = 0
+    if clearPinnedPosts {
+      Defaults[.postsInBox] = []
+    }
+    if resetNavigation {
+      Nav.shared.resetAccountScopedStacks()
+    }
   }
 
   private func dismissOnboarding() {

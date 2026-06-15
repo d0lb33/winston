@@ -18,6 +18,7 @@ struct GeneralPanel: View {
   @State var isMoving: Bool = false
   @State var settingsFileURL: String = ""
   @State var doImport: Bool = false
+  @State private var showResetReadHistoryAlert: Bool = false
   var body: some View {
     List{
       
@@ -73,6 +74,13 @@ struct GeneralPanel: View {
           }
           
           WListButton {
+            showResetReadHistoryAlert = true
+          } label: {
+            Label("Reset read history", systemImage: "eye.slash")
+              .foregroundColor(.red)
+          }
+          
+          WListButton {
             clearCache()
             resetCaches()
             resetCoreData()
@@ -91,6 +99,14 @@ struct GeneralPanel: View {
     .themedListBG(theme.lists.bg)
     .navigationTitle("General")
     .navigationBarTitleDisplayMode(.inline)
+    .alert("Reset read history?", isPresented: $showResetReadHistoryAlert) {
+      Button("Reset", role: .destructive) {
+        resetReadHistory()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This clears the posts and comments Winston has marked as read.")
+    }
   }
   
   func calculateTotalCacheSize() {

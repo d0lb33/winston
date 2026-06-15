@@ -40,10 +40,9 @@ extension CachedMulti {
   }
   
   func getSubEntities(_ subs: [MultiSub], context: NSManagedObjectContext, credentialID: UUID) -> [CachedSub] {
-    guard let currentCredentialID = Defaults[.GeneralDefSettings].redditCredentialSelectedID else { return [] }
     var cachedSubs: [String:CachedSub] = [:]
     let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
-      fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", currentCredentialID as CVarArg)
+      fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", credentialID as CVarArg)
     if let results = (context.performAndWait { try? context.fetch(fetchRequest) }) {
       results.forEach { cachedSub in
         context.performAndWait {
@@ -57,7 +56,7 @@ extension CachedMulti {
     return subs.compactMap { subData in
       if let data = subData.data, let found = cachedSubs[data.name] { return found }
       if let y = subData.data {
-        let newCachedSub = CachedSub(data: y, context: context, credentialID: currentCredentialID)
+        let newCachedSub = CachedSub(data: y, context: context, credentialID: credentialID)
         return newCachedSub
       }
       return nil

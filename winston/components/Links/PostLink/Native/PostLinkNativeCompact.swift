@@ -46,12 +46,6 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
       post.winstonData?.extractedMediaForcedNormal = newVideo
     }
   }
-  func onDisappear() {
-    if defSettings.readOnScroll {
-      FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
-    }
-  }
-
   private struct Chip: Identifiable { let id: String; let text: String; let nsfw: Bool }
   private func chips(_ data: PostData) -> [Chip] {
     var out: [Chip] = []
@@ -132,7 +126,6 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
       .postReadDimmed(post: post, theme: theme)
       .contextMenu { PostLinkContext(post: post) } preview: { PostLinkContextPreview(post: post, sub: sub) }
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post, secondary: secondary)
-      .onDisappear { onDisappear() }
     }
   }
 

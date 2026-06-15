@@ -34,23 +34,28 @@ func resetCaches() {
   Caches.videos.cache.removeAll()
 }
 
+func resetReadHistory() {
+  deleteCoreDataEntity(named: "SeenPost")
+}
+
 func resetCoreData() {
   let container = PersistenceController.shared.container
   let entities = container.managedObjectModel.entities
   for entity in entities {
-        delete(entityName: entity.name!)
+    deleteCoreDataEntity(named: entity.name!)
   }
-  
-  func delete(entityName: String) {
-    let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
-    let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
-    do {
-      _ = try container.viewContext.performAndWait {
-        try container.viewContext.executeAndMergeChanges(deleteRequest)
-//        try container.viewContext.save()
-      }
-    } catch let error as NSError {
-      debugPrint(error)
+}
+
+private func deleteCoreDataEntity(named entityName: String) {
+  let container = PersistenceController.shared.container
+  let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName: entityName)
+  let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+  do {
+    _ = try container.viewContext.performAndWait {
+      try container.viewContext.executeAndMergeChanges(deleteRequest)
+//      try container.viewContext.save()
     }
+  } catch let error as NSError {
+    debugPrint(error)
   }
 }

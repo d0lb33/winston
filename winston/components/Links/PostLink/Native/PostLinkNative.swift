@@ -56,12 +56,6 @@ struct PostLinkNative: View, Equatable, Identifiable {
     }
   }
 
-  func onDisappear() {
-    if defSettings.readOnScroll {
-      FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
-    }
-  }
-
   // MARK: - Chips (NSFW / flair). Kept as a single ForEach so the row's opaque
   // type stays data-independent (avoids the type-metadata storm on scroll).
   private struct Chip: Identifiable { let id: String; let text: String; let nsfw: Bool }
@@ -173,7 +167,6 @@ struct PostLinkNative: View, Equatable, Identifiable {
       .postReadDimmed(post: post, theme: theme)
       .contextMenu { PostLinkContext(post: post) } preview: { PostLinkContextPreview(post: post, sub: sub) }
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post, secondary: secondary)
-      .onDisappear { onDisappear() }
     }
   }
 

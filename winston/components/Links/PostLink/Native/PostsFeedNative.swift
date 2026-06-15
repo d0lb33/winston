@@ -17,6 +17,96 @@
 import SwiftUI
 import Defaults
 
+@MainActor
+private final class NativeReadOnScrollBatcher {
+  private let slowVelocityThreshold: CGFloat = 900
+  private let maxBatchAge: TimeInterval = 1.0
+
+  private(set) var isScrolling = false
+  private var velocityY: CGFloat = 0
+  private var triggeredPostIDs: Set<String> = []
+  private var pendingPosts: [String: Post] = [:]
+  private var maxAgeFlushWorkItem: DispatchWorkItem?
+
+  func updateScrollPhase(isScrolling: Bool) {
+    self.isScrolling = isScrolling
+    if !isScrolling {
+      velocityY = 0
+      flushPendingPosts()
+    }
+  }
+
+  func updateVelocity(_ velocityY: CGFloat) {
+    self.velocityY = velocityY
+  }
+
+  func markCrossed(_ post: Post) {
+    guard post.data?.winstonSeen != true else { return }
+    guard triggeredPostIDs.insert(post.id).inserted else { return }
+
+    withAnimation {
+      ScrollPerfProbe.shared.bump("postSeenOptimistic")
+      var data = post.data
+      data?.winstonSeen = true
+      post.data = data
+    }
+
+    if shouldPersistImmediately {
+      persist([post])
+    } else {
+      pendingPosts[post.id] = post
+      scheduleMaxAgeFlush()
+    }
+  }
+
+  func flushPendingPosts() {
+    maxAgeFlushWorkItem?.cancel()
+    maxAgeFlushWorkItem = nil
+
+    let posts = pendingPosts.values.filter { $0.data?.winstonSeen == true }
+    pendingPosts.removeAll(keepingCapacity: true)
+    persist(posts)
+  }
+
+  private var shouldPersistImmediately: Bool {
+    !isScrolling || abs(velocityY) < slowVelocityThreshold
+  }
+
+  private func scheduleMaxAgeFlush() {
+    guard maxAgeFlushWorkItem == nil else { return }
+
+    let item = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        self?.flushPendingPosts()
+      }
+    }
+    maxAgeFlushWorkItem = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + maxBatchAge, execute: item)
+  }
+
+  private func persist(_ posts: some Collection<Post>) {
+    let ids = Set(posts.map(\.id))
+    guard !ids.isEmpty else { return }
+
+    Task(priority: .background) {
+      await Post.persistSeenPostIDs(ids)
+    }
+  }
+}
+
+private struct NativeReadCandidate: Equatable {
+  let id: String
+  let maxY: CGFloat
+}
+
+private struct NativeReadCandidatePreferenceKey: PreferenceKey {
+  static var defaultValue: [NativeReadCandidate] = []
+
+  static func reduce(value: inout [NativeReadCandidate], nextValue: () -> [NativeReadCandidate]) {
+    value.append(contentsOf: nextValue())
+  }
+}
+
 struct PostsFeedNative: View {
   var showSub = false
   var feedStyleKey: String?
@@ -39,12 +129,17 @@ struct PostsFeedNative: View {
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
   @Default(.SubredditFeedDefSettings) private var feedDefSettings
   @Environment(\.contentWidth) private var contentWidth
+  @Environment(\.scenePhase) private var scenePhase
 
   @State private var containerWidth: CGFloat = 0
   @State private var topVisibleID: String?
+  @State private var readBatcher = NativeReadOnScrollBatcher()
+  @State private var previousScrollOffsetY: CGFloat?
+  @State private var previousScrollOffsetTimestamp: TimeInterval?
 
   private let gutter: CGFloat = 12
   private let maxContentWidth: CGFloat = 1300
+  private let visibleFeedTop: CGFloat = 0
 
   func loadMorePosts() {
     guard !loading, !reachedEndOfFeed, lastPostAfter != nil else { return }
@@ -88,6 +183,25 @@ struct PostsFeedNative: View {
     .scrollPosition(id: $topVisibleID, anchor: .top)
     .scrollIndicators(.never)
     .driveInlineVideoCoordinator(coordinateSpace: "subredditFeed")
+    .onScrollPhaseChange { _, phase in
+      readBatcher.updateScrollPhase(isScrolling: phase != .idle)
+    }
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.contentOffset.y
+    } action: { _, newOffsetY in
+      updateReadScrollVelocity(newOffsetY)
+    }
+    .onChange(of: scenePhase) { _, newPhase in
+      if newPhase != .active {
+        readBatcher.flushPendingPosts()
+      }
+    }
+    .onDisappear {
+      readBatcher.flushPendingPosts()
+    }
+    .onPreferenceChange(NativeReadCandidatePreferenceKey.self) { candidates in
+      markReadCandidatesPastTop(candidates)
+    }
     .floatingMenu(subId: styleKey, filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
   }
 
@@ -119,10 +233,49 @@ struct PostsFeedNative: View {
       // (InlineVideoCenterPreferenceKey "updated multiple times per frame") and leaves
       // players mounted-but-frameless (black boxes). Multi-column shows posters + tap-to-play.
       .trackInlineVideoCenter(key: post.id, coordinateSpace: "subredditFeed", enabled: isSingleColumn && winstonData.extractedMedia?.isInlineVideo == true)
+      .background {
+        if postLinkDefSettings.readOnScroll {
+          GeometryReader { proxy in
+            Color.clear.preference(
+              key: NativeReadCandidatePreferenceKey.self,
+              value: [NativeReadCandidate(id: post.id, maxY: proxy.frame(in: .named("subredditFeed")).maxY)]
+            )
+          }
+        }
+      }
       .task(priority: .background) {
         if post.id == posts.last?.id && !isFiltered { loadMorePosts() }
       }
     }
+  }
+
+  private func markReadAfterTopBoundaryCross(_ post: Post) {
+    guard postLinkDefSettings.readOnScroll, post.data?.winstonSeen != true else { return }
+    readBatcher.markCrossed(post)
+  }
+
+  private func markReadCandidatesPastTop(_ candidates: [NativeReadCandidate]) {
+    guard postLinkDefSettings.readOnScroll, readBatcher.isScrolling else { return }
+
+    let crossedIDs = Set(candidates.lazy.filter { $0.maxY <= visibleFeedTop }.map(\.id))
+    guard !crossedIDs.isEmpty else { return }
+
+    posts
+      .filter { crossedIDs.contains($0.id) }
+      .forEach { markReadAfterTopBoundaryCross($0) }
+  }
+
+  private func updateReadScrollVelocity(_ offsetY: CGFloat) {
+    let now = Date.timeIntervalSinceReferenceDate
+    defer {
+      previousScrollOffsetY = offsetY
+      previousScrollOffsetTimestamp = now
+    }
+
+    guard let previousScrollOffsetY, let previousScrollOffsetTimestamp else { return }
+
+    let elapsed = max(now - previousScrollOffsetTimestamp, 0.001)
+    readBatcher.updateVelocity((offsetY - previousScrollOffsetY) / elapsed)
   }
 
   @ViewBuilder

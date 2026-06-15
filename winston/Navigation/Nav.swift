@@ -118,6 +118,17 @@ class Nav: ObservableObject, Identifiable, Equatable {
     AppDiagnostics.asyncBreadcrumb("Nav.resetStack instance", metadata: ["tab": activeTab.rawValue])
     activeRouter.resetNavPath()
   }
+
+  @MainActor
+  func resetAccountScopedStacks() {
+    AppDiagnostics.asyncBreadcrumb("Nav.resetAccountScopedStacks")
+    [TabIdentifier.posts, .inbox, .me, .search].forEach { tab in
+      routers[tab]?.resetNavPath()
+    }
+    if activeTab != .settings {
+      activeTab = .posts
+    }
+  }
   
   subscript(tab: TabIdentifier) -> Router {
     let router = self.routers[tab] ?? Self.newRouterForTab(tab, id)

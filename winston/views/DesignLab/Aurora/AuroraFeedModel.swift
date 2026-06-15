@@ -29,6 +29,7 @@ final class AuroraFeedModel {
   @ObservationIgnored private var inFlight = false
   @ObservationIgnored private var hidingReadPostsUntilUnread = false
   @ObservationIgnored private var retriedEmptyInitialPage = false
+  @ObservationIgnored private var loadGeneration = 0
 
   init(subreddit: Subreddit) {
     self.subreddit = subreddit
@@ -55,6 +56,25 @@ final class AuroraFeedModel {
     hiddenPostIDs.removeAll(keepingCapacity: true)
     loadedIDs.removeAll(keepingCapacity: true)
     after = nil
+    inFlight = false
+    loading = false
+    loadGeneration += 1
+    reachedEnd = false
+    failed = false
+    hidingReadPostsUntilUnread = false
+    retriedEmptyInitialPage = false
+  }
+
+  func prepareForAccountSwitch(defaultSubreddit: Subreddit) {
+    resetHiddenPosts()
+    subreddit = defaultSubreddit
+    posts = []
+    hiddenPostIDs.removeAll(keepingCapacity: true)
+    loadedIDs.removeAll(keepingCapacity: true)
+    after = nil
+    inFlight = false
+    loading = false
+    loadGeneration += 1
     reachedEnd = false
     failed = false
     hidingReadPostsUntilUnread = false
@@ -130,6 +150,7 @@ final class AuroraFeedModel {
   @discardableResult
   private func load(more: Bool, sort: SubListingSortOption, contentWidth: CGFloat) async -> Int {
     guard !inFlight else { return 0 }
+    let generation = loadGeneration
     inFlight = true
     loading = true
     failed = false
@@ -151,12 +172,14 @@ final class AuroraFeedModel {
     guard !Task.isCancelled, requestIdentity == feedIdentity else { return 0 }
 
     guard let result = response, let newPosts = result.0 else {
+      guard generation == loadGeneration else { return 0 }
       failed = posts.isEmpty
       AppDiagnostics.asyncRecord(.error, category: "ui.aurora.feed",
         message: "Aurora feed fetch returned nil",
         metadata: ["sub": subreddit.id, "more": "\(more)", "sort": sort.rawVal.value])
       return 0
     }
+    guard generation == loadGeneration else { return 0 }
 
     // Author avatars are fetched lazily in the background, exactly like the legacy feed.
     let avatarSize = getEnabledTheme().postLinks.theme.badge.avatar.size

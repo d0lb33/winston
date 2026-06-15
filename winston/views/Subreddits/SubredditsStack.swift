@@ -12,8 +12,9 @@ import SwiftUI
 
 struct SubredditsStack: View {
   @ObservedObject var router: Router
+  @ObservedObject private var wire = RedditWire.shared
 
   var body: some View {
-    AuroraRoot(router: router)
+    AuroraRoot(router: router, accountID: wire.accountScopeID)
   }
 }

@@ -91,7 +91,6 @@ struct AccountSwitcherProvider<Content: View>: View {
       withAnimation(.snappy(extraBounce: 0.1)) { accTransKit.focusCloser = true } completion: {
         withAnimation(.linear(duration: 0.001)) {
           accTransKit.blurMain = true
-          Defaults[.GeneralDefSettings].redditCredentialSelectedID = account.id
           Task { await RedditWire.shared.selectAccount(account.id) }
         } completion: {
           withAnimation(.spring) { accTransKit.passLens = true } completion: {

@@ -244,6 +244,7 @@ final class AuroraSavedModel {
   @ObservationIgnored private var loadedCommentIDs: Set<String> = []
   @ObservationIgnored private var postsInFlight = false
   @ObservationIgnored private var commentsInFlight = false
+  @ObservationIgnored private var loadGeneration = 0
 
   var loadingInitial: Bool {
     (loadingPosts || loadingComments) && posts.isEmpty && comments.isEmpty
@@ -267,14 +268,31 @@ final class AuroraSavedModel {
   }
 
   func reload(contentWidth: CGFloat) async {
+    reset()
+    await loadPosts(more: false, contentWidth: contentWidth)
+    await loadComments(more: false)
+  }
+
+  func reset() {
     postAfter = nil
     commentAfter = nil
     loadedPostIDs.removeAll(keepingCapacity: true)
     loadedCommentIDs.removeAll(keepingCapacity: true)
     posts = []
     comments = []
-    await loadPosts(more: false, contentWidth: contentWidth)
-    await loadComments(more: false)
+    loadingPosts = false
+    loadingComments = false
+    failedPosts = false
+    failedComments = false
+    postsInFlight = false
+    commentsInFlight = false
+    loadGeneration += 1
+  }
+
+  func resetForAccountSwitch() {
+    withAnimation {
+      reset()
+    }
   }
 
   func loadMorePosts(contentWidth: CGFloat) async {
@@ -289,6 +307,7 @@ final class AuroraSavedModel {
 
   private func loadPosts(more: Bool, contentWidth: CGFloat) async {
     guard !postsInFlight else { return }
+    let generation = loadGeneration
     postsInFlight = true
     loadingPosts = true
     failedPosts = false
@@ -297,9 +316,11 @@ final class AuroraSavedModel {
     let saved = Subreddit(id: "saved")
     guard let response = await saved.fetchSavedPosts(after: more ? postAfter : nil, contentWidth: max(1, contentWidth)),
           let newPosts = response.0 else {
+      guard generation == loadGeneration else { return }
       failedPosts = posts.isEmpty
       return
     }
+    guard generation == loadGeneration else { return }
 
     let fresh = more ? newPosts.filter { loadedPostIDs.insert($0.id).inserted } : newPosts.deduped { $0.id }
     if !more {
@@ -318,6 +339,7 @@ final class AuroraSavedModel {
 
   private func loadComments(more: Bool) async {
     guard !commentsInFlight else { return }
+    let generation = loadGeneration
     commentsInFlight = true
     loadingComments = true
     failedComments = false
@@ -326,9 +348,11 @@ final class AuroraSavedModel {
     let saved = Subreddit(id: "saved")
     guard let response = await saved.fetchSavedComments(after: more ? commentAfter : nil),
           let newComments = response.0 else {
+      guard generation == loadGeneration else { return }
       failedComments = comments.isEmpty
       return
     }
+    guard generation == loadGeneration else { return }
 
     let fresh = more ? newComments.filter { loadedCommentIDs.insert($0.id).inserted } : newComments.deduped { $0.id }
     if !more {
@@ -351,6 +375,7 @@ struct AuroraSavedScreen: View {
   let onCommentSelected: (Comment) -> Void
 
   @State private var model = AuroraSavedModel()
+  @ObservedObject private var wire = RedditWire.shared
   @Environment(\.contentWidth) private var contentWidth
 
   var body: some View {
@@ -407,6 +432,12 @@ struct AuroraSavedScreen: View {
     .overlay { emptyState }
     .task {
       await model.loadInitialIfNeeded(contentWidth: contentWidth)
+    }
+    .onChange(of: wire.accountScopeID) { _, _ in
+      model.resetForAccountSwitch()
+      Task {
+        await model.reload(contentWidth: contentWidth)
+      }
     }
   }
 

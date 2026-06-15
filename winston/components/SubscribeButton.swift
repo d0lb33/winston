@@ -9,13 +9,41 @@ import SwiftUI
 import Defaults
 
 struct SubscribeButton: View {
-  
-  @Environment(\.colorScheme) var colorScheme: ColorScheme
-  @FetchRequest(sortDescriptors: [], animation: .default) var subs: FetchedResults<CachedSub>
+  @ObservedObject private var wire = RedditWire.shared
   @ObservedObject var subreddit: Subreddit
   var isSmall: Bool = false
-  @State var loading = false
+
+  var body: some View {
+    SubscribeButtonContent(subreddit: subreddit, isSmall: isSmall, accountID: wire.accountScopeID)
+      .id(wire.accountScopeID?.uuidString ?? "none")
+  }
+}
+
+private struct SubscribeButtonContent: View {
+  @Environment(\.colorScheme) var colorScheme: ColorScheme
+  @FetchRequest private var subs: FetchedResults<CachedSub>
+  @ObservedObject var subreddit: Subreddit
+  var isSmall: Bool = false
+  @State private var loading = false
   @GestureState var pressing = false
+
+  init(subreddit: Subreddit, isSmall: Bool, accountID: UUID?) {
+    self.subreddit = subreddit
+    self.isSmall = isSmall
+    if let accountID {
+      _subs = FetchRequest<CachedSub>(
+        sortDescriptors: [],
+        predicate: NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg),
+        animation: .default
+      )
+    } else {
+      _subs = FetchRequest<CachedSub>(
+        sortDescriptors: [],
+        predicate: NSPredicate(value: false),
+        animation: .default
+      )
+    }
+  }
   
   var body: some View {
     let subscribed = (subreddit.data?.user_is_subscriber ?? false) || subs.contains(where: { $0.name == subreddit.data?.name })

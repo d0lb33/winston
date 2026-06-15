@@ -22,6 +22,27 @@ enum PostRefreshResult {
   case failed(String)
 }
 
+@MainActor
+private final class PostRefreshCoordinator {
+  static let shared = PostRefreshCoordinator()
+
+  private var inFlight: [String: Task<PostRefreshResult, Never>] = [:]
+
+  func load(key: String, operation: @MainActor @escaping () async -> PostRefreshResult) async -> PostRefreshResult {
+    if let task = inFlight[key] {
+      return await task.value
+    }
+
+    let task = Task { @MainActor in
+      await operation()
+    }
+    inFlight[key] = task
+    let result = await task.value
+    inFlight[key] = nil
+    return result
+  }
+}
+
 extension Post {
   static var prefetcher = ImagePrefetcher(pipeline: ImagePipeline.shared, destination: .memoryCache, maxConcurrentRequestCount: 10)
   static var prefix = "t3"
@@ -371,6 +392,27 @@ extension Post {
       }
     }
   }
+
+  static func persistSeenPostIDs(_ ids: Set<String>) async {
+    let ids = ids.filter { !$0.isEmpty }
+    guard !ids.isEmpty else { return }
+
+    let context = PersistenceController.shared.primaryBGContext
+    await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(ids))
+
+      let existingIDs = Set((try? context.fetch(fetchRequest))?.compactMap(\.postID) ?? [])
+      let missingIDs = Set(ids).subtracting(existingIDs)
+      guard !missingIDs.isEmpty else { return }
+
+      missingIDs.forEach { id in
+        let newSeenPost = SeenPost(context: context)
+        newSeenPost.postID = id
+      }
+      try? context.save()
+    }
+  }
   
   func toggleFilterSubreddit(_ subreddit: String) async -> Void {
     var filteredSubreddits = Defaults[.filteredSubreddits]
@@ -528,6 +570,19 @@ extension Post {
   }
   
   func refreshPostResult(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> PostRefreshResult {
+    let refreshKey = [
+      id,
+      commentID ?? "root",
+      sort.rawVal.value,
+      full ? "full" : "partial"
+    ].joined(separator: "|")
+
+    return await PostRefreshCoordinator.shared.load(key: refreshKey) {
+      await self.performRefreshPostResult(commentID: commentID, sort: sort, after: after, subreddit: subreddit, full: full, subId: subId)
+    }
+  }
+
+  private func performRefreshPostResult(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> PostRefreshResult {
     // Post + comment forest over GraphQL. The flat forest is assembled into
     // the reply tree by nestComments; continuation nodes surface as "more"
     // stubs. Comment-listing pagination doesn't exist on this surface, so the
