@@ -16,6 +16,16 @@ typealias Subreddit = GenericRedditEntity<SubredditData, SubredditWinstonData>
 extension Subreddit {
   static var prefix = "t5"
   var selfPrefix: String { Self.prefix }
+  var feedName: String {
+    let displayName = data?.display_name?.trimmingCharacters(in: .whitespacesAndNewlines)
+    if let displayName, !displayName.isEmpty {
+      return displayName.replacingOccurrences(of: "r/", with: "")
+    }
+
+    let fallback = id.trimmingCharacters(in: .whitespacesAndNewlines)
+    return fallback.hasPrefix("t5_") ? String(fallback.dropFirst(3)) : fallback
+  }
+
   var displayTitle: String {
     if let prefixed = data?.display_name_prefixed?.trimmingCharacters(in: .whitespacesAndNewlines),
        !prefixed.isEmpty {
@@ -183,10 +193,14 @@ extension Subreddit {
   }
   
   func refreshSubreddit() async {
-    if let data = await RedditWire.shared.subredditData(name: data?.display_name ?? id) {
+    if var data = await RedditWire.shared.subredditData(name: data?.display_name ?? id) {
+      if let existing = self.data {
+        data.preserveDisplayMetadata(from: existing)
+      }
+      let refreshedData = data
       await MainActor.run {
         withAnimation {
-          self.data = data
+          self.data = refreshedData
         }
       }
     }
@@ -215,7 +229,7 @@ extension Subreddit {
   
   func fetchPosts(sort: SubListingSortOption = .best, after: String? = nil, searchText: String? = nil, contentWidth: CGFloat = .screenW) async -> ([Post]?, String?)? {
     let isHome = id == "home"
-    let name = isHome ? "" : (data?.display_name ?? id)
+    let name = isHome ? "" : feedName
 
     // In-subreddit search rides DynamicSearch with a community filter; it has
     // no pagination cursor on this surface.
@@ -406,6 +420,29 @@ struct SubredditData: Codable, GenericRedditEntityDataType, Defaults.Serializabl
     
     return SubredditIconKit(url: iconURLStr, initialLetter: String((name).prefix(1)).uppercased(), color: String((firstNonEmptyString(color, "#828282") ?? "").dropFirst(1)))
   }
+
+  mutating func preserveDisplayMetadata(from existing: SubredditData) {
+    if (subscribers ?? 0) <= 0, let existingSubscribers = existing.subscribers, existingSubscribers > 0 {
+      subscribers = existingSubscribers
+    }
+    if firstNonEmptyString(icon_img, community_icon) == nil {
+      icon_img = existing.icon_img
+      community_icon = existing.community_icon
+    }
+    if firstNonEmptyString(key_color, primary_color) == nil {
+      key_color = existing.key_color
+      primary_color = existing.primary_color
+    }
+    if firstNonEmptyString(display_name) == nil {
+      display_name = existing.display_name
+    }
+    if firstNonEmptyString(display_name_prefixed) == nil {
+      display_name_prefixed = existing.display_name_prefixed
+    }
+    if public_description.isEmpty, !existing.public_description.isEmpty {
+      public_description = existing.public_description
+    }
+  }
   
   
   enum CodingKeys: String, CodingKey {
@@ -505,7 +542,7 @@ struct SubredditData: Codable, GenericRedditEntityDataType, Defaults.Serializabl
     self.url = ""
     self.user_flair_background_color = nil
     self.id = id
-    self.subscribers = 0
+    self.subscribers = nil
   }
   
   init(entity: CachedSub) {

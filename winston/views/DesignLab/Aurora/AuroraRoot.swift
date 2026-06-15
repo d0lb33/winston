@@ -37,6 +37,7 @@ struct AuroraRoot: View {
   @State private var selectedSubID: String? = "popular"
   @State private var selectedPostID: String? = nil
   @State private var detailPost: Post? = nil
+  @State private var detailHighlightID: String? = nil
   @State private var feedPath: [Router.NavDest] = []
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
@@ -95,27 +96,9 @@ struct AuroraRoot: View {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
-      NavigationStack(path: $feedPath) {
-        AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                   selectedPostID: $selectedPostID, sort: $sort) { destination in
-          feedPath.append(destination)
-        }
-        .injectInTabDestinations(viewControllerHolder: router.navController)
-      }
-      .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+      contentColumn
     } detail: {
-      NavigationStack(path: $router.fullPath) {
-        Group {
-          if let selectedPost {
-            AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost))
-              .id(selectedPost.id)
-              .diagnosticScreen("aurora.post.\(selectedPost.id)")
-          } else {
-            AuroraDetailPlaceholder()
-          }
-        }
-        .injectInTabDestinations(viewControllerHolder: router.navController)
-      }
+      detailColumn
     }
     .navigationSplitViewStyle(.balanced)
     .environment(\.auroraTheme, theme)
@@ -141,6 +124,7 @@ struct AuroraRoot: View {
       model.prepare(for: sub)
       selectedPostID = nil
       detailPost = nil
+      detailHighlightID = nil
       feedPath = []
       if !router.fullPath.isEmpty { router.fullPath = [] }
       // Advance to the feed when a community/feed is picked from the sidebar.
@@ -152,6 +136,7 @@ struct AuroraRoot: View {
         if let post = model.post(id: newID) {
           detailPost = post
         }
+        detailHighlightID = nil
         // A new feed selection resets the detail column to that post's root.
         if !router.fullPath.isEmpty { router.fullPath = [] }
         AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
@@ -171,6 +156,43 @@ struct AuroraRoot: View {
     }
   }
 
+  private var contentColumn: some View {
+    NavigationStack(path: $feedPath) {
+      feedContent
+        .injectInTabDestinations(viewControllerHolder: router.navController)
+    }
+    .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+  }
+
+  @ViewBuilder private var feedContent: some View {
+    if model.subreddit.id == "saved" {
+      AuroraSavedScreen(onPostSelected: selectSavedPost, onCommentSelected: selectSavedComment)
+        .diagnosticScreen("aurora.saved")
+    } else {
+      AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
+                 selectedPostID: $selectedPostID, sort: $sort) { destination in
+        feedPath.append(destination)
+      }
+    }
+  }
+
+  private var detailColumn: some View {
+    NavigationStack(path: $router.fullPath) {
+      detailContent
+        .injectInTabDestinations(viewControllerHolder: router.navController)
+    }
+  }
+
+  @ViewBuilder private var detailContent: some View {
+    if let selectedPost {
+      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: detailHighlightID)
+        .id("\(selectedPost.id)-\(detailHighlightID ?? "root")")
+        .diagnosticScreen("aurora.post.\(selectedPost.id)")
+    } else {
+      AuroraDetailPlaceholder()
+    }
+  }
+
   private func detailSubreddit(for post: Post) -> Subreddit {
     // Use the post's REAL subreddit, never the feed's pseudo-sub. Posts loaded from
     // Popular/Home carry winstonData.subreddit == the feed ("popular"/"home"), which
@@ -179,6 +201,23 @@ struct AuroraRoot: View {
       return Subreddit(id: name)
     }
     return post.winstonData?.subreddit ?? Subreddit(id: selectedSubID ?? "")
+  }
+
+  private func selectSavedPost(_ post: Post) {
+    selectedPostID = nil
+    detailPost = post
+    detailHighlightID = nil
+    if !router.fullPath.isEmpty { router.fullPath = [] }
+    preferredColumn = .detail
+  }
+
+  private func selectSavedComment(_ comment: Comment) {
+    guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
+    selectedPostID = nil
+    detailPost = Post(id: linkID, subID: subID)
+    detailHighlightID = comment.id
+    if !router.fullPath.isEmpty { router.fullPath = [] }
+    preferredColumn = .detail
   }
 
   // MARK: - Sidebar
@@ -194,12 +233,7 @@ struct AuroraRoot: View {
       }
       Section("Communities") {
         ForEach(subs.filter { $0.user_is_subscriber && $0.uuid != nil }, id: \.uuid) { sub in
-          HStack(spacing: 10) {
-            AuroraSubIcon(name: sub.display_name ?? "r", size: 26)
-            Text("r/\(sub.display_name ?? "")")
-              .font(.subheadline.weight(.medium))
-              .lineLimit(1)
-          }
+          AuroraSidebarCommunityRow(cachedSub: sub)
           // Tag with a plain String (not String?) so these rows share the fixed
           // feeds' tag type — mixing String and String? tags silently breaks List
           // selection for the inconsistent rows (here, the communities).
@@ -217,6 +251,72 @@ struct AuroraRoot: View {
     Label(label, systemImage: systemImage)
       .tag(id)
       .listRowBackground(Color.clear)
+  }
+}
+
+private struct AuroraSidebarCommunityRow: View {
+  @ObservedObject var cachedSub: CachedSub
+  @Environment(\.auroraTheme) private var theme
+  @State private var isFavorited: Bool
+
+  init(cachedSub: CachedSub) {
+    self.cachedSub = cachedSub
+    self._isFavorited = State(initialValue: cachedSub.user_has_favorited)
+  }
+
+  private var data: SubredditData {
+    SubredditData(entity: cachedSub)
+  }
+
+  private var displayName: String {
+    if let name = data.display_name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+      return name
+    }
+    if let name = cachedSub.display_name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+      return name
+    }
+    return "subreddit"
+  }
+
+  var body: some View {
+    HStack(spacing: 10) {
+      AuroraSubIcon(name: displayName, iconKit: data.subredditIconKit, size: 26)
+      Text("r/\(displayName)")
+        .font(.subheadline.weight(.medium))
+        .lineLimit(1)
+
+      Spacer(minLength: 8)
+
+      Button(action: favoriteToggle) {
+        Image(systemName: isFavorited ? "star.fill" : "star")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(isFavorited ? theme.accent : Color.secondary.opacity(0.45))
+          .frame(width: 28, height: 28)
+          .contentShape(Rectangle())
+      }
+      .buttonStyle(.borderless)
+      .accessibilityLabel(isFavorited ? "Remove favorite" : "Add favorite")
+    }
+    .onAppear {
+      isFavorited = cachedSub.user_has_favorited
+    }
+    .onChange(of: cachedSub.user_has_favorited) { _, favorited in
+      withAnimation {
+        isFavorited = favorited
+      }
+    }
+  }
+
+  private func favoriteToggle() {
+    let subreddit = Subreddit(data: data)
+    withAnimation {
+      isFavorited.toggle()
+    }
+    subreddit.favoriteToggle(entity: cachedSub) { favorited in
+      withAnimation {
+        isFavorited = favorited
+      }
+    }
   }
 }
 

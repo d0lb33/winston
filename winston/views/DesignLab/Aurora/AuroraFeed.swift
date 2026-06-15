@@ -78,7 +78,7 @@ struct AuroraFeed: View {
       .padding(.trailing, 12)
       .padding(.bottom, 12)
     }
-    .task(id: model.subreddit.id) {
+    .task(id: model.feedIdentity) {
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onChange(of: sort) { _, newSort in

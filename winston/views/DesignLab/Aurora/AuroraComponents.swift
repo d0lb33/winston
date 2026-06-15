@@ -77,9 +77,29 @@ struct AuroraBackdrop: View {
 
 struct AuroraSubIcon: View {
   let name: String
+  var iconKit: SubredditIconKit? = nil
   var size: CGFloat = 30
   private var letter: String { String((name.first { $0.isLetter || $0.isNumber } ?? "r")).uppercased() }
   var body: some View {
+    if let urlString = iconKit?.url, let url = URL(string: urlString) {
+      LazyImage(url: url) { state in
+        if let image = state.image {
+          image
+            .resizable()
+            .scaledToFill()
+        } else {
+          monogram
+        }
+      }
+      .processors([.resize(width: size)])
+      .frame(width: size, height: size)
+      .clipShape(Circle())
+    } else {
+      monogram
+    }
+  }
+
+  private var monogram: some View {
     Circle()
       .fill(LinearGradient(colors: AuroraPalette.gradient(for: name), startPoint: .topLeading, endPoint: .bottomTrailing))
       .frame(width: size, height: size)
@@ -88,6 +108,15 @@ struct AuroraSubIcon: View {
           .font(.system(size: size * 0.5, weight: .bold, design: .rounded))
           .foregroundStyle(.white)
       )
+  }
+}
+
+extension Subreddit {
+  var needsAuroraMetadataRefresh: Bool {
+    guard let data else { return true }
+    let hasMembers = (data.subscribers ?? 0) > 0
+    let hasIcon = data.subredditIconKit.url?.isEmpty == false
+    return !hasMembers || !hasIcon
   }
 }
 
@@ -182,10 +211,10 @@ struct AuroraCommunityHeader: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 12) {
-        AuroraSubIcon(name: sub.data?.display_name ?? sub.id, size: 44)
+        AuroraSubIcon(name: sub.data?.display_name ?? sub.id, iconKit: sub.data?.subredditIconKit, size: 44)
         VStack(alignment: .leading, spacing: 2) {
           Text(sub.displayTitle).font(.title3.weight(.bold))
-          if let members = sub.data?.subscribers {
+          if let members = sub.data?.subscribers, members > 0 {
             Text("\(formatBigNumber(members)) members")
               .font(.caption).foregroundStyle(.secondary)
           }
@@ -204,7 +233,11 @@ struct AuroraCommunityHeader: View {
     .overlay(
       RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous).stroke(theme.hairline, lineWidth: 0.7)
     )
-    .task { if sub.data?.subscribers == nil { await sub.refreshSubreddit() } }
+    .task {
+      if sub.needsAuroraMetadataRefresh {
+        await sub.refreshSubreddit()
+      }
+    }
   }
 
   private var joinButton: some View {

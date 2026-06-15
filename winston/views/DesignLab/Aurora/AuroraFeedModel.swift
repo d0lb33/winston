@@ -28,9 +28,17 @@ final class AuroraFeedModel {
   @ObservationIgnored private var after: String?
   @ObservationIgnored private var inFlight = false
   @ObservationIgnored private var hidingReadPostsUntilUnread = false
+  @ObservationIgnored private var retriedEmptyInitialPage = false
 
   init(subreddit: Subreddit) {
     self.subreddit = subreddit
+  }
+
+  var feedIdentity: String {
+    if feedsAndSuch.contains(subreddit.id) {
+      return subreddit.id
+    }
+    return subreddit.feedName.lowercased()
   }
 
   var visiblePosts: [Post] {
@@ -40,7 +48,7 @@ final class AuroraFeedModel {
   /// Point the column at a different feed and clear state so the feed's `.task(id:)`
   /// reloads from the top. Synchronous so the view sees the reset immediately.
   func prepare(for sub: Subreddit) {
-    guard sub.id != subreddit.id else { return }
+    guard feedIdentity(for: sub) != feedIdentity else { return }
     resetHiddenPosts()
     subreddit = sub
     posts = []
@@ -50,6 +58,7 @@ final class AuroraFeedModel {
     reachedEnd = false
     failed = false
     hidingReadPostsUntilUnread = false
+    retriedEmptyInitialPage = false
   }
 
   func loadInitialIfNeeded(sort: SubListingSortOption, contentWidth: CGFloat) async {
@@ -59,6 +68,7 @@ final class AuroraFeedModel {
 
   func reload(sort: SubListingSortOption, contentWidth: CGFloat) async {
     resetHiddenPosts()
+    retriedEmptyInitialPage = false
     await load(more: false, sort: sort, contentWidth: contentWidth)
   }
 
@@ -126,6 +136,7 @@ final class AuroraFeedModel {
     defer { inFlight = false; loading = false }
 
     let cursor = more ? after : nil
+    let requestIdentity = feedIdentity
     AppDiagnostics.asyncBreadcrumb("Aurora feed fetch started", metadata: [
       "sub": subreddit.id, "more": "\(more)", "sort": sort.rawVal.value,
       "width": "\(Int(contentWidth))", "after": cursor ?? "nil"
@@ -137,6 +148,8 @@ final class AuroraFeedModel {
     } else {
       response = await subreddit.fetchPosts(sort: sort, after: cursor, contentWidth: max(1, contentWidth))
     }
+    guard !Task.isCancelled, requestIdentity == feedIdentity else { return 0 }
+
     guard let result = response, let newPosts = result.0 else {
       failed = posts.isEmpty
       AppDiagnostics.asyncRecord(.error, category: "ui.aurora.feed",
@@ -149,6 +162,21 @@ final class AuroraFeedModel {
     let avatarSize = getEnabledTheme().postLinks.theme.badge.avatar.size
     Task(priority: .background) {
       await RedditWire.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: avatarSize)
+    }
+
+    if shouldRetryEmptyInitialPage(more: more, received: newPosts.count, nextAfter: result.1) {
+      retriedEmptyInitialPage = true
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.aurora.feed",
+        message: "Aurora feed initial page was empty; retrying once",
+        metadata: ["sub": subreddit.id, "sort": sort.rawVal.value]
+      )
+      try? await Task.sleep(nanoseconds: 350_000_000)
+      guard !Task.isCancelled, requestIdentity == feedIdentity else { return 0 }
+      inFlight = false
+      loading = false
+      return await load(more: false, sort: sort, contentWidth: contentWidth)
     }
 
     let fresh = more ? newPosts.filter { !loadedIDs.contains($0.id) } : newPosts.deduped { $0.id }
@@ -171,5 +199,16 @@ final class AuroraFeedModel {
         "total": "\(posts.count)", "after": result.1 ?? "nil"
       ])
     return fresh.count
+  }
+
+  private func shouldRetryEmptyInitialPage(more: Bool, received: Int, nextAfter: String?) -> Bool {
+    !more && posts.isEmpty && received == 0 && nextAfter == nil && !retriedEmptyInitialPage
+  }
+
+  private func feedIdentity(for sub: Subreddit) -> String {
+    if feedsAndSuch.contains(sub.id) {
+      return sub.id
+    }
+    return sub.feedName.lowercased()
   }
 }

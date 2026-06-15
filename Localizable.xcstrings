@@ -464,6 +464,9 @@
     "Add a comment…" : {
 
     },
+    "Add favorite" : {
+
+    },
     "Add Manual Marker" : {
 
     },
@@ -976,6 +979,9 @@
 
     },
     "Couldn't load posts" : {
+
+    },
+    "Couldn't load saved items" : {
 
     },
     "Create custom filter" : {
@@ -2646,6 +2652,9 @@
     "No rules were returned for r/%@" : {
 
     },
+    "No saved items" : {
+
+    },
     "No unread posts" : {
 
     },
@@ -3212,6 +3221,9 @@
     "RedditPOC (experimental)" : {
 
     },
+    "Remove favorite" : {
+
+    },
     "Replies, mentions, chat updates, and Reddit activity notifications will appear here." : {
 
     },
@@ -3315,6 +3327,9 @@
           }
         }
       }
+    },
+    "Saved" : {
+
     },
     "Score: %lld" : {
 

@@ -28,13 +28,27 @@ struct AuroraSubFeedScreen: View {
   private var isCommunity: Bool { !feedsAndSuch.contains(subreddit.id) }
 
   var body: some View {
-    AuroraFeed(
-      model: model,
-      title: subreddit.displayTitle,
-      community: isCommunity ? subreddit : nil,
-      selectedPostID: $selectedPostID,
-      sort: $sort
-    )
+    Group {
+      if subreddit.id == "saved" {
+        AuroraSavedScreen(
+          onPostSelected: { post in
+            Nav.to(.reddit(.post(post)))
+          },
+          onCommentSelected: { comment in
+            guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
+            Nav.to(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
+          }
+        )
+      } else {
+        AuroraFeed(
+          model: model,
+          title: subreddit.displayTitle,
+          community: isCommunity ? subreddit : nil,
+          selectedPostID: $selectedPostID,
+          sort: $sort
+        )
+      }
+    }
     .environment(\.auroraTheme, theme)
     .tint(theme.accent)
     .background { AuroraBackdrop(theme: theme) }
