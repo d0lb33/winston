@@ -82,7 +82,7 @@ private struct CommentBodyView: View {
       GeometryReader { geo in
         Color.clear
           .onAppear { contentWidth = max(1, geo.size.width) }
-          .onChange(of: geo.size) { contentWidth = max(1, $0.width) }
+          .onChange(of: geo.size) { _, size in contentWidth = max(1, size.width) }
       }
     )
   }

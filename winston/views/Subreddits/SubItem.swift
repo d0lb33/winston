@@ -73,7 +73,7 @@ struct SubItem: View {
       .onAppear {
         isFavorited = cachedSub.user_has_favorited
       }
-      .onChange(of: cachedSub.user_has_favorited) { favorited in
+      .onChange(of: cachedSub.user_has_favorited) { _, favorited in
         withAnimation {
           isFavorited = favorited
         }

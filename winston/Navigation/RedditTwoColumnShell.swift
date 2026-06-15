@@ -33,8 +33,10 @@ struct RedditTwoColumnShell<Source: View>: View {
       }
     }
     .navigationSplitViewStyle(.balanced)
-    .auroraShellChrome(theme: auroraTheme)
-    .toolbarBackground(.hidden, for: .navigationBar)
+    .environment(\.auroraTheme, auroraTheme)
+    .tint(auroraTheme.accent)
+    .fontDesign(auroraTheme.fontDesign)
+    .preferredColorScheme(auroraTheme.colorScheme)
     .onAppear {
       navigation.attach(router: router)
       _ = navigation.absorbRootNavigationPathIfNeeded(router: router)

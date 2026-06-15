@@ -497,7 +497,7 @@ struct DiagnosticLayoutModifier: ViewModifier {
           .onAppear {
             logIfSuspicious(proxy.size)
           }
-          .onChange(of: proxy.size) { size in
+          .onChange(of: proxy.size) { _, size in
             logIfSuspicious(size)
           }
       }

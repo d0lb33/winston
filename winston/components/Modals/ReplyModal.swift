@@ -190,14 +190,14 @@ struct ReplyModal<Content: View>: View {
           .padding(.bottom, 8)
         , alignment: .bottom
       )
-      .onChange(of: textWrapper.debouncedTeplyText, perform: { val in
+      .onChange(of: textWrapper.debouncedTeplyText) { _, val in
         currentDraft?.replyText = val
         Task {
           await viewContext.perform(schedule: .enqueued) {
             try? viewContext.save()
           }
         }
-      })
+      }
       .onDisappear {
         if textWrapper.replyText == "", let currentDraft = currentDraft {
           Task {

@@ -43,8 +43,8 @@ struct FloatingBounceEffectModifier: ViewModifier {
   func body(content: Content) -> some View {
     content
       .offset(floatOffset)
-      .onChange(of: disabled) {
-        if $0 {
+      .onChange(of: disabled) { _, disabled in
+        if disabled {
           stopTimer()
           withAnimation(.spring) { floatOffset = .zero }
           return

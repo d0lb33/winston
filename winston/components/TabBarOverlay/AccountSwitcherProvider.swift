@@ -156,6 +156,7 @@ struct AccountSwitcherProvider<Content: View>: View {
             }
           } else {
             Rectangle().fill(.black)
+              .ignoresSafeArea(.all)
           }
         }
       )
@@ -179,7 +180,7 @@ struct AccountSwitcherProvider<Content: View>: View {
       proxy.size
     } action: { newSize in
       ScreenMetrics.refresh(size: newSize, scale: displayScale)
-      windowSize = newSize
+      windowSize = ScreenMetrics.bounds.size
     }
     .allowsHitTesting(!(showOverlay || accTransKit.passLens))
   }

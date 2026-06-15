@@ -162,11 +162,11 @@ struct AccountSwitcherTarget: View, Equatable {
     .animation(appear ? .bouncy.delay(0.05 * Double((targetsCount - 1) - index)) : .snappy.delay(0.025 * Double(index)), value: appear)
     .vibrate(.continuous(sharpness: hovered ? 0 : interpolateVibration([0.3, 0], false), intensity: hovered ? 0 : interpolateVibration([0.3, 0], false)), trigger: isSelected && !hovered ? distance : 0, disabled: !appear)
     .vibrate(.transient(sharpness: !isSelected && !hovered ? 1.0 : 0, intensity: isSelected && hovered ? 0 : 1.0), trigger: hovered, disabled: !appear)
-    .onChange(of: hovered) {
+    .onChange(of: hovered) { _, hovered in
       if !isSelected {
-        if transmitter.selectedTarget == nil && $0 { transmitter.selectedTarget = target }
-        else if transmitter.selectedTarget == target && !$0 { transmitter.selectedTarget = nil }
-      } else if $0 { jump += 1 }
+        if transmitter.selectedTarget == nil && hovered { transmitter.selectedTarget = target }
+        else if transmitter.selectedTarget == target && !hovered { transmitter.selectedTarget = nil }
+      } else if hovered { jump += 1 }
     }
     .transition(.identity)
   }

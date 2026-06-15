@@ -33,7 +33,7 @@ struct VibrateModifier<T: Equatable>: ViewModifier {
       .onDisappear {
         hapticHolder.stopEngine()
       }
-      .onChange(of: value) { _ in
+      .onChange(of: value) {
         guard !disabled else { return }
         switch vibration {
         case .continuous(let sharpness, let intensity):
@@ -42,8 +42,8 @@ struct VibrateModifier<T: Equatable>: ViewModifier {
           hapticHolder.playHapticTransient(intensity: Float(intensity), sharpness: Float(sharpness))
         }
       }
-      .onChange(of: scenePhase) {
-        switch $0 {
+      .onChange(of: scenePhase) { _, phase in
+        switch phase {
         case .active: hapticHolder.startEngine()
         case .background, .inactive: hapticHolder.stopEngine()
         @unknown default: break

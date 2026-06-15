@@ -49,7 +49,7 @@ struct AppIconSetting: View {
       
     }
     .themedListBG(theme.lists.bg)
-    .onChange(of: appIcon) { icon in
+    .onChange(of: appIcon) { _, icon in
       appIconManager.setIcon(icon) { x in
       }
     }

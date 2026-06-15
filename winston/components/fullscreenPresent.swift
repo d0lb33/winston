@@ -34,7 +34,7 @@ fileprivate struct HelperHeroView<Overlay: View>: ViewModifier {
 //                }
 //            })
             /// Presenting/Dismissing Host View based on Show State
-            .onChange(of: show) { newValue in
+            .onChange(of: show) { _, newValue in
                 if newValue {
                     hostView = CustomHostingView(show: $show, rootView: overlay)
                     /// Present View

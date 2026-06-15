@@ -244,7 +244,7 @@ struct PostView: View, Equatable {
         }
         .navigationBarTitle("\(navtitle)", displayMode: .inline)
         .toolbar { Toolbar(title: navtitle, subtitle: subnavtitle, hideElements: hideElements, subreddit: subreddit, post: post, sort: $sort) }
-        .onChange(of: sort) { val in
+        .onChange(of: sort) { _, val in
           AppDiagnostics.asyncRecord(
             .info,
             category: "ui.postDetail",
@@ -253,7 +253,7 @@ struct PostView: View, Equatable {
           )
           updatePost()
         }
-        .onChange(of: ignoreSpecificComment) { val in
+        .onChange(of: ignoreSpecificComment) { _, val in
           AppDiagnostics.asyncRecord(
             .info,
             category: "ui.postDetail",

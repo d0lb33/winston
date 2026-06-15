@@ -201,7 +201,7 @@ struct ScrollSwipeModifier<T: GenericRedditEntityDataType, B: Hashable>: ViewMod
         //        .animation(nil, value: dragAmount)
         //        .animation(nil, value: dragAmount)
       )
-      .onChange(of: isScrolling) { isIt in
+      .onChange(of: isScrolling) { _, isIt in
         if !isIt {
           Task(priority: .background) { [triggeredAction] in
             
@@ -221,7 +221,7 @@ struct ScrollSwipeModifier<T: GenericRedditEntityDataType, B: Hashable>: ViewMod
           withAnimation(.interpolatingSpring(stiffness: 150, damping: 17)) { triggeredAction = .none }
         }
       }
-      .onChange(of: (controlledDragAmount?.wrappedValue ?? dragAmount)) { newValue in
+      .onChange(of: (controlledDragAmount?.wrappedValue ?? dragAmount)) { _, newValue in
         if !controlledIsSource { return }
 //        if newValue == 0 {
 //

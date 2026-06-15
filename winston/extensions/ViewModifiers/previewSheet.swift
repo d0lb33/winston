@@ -102,7 +102,7 @@ struct PreviewSheetModifier<T: View>: ViewModifier {
           .opacity(disappear ? 0 : 1)
           .offset(y: disappear ? handlerHeight : 0)
           .onAppear { doThisAfter(0.3) { withAnimation(spring) { disappear = false } } }
-          .onChange(of: dragOffsetRaw == nil) { newValue in if newValue { initialDragOffset = nil } }
+          .onChange(of: dragOffsetRaw == nil) { _, newValue in if newValue { initialDragOffset = nil } }
         , alignment: .bottom
       )
   }

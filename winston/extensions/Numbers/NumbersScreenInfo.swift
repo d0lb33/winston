@@ -39,9 +39,15 @@ enum ScreenMetrics {
 
   @MainActor
   static func refresh(size: CGSize, scale: CGFloat) {
-    if size.width > 0, size.height > 0 {
-      bounds = CGRect(origin: .zero, size: size)
+    let window = UIApplication.shared.connectedScenes
+      .compactMap { $0 as? UIWindowScene }
+      .flatMap(\.windows)
+      .first { $0.isKeyWindow }
+    let measuredBounds = window?.bounds ?? CGRect(origin: .zero, size: size)
+    if measuredBounds.width > 0, measuredBounds.height > 0 {
+      bounds = measuredBounds
     }
+    safeAreaInsets = window?.safeAreaInsets ?? safeAreaInsets
     self.scale = scale
   }
 }

@@ -167,7 +167,7 @@ struct SwipeUI<T: GenericRedditEntityDataType, B: Hashable>: ViewModifier {
           }
         , including: disabled ? .none : .all
       )
-      .onChange(of: (controlledDragAmount?.wrappedValue ?? dragAmount)) { newValue in
+      .onChange(of: (controlledDragAmount?.wrappedValue ?? dragAmount)) { _, newValue in
         if !controlledIsSource { return }
         if newValue == 0 {
           Task(priority: .background) { [triggeredAction] in

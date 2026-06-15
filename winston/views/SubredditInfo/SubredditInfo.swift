@@ -72,7 +72,7 @@ struct SubredditInfo: View {
               .onAppear {
                 isFavorited = remoteFavorited
               }
-              .onChange(of: remoteFavorited) { favorited in
+              .onChange(of: remoteFavorited) { _, favorited in
                 withAnimation {
                   isFavorited = favorited
                 }

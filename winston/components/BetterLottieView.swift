@@ -114,7 +114,7 @@ struct BetterLottieView: View {
       .frame(size)
       .transition(animationSupportsSwitching ? .identity : .scaleAndBlur)
       .id("\(id)-\(actualAnimationName)")
-      .onChange(of: animationName) { newAnimName in
+      .onChange(of: animationName) { _, newAnimName in
         if animationSupportsSwitching {
           waitingForSwitching = true
           playbackMode = .playing(.toProgress(0, loopMode: .playOnce))

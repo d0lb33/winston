@@ -106,7 +106,7 @@ struct Inbox: View {
       .refreshable {
         await fetch(false, true)
       }
-      .onChange(of: generalDefSettings.redditCredentialSelectedID) { _ in
+      .onChange(of: generalDefSettings.redditCredentialSelectedID) {
         notifications = []
         nextAfter = nil
         reachedEnd = false

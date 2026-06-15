@@ -13,6 +13,6 @@ struct ButtonPressingProviderStyle: ButtonStyle {
   func makeBody(configuration: Self.Configuration) -> some View {
     configuration.label
       .foregroundStyle(isButton ? Color.accentColor : .primary)
-      .onChange(of: configuration.isPressed) { pressed = $0 }
+      .onChange(of: configuration.isPressed) { _, isPressed in pressed = isPressed }
   }
 }

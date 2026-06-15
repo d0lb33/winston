@@ -276,7 +276,7 @@ struct UserView: View {
         }
       }
     }
-    .onChange(of: dataTypeFilter) { _ in
+    .onChange(of: dataTypeFilter) {
       withAnimation {
         lastActivities?.removeAll()
         loadingOverview = true

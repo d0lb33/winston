@@ -162,7 +162,7 @@ struct SwipeActionsModifier: ViewModifier {
           }
         )
       )
-      .onChange(of: (parentOffsetX?.wrappedValue ?? offsetX)) { newValue in
+      .onChange(of: (parentOffsetX?.wrappedValue ?? offsetX)) { _, newValue in
         if !disableFunctions && (parentDragging?.wrappedValue ?? dragging) {
           let firstActioning = (rightActionHandler != nil && newValue < -firstActionThreshold + 1) || (leftActionHandler != nil && newValue > firstActionThreshold - 1)
           let secondActioning = (newValue) < -secondActionThreshold + 1
