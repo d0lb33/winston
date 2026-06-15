@@ -2646,6 +2646,9 @@
     "No rules were returned for r/%@" : {
 
     },
+    "No unread posts" : {
+
+    },
     "Not connected. Log in to reddit.com to mint an Android bearer via RedditPOC." : {
 
     },
@@ -3532,7 +3535,7 @@
     "Show Divider at Top" : {
 
     },
-    "Show hide read posts button" : {
+    "Show hide-read action in feed tools" : {
 
     },
     "Show Self Text" : {

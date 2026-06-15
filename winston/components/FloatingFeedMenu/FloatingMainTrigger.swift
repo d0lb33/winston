@@ -15,10 +15,12 @@ struct FloatingMainTrigger: View, Equatable {
   @Binding var menuOpen: Bool
   @Binding var showingFilters: Bool
   let dismiss: ()->()
+  let primaryAction: ()->()
   let size: Double
   let actionsSize: Double
 
   private let longPressDuration: Double = 0.275
+  @State private var handledLongPress = false
 
   private func openMenu() {
     Hap.shared.play(intensity: 0.75, sharpness: 0.4)
@@ -32,13 +34,16 @@ struct FloatingMainTrigger: View, Equatable {
   
   var body: some View {
     Button {
-      if menuOpen {
+      if handledLongPress {
+        handledLongPress = false
+      } else if menuOpen {
         dismiss()
       } else {
-        openMenu()
+        Hap.shared.play(intensity: 0.75, sharpness: 0.9)
+        primaryAction()
       }
     } label: {
-      Image(systemName: menuOpen ? "xmark" : "slider.vertical.3")
+      Image(systemName: menuOpen ? "xmark" : "eye.slash.fill")
         .contentTransition(.symbolEffect)
         .transaction { trans in
           trans.animation = .easeInOut(duration: longPressDuration)
@@ -53,8 +58,45 @@ struct FloatingMainTrigger: View, Equatable {
         .contentShape(Circle())
     }
     .buttonStyle(.plain)
-    .accessibilityLabel(menuOpen ? "Close feed tools" : "Open feed tools")
+    .accessibilityLabel(menuOpen ? "Close feed tools" : "Hide read posts")
+    .accessibilityAction(named: Text("Open feed tools")) {
+      if !menuOpen {
+        openMenu()
+      }
+    }
+    .onLongPressGesture(minimumDuration: longPressDuration, maximumDistance: 12) {
+      guard !menuOpen else { return }
+      handledLongPress = true
+      openMenu()
+    }
     .increaseHitboxOf(size, by: 1.125, shape: Circle(), disable: menuOpen)
+    .shrinkOnTap()
+  }
+}
+
+struct FeedFloatingToolbar: View, Equatable {
+  static func == (lhs: FeedFloatingToolbar, rhs: FeedFloatingToolbar) -> Bool {
+    lhs.size == rhs.size
+  }
+
+  let action: ()->()
+  var size: Double = 64
+
+  var body: some View {
+    Button {
+      Hap.shared.play(intensity: 0.75, sharpness: 0.9)
+      action()
+    } label: {
+      Image(systemName: "eye.slash.fill")
+        .fontSize(22, .bold)
+        .frame(width: size, height: size)
+        .foregroundColor(Color.accentColor)
+        .floating()
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Hide read posts")
+    .increaseHitboxOf(size, by: 1.125, shape: Circle())
     .shrinkOnTap()
   }
 }

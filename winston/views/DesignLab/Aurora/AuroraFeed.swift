@@ -23,6 +23,8 @@ struct AuroraFeed: View {
   @Environment(\.horizontalSizeClass) private var hSize
 
   var body: some View {
+    let visiblePosts = model.visiblePosts
+
     List(selection: $selectedPostID) {
       if let community {
         AuroraCommunityHeader(sub: community)
@@ -30,7 +32,7 @@ struct AuroraFeed: View {
           .listRowSeparator(.hidden)
           .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
       }
-      ForEach(model.posts) { post in
+      ForEach(visiblePosts) { post in
         AuroraCard(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
           .tag(post.id)
           .listRowBackground(Color.clear)
@@ -49,12 +51,12 @@ struct AuroraFeed: View {
             .tint(.green)
           }
           .onAppear {
-            if post.id == model.posts.last?.id {
+            if post.id == visiblePosts.last?.id {
               Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
             }
           }
       }
-      if model.loading && !model.posts.isEmpty {
+      if model.loading && !visiblePosts.isEmpty {
         HStack { Spacer(); ProgressView(); Spacer() }
           .padding(.vertical, 16)
           .listRowBackground(Color.clear)
@@ -67,7 +69,15 @@ struct AuroraFeed: View {
     .navigationBarTitleDisplayMode(.inline)
     .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
     .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
-    .overlay { if model.posts.isEmpty { emptyState } }
+    .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
+    .overlay(alignment: .bottomTrailing) {
+      FeedFloatingToolbar {
+        Task { await model.hideReadPosts(sort: sort, contentWidth: contentWidth) }
+      }
+      .equatable()
+      .padding(.trailing, 12)
+      .padding(.bottom, 12)
+    }
     .task(id: model.subreddit.id) {
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
@@ -77,7 +87,7 @@ struct AuroraFeed: View {
     .toolbar { sortToolbar }
   }
 
-  @ViewBuilder private var emptyState: some View {
+  @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {
     if model.loading {
       ProgressView()
     } else if model.failed {
@@ -86,6 +96,8 @@ struct AuroraFeed: View {
       } description: {
         Text("Pull to try again.")
       }
+    } else if hasLoadedPosts {
+      ContentUnavailableView("No unread posts", systemImage: "eye.slash")
     } else {
       ContentUnavailableView("No posts", systemImage: "tray")
     }

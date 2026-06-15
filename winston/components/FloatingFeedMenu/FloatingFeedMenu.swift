@@ -219,7 +219,7 @@ struct FloatingFeedMenu: View, Equatable {
             }
           }
           
-          FloatingMainTrigger(menuOpen: $menuOpen, showingFilters: $showingFilters, dismiss: dismiss, size: mainTriggerSize, actionsSize: actionsSize).equatable()
+          FloatingMainTrigger(menuOpen: $menuOpen, showingFilters: $showingFilters, dismiss: dismiss, primaryAction: hideReadPosts, size: mainTriggerSize, actionsSize: actionsSize).equatable()
         }
         .padding([.trailing, .bottom], screenEdgeMargin)
       }

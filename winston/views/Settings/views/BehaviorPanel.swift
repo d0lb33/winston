@@ -88,7 +88,7 @@ struct BehaviorPanel: View {
           Toggle("Pause background audio on fullscreen", isOn: $videoDefSettings.pauseBGAudioOnFullscreen)
           Toggle("Read on preview media", isOn: $postLinkDefSettings.lightboxReadsPost)
           Toggle("Read on scroll", isOn: $postLinkDefSettings.readOnScroll)
-          Toggle("Show hide read posts button", isOn: $postLinkDefSettings.hideOnRead)
+          Toggle("Show hide-read action in feed tools", isOn: $postLinkDefSettings.hideOnRead)
           Toggle("Blur NSFW in opened posts", isOn: $postPageDefSettings.blurNSFW)
           Toggle("Blur NSFW", isOn: $postLinkDefSettings.blurNSFW)
           Toggle("Save sort per subreddit", isOn: $subredditFeedDefSettings.perSubredditSort)
