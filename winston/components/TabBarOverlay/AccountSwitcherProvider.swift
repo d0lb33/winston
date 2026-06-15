@@ -106,10 +106,10 @@ struct AccountSwitcherProvider<Content: View>: View {
   
   var body: some View {
     let showOverlay = (transmitter.positionInfo != nil && transmitter.showing) || accTransKit.focusCloser
+    let transitionActive = accTransKit.focusCloser || accTransKit.passLens
     //    let completelyFree = true
-    let focusFramePadding: Double = !showOverlay ? 0 : accTransKit.focusCloser ? 40 : 16
+    let focusFramePadding: Double = accTransKit.focusCloser ? 40 : 0
     let frameSlideOffsetX = accTransKit.passLens ? (windowSize.width * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0
-    let somethingGoinOnYet = accTransKit.focusCloser || transmitter.showing
     //    let parallaxW = .screenW * 0.25
     ZStack {
       
@@ -120,7 +120,7 @@ struct AccountSwitcherProvider<Content: View>: View {
           .environmentObject(transmitter)
           .zIndex(1)
         
-        if let screenshot = transmitter.screenshot {
+        if transitionActive, let screenshot = transmitter.screenshot {
           Image(uiImage: screenshot).resizable().frame(windowSize)
             .blur(radius: accTransKit.focusCloser ? 15 : transmitter.showing ? 10 : 0)
           //            .offset(x: accTransKit.passLens ? (parallaxW * (accTransKit.willLensHeadLeft ? -1 : 1)) : 0)
@@ -144,13 +144,13 @@ struct AccountSwitcherProvider<Content: View>: View {
               endRadiusFraction: 0.85)
           )
           .padding(.all, focusFramePadding)
-          .opacity(!somethingGoinOnYet ? 0 : 1)
+          .opacity(!transitionActive ? 0 : 1)
         }
         .allowsHitTesting(false)
       }
       .mask(
         Group {
-          if somethingGoinOnYet || accTransKit.passLens {
+          if transitionActive {
             SideBySideWindow(passLens: accTransKit.passLens, willLensHeadLeft: accTransKit.willLensHeadLeft, size: windowSize) {
               RR(accTransKit.focusCloser ? 40 : 48, .black).padding(.all, focusFramePadding)
             }
@@ -159,7 +159,7 @@ struct AccountSwitcherProvider<Content: View>: View {
           }
         }
       )
-      .background((somethingGoinOnYet || accTransKit.passLens) ? Color(.primaryInverted) : Color.clear)
+      .background(transitionActive ? Color(.primaryInverted) : Color.clear)
       .animation(.spring, value: transmitter.showing)
       
       if let positionInfo = transmitter.positionInfo {

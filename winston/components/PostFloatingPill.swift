@@ -101,9 +101,7 @@ struct PostFloatingPill: View {
             HStack { // Set spacing to 0 to make buttons stretch evenly
               if let data = post.data {
                 LightBoxButton(icon: data.saved ? "bookmark.fill" : "bookmark"){
-                  Task {
-                    await post.saveToggle()
-                  }
+                  SaveChooserInstance.shared.enable(.post(post))
                 }
                 .padding(.vertical, -2)
               }

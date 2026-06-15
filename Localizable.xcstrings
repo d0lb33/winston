@@ -286,6 +286,9 @@
     "%lld hitches/min" : {
 
     },
+    "%lld items" : {
+
+    },
     "%lld/%lld" : {
       "localizations" : {
         "de" : {
@@ -770,6 +773,9 @@
         }
       }
     },
+    "Choose List" : {
+
+    },
     "Classic" : {
 
     },
@@ -995,6 +1001,9 @@
 
     },
     "Couldn't load saved items" : {
+
+    },
+    "Create" : {
 
     },
     "Create custom filter" : {
@@ -1479,6 +1488,12 @@
           }
         }
       }
+    },
+    "Favorite" : {
+
+    },
+    "Favorite Lists" : {
+
     },
     "Favorites" : {
       "localizations" : {
@@ -2096,6 +2111,9 @@
         }
       }
     },
+    "Items" : {
+
+    },
     "Join" : {
 
     },
@@ -2202,6 +2220,9 @@
           }
         }
       }
+    },
+    "List name" : {
+
     },
     "Live State" : {
 
@@ -2337,6 +2358,9 @@
           }
         }
       }
+    },
+    "Manage Saved Lists" : {
+
     },
     "Many of you is not aware about our patreon, which has a 1U$ tier. If each of our testers would donate 1U$/month, it'd be more than enough to allow us to focus all our time on Winston and other amazing projects." : {
       "extractionState" : "stale",
@@ -2590,6 +2614,9 @@
     "New filter" : {
 
     },
+    "New List" : {
+
+    },
     "New post" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2665,6 +2692,9 @@
     "No inbox notifications" : {
 
     },
+    "No lists yet" : {
+
+    },
     "No posts" : {
 
     },
@@ -2672,6 +2702,9 @@
 
     },
     "No saved items" : {
+
+    },
+    "No saved lists" : {
 
     },
     "No unread posts" : {
@@ -3242,10 +3275,16 @@
     "Recent Events" : {
 
     },
+    "Recent Lists" : {
+
+    },
     "Record Settings Route Smoke" : {
 
     },
     "Recovery" : {
+
+    },
+    "Reddit" : {
 
     },
     "RedditPOC" : {
@@ -3255,6 +3294,15 @@
 
     },
     "Remove favorite" : {
+
+    },
+    "Remove from List" : {
+
+    },
+    "Rename" : {
+
+    },
+    "Rename List" : {
 
     },
     "Replies, mentions, chat updates, and Reddit activity notifications will appear here." : {
@@ -3368,7 +3416,16 @@
         }
       }
     },
+    "Save to List..." : {
+
+    },
+    "Save..." : {
+
+    },
     "Saved" : {
+
+    },
+    "Saved Lists" : {
 
     },
     "Score: %lld" : {
@@ -4299,6 +4356,9 @@
           }
         }
       }
+    },
+    "Unfavorite" : {
+
     },
     "Unmute video" : {
 

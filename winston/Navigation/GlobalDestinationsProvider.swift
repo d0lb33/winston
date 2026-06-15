@@ -17,6 +17,7 @@ struct GlobalDestinationsProvider<C: View>: View {
   var body: some View {
     content()
       .replyModalPresenter()
+      .saveChooserPresenter()
       .sheet(item: $nav.presentingSheet) { data in
         GeometryReader { geo in
           Group {

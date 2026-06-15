@@ -236,7 +236,7 @@ struct PostActionBarNative: View {
         Spacer()
 
         Button {
-          Task { _ = await post.saveToggle() }
+          SaveChooserInstance.shared.enable(.post(post))
         } label: {
           Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
             .foregroundStyle(data.saved ? .green : .secondary)

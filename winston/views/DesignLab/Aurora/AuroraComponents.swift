@@ -518,7 +518,7 @@ private struct AuroraPostCardSurface: View {
   private func contextMenuItems(_ data: PostData) -> some View {
     Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
     Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
-    Button { Task { _ = await post.saveToggle() } } label: {
+    Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
       Label(data.saved ? "Unsave" : "Save", systemImage: data.saved ? "bookmark.fill" : "bookmark")
     }
     Button { ReplyModalInstance.shared.enable(.post(post)) } label: {

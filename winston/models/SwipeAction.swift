@@ -176,7 +176,7 @@ struct SavePostAction: SwipeAction {
   var icon = SwipeActionItem(normal: "bookmark.fill", active: "bookmark.slash.fill")
   var color = SwipeActionItem(normal: "FFFFFF")
   var bgColor = SwipeActionItem(normal: "2FD058", active: "FF463B")
-  func action(_ entity: Post) async { _ = await entity.saveToggle() }
+  func action(_ entity: Post) async { await MainActor.run { SaveChooserInstance.shared.enable(.post(entity)) } }
   func active(_ entity: Post) -> Bool { entity.data?.saved == true }
   func enabled(_ entity: Post) -> Bool { true }
 }
@@ -284,7 +284,7 @@ struct SaveCommentAction: SwipeAction {
   var icon = SwipeActionItem(normal: "bookmark.fill", active: "bookmark.slash.fill")
   var color = SwipeActionItem(normal: "FFFFFF")
   var bgColor = SwipeActionItem(normal: "2FD058", active: "FF463B")
-  func action(_ entity: Comment) async { _ = await entity.saveToggle() }
+  func action(_ entity: Comment) async { await MainActor.run { SaveChooserInstance.shared.enable(.comment(entity)) } }
   func active(_ entity: Comment) -> Bool { entity.data?.saved == true }
   func enabled(_ entity: Comment) -> Bool { true }
 }

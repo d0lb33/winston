@@ -232,7 +232,7 @@ private final class SearchViewModel: ObservableObject {
       return
     }
 
-    withAnimation {
+    updateWithoutAnimation {
       showingNullState = false
       showingFullSearch = false
       loadingInitial = true
@@ -264,7 +264,7 @@ private final class SearchViewModel: ObservableObject {
         ]
       )
 
-      withAnimation {
+      self.updateWithoutAnimation {
         self.posts = []
         self.subreddits = page.items.deduped { $0.id }
         self.comments = []
@@ -290,7 +290,7 @@ private final class SearchViewModel: ObservableObject {
       return
     }
 
-    withAnimation {
+    updateWithoutAnimation {
       showingNullState = false
       showingFullSearch = true
       loadingInitial = true
@@ -326,7 +326,7 @@ private final class SearchViewModel: ObservableObject {
         ]
       )
 
-      withAnimation {
+      self.updateWithoutAnimation {
         self.apply(page: page, appending: false)
         self.loadingInitial = false
         self.showEmpty = !self.hasVisibleResults
@@ -349,7 +349,7 @@ private final class SearchViewModel: ObservableObject {
       let page = await self.fetchPage(query: query, scope: scope, cursors: cursorSnapshot, contentWidth: contentWidth)
       guard !Task.isCancelled, self.requestSerial == requestID else { return }
 
-      withAnimation {
+      self.updateWithoutAnimation {
         _ = self.apply(page: page, appending: true)
         self.loadingMore = false
         self.showEmpty = !self.hasVisibleResults
@@ -395,7 +395,7 @@ private final class SearchViewModel: ObservableObject {
     currentScope = .all
     currentMode = .nullState
 
-    withAnimation {
+    updateWithoutAnimation {
       clearState(showNullState: true)
       loadingNullState = true
     }
@@ -404,7 +404,7 @@ private final class SearchViewModel: ObservableObject {
       guard let self else { return }
       let suggestions = await RedditWire.shared.searchTrendingSuggestions()
       guard !Task.isCancelled, self.requestSerial == requestID else { return }
-      withAnimation {
+      self.updateWithoutAnimation {
         self.trendingSuggestions = suggestions
         self.loadingNullState = false
       }
@@ -460,7 +460,7 @@ private final class SearchViewModel: ObservableObject {
   }
 
   private func clearState(showNullState: Bool = false) {
-    withAnimation {
+    updateWithoutAnimation {
       resetHiddenPosts()
       posts = []
       subreddits = []
@@ -513,7 +513,7 @@ private final class SearchViewModel: ObservableObject {
     let page = await fetchPage(query: query, scope: .posts, cursors: cursorSnapshot, contentWidth: contentWidth)
     guard !Task.isCancelled, requestSerial == requestID else { return }
 
-    let appliedCount = withAnimation {
+    let appliedCount = updateWithoutAnimation {
       let count = apply(page: page, appending: true)
       loadingMore = false
       showEmpty = !hasVisibleResults
@@ -526,6 +526,13 @@ private final class SearchViewModel: ObservableObject {
     }
 
     await continueHidingReadPostsUntilUnread(requestID: requestID, contentWidth: contentWidth)
+  }
+
+  @discardableResult
+  private func updateWithoutAnimation<Result>(_ updates: () -> Result) -> Result {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    return withTransaction(transaction, updates)
   }
 
   private static func localRecentSuggestions() -> [SearchSuggestion] {
@@ -611,6 +618,7 @@ struct Search: View {
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
+  @Environment(\.isSearching) private var isSearching
   
   var body: some View {
     NavigationStack(path: $router.fullPath) {
@@ -639,6 +647,17 @@ struct Search: View {
       .searchable(text: $searchQuery.text, placement: .toolbar)
       .autocorrectionDisabled(true)
       .textInputAutocapitalization(.none)
+      .onChange(of: isSearching) { _, active in
+        AppDiagnostics.asyncBreadcrumb(
+          "Search focus changed",
+          metadata: [
+            "active": "\(active)",
+            "queryLength": "\(searchQuery.text.count)",
+            "showingFullSearch": "\(model.showingFullSearch)",
+            "showingNullState": "\(model.showingNullState)"
+          ]
+        )
+      }
       .refreshable {
         if searchQuery.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           model.loadNullState(force: true)
@@ -680,10 +699,25 @@ struct Search: View {
         }
       }
       .onChange(of: searchQuery.debounced) { _, val in
+        let trimmed = val.trimmingCharacters(in: .whitespacesAndNewlines)
+        AppDiagnostics.asyncBreadcrumb(
+          "Search debounced query changed",
+          metadata: [
+            "queryLength": "\(trimmed.count)",
+            "showingFullSearch": "\(model.showingFullSearch)"
+          ]
+        )
+
+        guard !trimmed.isEmpty else {
+          searchScope = .all
+          model.loadNullState()
+          return
+        }
+
         if model.showingFullSearch {
-          model.refreshFullSearch(query: val, scope: searchScope, contentWidth: contentWidth)
+          model.refreshFullSearch(query: trimmed, scope: searchScope, contentWidth: contentWidth)
         } else {
-          model.refreshQuickCommunities(query: val)
+          model.refreshQuickCommunities(query: trimmed)
         }
       }
       .onAppear() {

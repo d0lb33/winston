@@ -76,7 +76,7 @@ struct AuroraFeed: View {
                 .tint(.indigo)
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-              Button { Task { _ = await post.saveToggle() } } label: {
+              Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
                 Label(post.data?.saved == true ? "Unsave" : "Save", systemImage: "bookmark")
               }
               .tint(.green)

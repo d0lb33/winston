@@ -97,6 +97,9 @@
 		BEEF02010000000000000002 /* AppDiagnostics.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02010000000000000001 /* AppDiagnostics.swift */; };
 		BEEF02010000000000000004 /* DiagnosticsPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEEF02010000000000000003 /* DiagnosticsPanel.swift */; };
 		C0A530280000000000000002 /* AuroraResults.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A530280000000000000001 /* AuroraResults.swift */; };
+		C0A531010000000000000002 /* SavedListsStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A531010000000000000001 /* SavedListsStore.swift */; };
+		C0A531020000000000000002 /* SaveChooser.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A531020000000000000001 /* SaveChooser.swift */; };
+		C0A531030000000000000002 /* AuroraSavedLists.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0A531030000000000000001 /* AuroraSavedLists.swift */; };
 		C0DEC0DEC0DEC0DEC0DEC002 /* SortMenus.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0DEC0DEC0DEC0DEC0DEC001 /* SortMenus.swift */; };
 		CAFE000000000000000000B1 /* Pulse in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE000000000000000000A2 /* Pulse */; };
 		CAFE000000000000000000B2 /* PulseUI in Frameworks */ = {isa = PBXBuildFile; productRef = CAFE000000000000000000A3 /* PulseUI */; };
@@ -595,6 +598,9 @@
 		BEEF02010000000000000001 /* AppDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDiagnostics.swift; sourceTree = "<group>"; };
 		BEEF02010000000000000003 /* DiagnosticsPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DiagnosticsPanel.swift; sourceTree = "<group>"; };
 		C0A530280000000000000001 /* AuroraResults.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraResults.swift; sourceTree = "<group>"; };
+		C0A531010000000000000001 /* SavedListsStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SavedListsStore.swift; sourceTree = "<group>"; };
+		C0A531020000000000000001 /* SaveChooser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveChooser.swift; sourceTree = "<group>"; };
+		C0A531030000000000000001 /* AuroraSavedLists.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraSavedLists.swift; sourceTree = "<group>"; };
 		C0DEC0DEC0DEC0DEC0DEC001 /* SortMenus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SortMenus.swift; sourceTree = "<group>"; };
 		CE0EC5D72B1A9E9600C6E210 /* SubredditFilters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubredditFilters.swift; sourceTree = "<group>"; };
 		CECA71EA2B1E358700852DAD /* CustomFilterView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CustomFilterView.swift; sourceTree = "<group>"; };
@@ -1081,6 +1087,7 @@
 				0A5302732FDF34C600CAC6F2 /* AuroraFeedModel.swift */,
 				0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */,
 				C0A530280000000000000001 /* AuroraResults.swift */,
+				C0A531030000000000000001 /* AuroraSavedLists.swift */,
 			);
 			path = Aurora;
 			sourceTree = "<group>";
@@ -1443,6 +1450,7 @@
 				ECF5B3042AC837F500355589 /* IconManager.swift */,
 				EC4C7CB32B2E17D00007A4DA /* Hap.swift */,
 				EC982A332B4A436600FFE582 /* TimerHolder.swift */,
+				C0A531010000000000000001 /* SavedListsStore.swift */,
 				0AF2CAC32FDA383F00944869 /* RedditGQL */,
 				0A5302232FDCF00700CAC6F2 /* PerformanceDiagnostics.swift */,
 			);
@@ -1752,6 +1760,7 @@
 			children = (
 				ECE285A72A513342009CF9DD /* ReplyModal.swift */,
 				EC8F34962A6F667900EB8249 /* NewPostModal.swift */,
+				C0A531020000000000000001 /* SaveChooser.swift */,
 			);
 			path = Modals;
 			sourceTree = "<group>";
@@ -2508,6 +2517,7 @@
 				EC58D4562AC02B6900FF5B6B /* Tag.swift in Sources */,
 				EC3AC9CD2AAC9A970078EC78 /* SubredditSample.swift in Sources */,
 				ECDBA8C32A4A820800FB42DB /* Post.swift in Sources */,
+				C0A531010000000000000002 /* SavedListsStore.swift in Sources */,
 				BEEF0101000000000000000D /* RedditTypes.swift in Sources */,
 				EC082F252A65FB4300BA2727 /* measure.swift in Sources */,
 				EC593AFA2A47AE3E002D6454 /* Settings.swift in Sources */,
@@ -2524,6 +2534,7 @@
 				EC2D275E2A4FC512006444D6 /* TappableView.swift in Sources */,
 				0A5302742FDF34C600CAC6F2 /* AuroraFeedModel.swift in Sources */,
 				C0A530280000000000000002 /* AuroraResults.swift in Sources */,
+				C0A531030000000000000002 /* AuroraSavedLists.swift in Sources */,
 				6576437E2ACF20DA00805641 /* AppDetailDescription.swift in Sources */,
 				EC3B32442AC64F43002C1291 /* SubredditPostsIOS.swift in Sources */,
 				EC593B922A494E7F002D6454 /* defaults.swift in Sources */,
@@ -2598,6 +2609,7 @@
 				BB978B3C2B4F3BE200BE90D1 /* MDEditor.swift in Sources */,
 				ECD1FC092A570B4F00723016 /* PostFloatingPill.swift in Sources */,
 				EC8F34972A6F667900EB8249 /* NewPostModal.swift in Sources */,
+				C0A531020000000000000002 /* SaveChooser.swift in Sources */,
 				ECF0B7E12A53DE17002B9FAD /* ShortCommentPostLink.swift in Sources */,
 				EC22A31E2A5C7D330062A112 /* MessageLink.swift in Sources */,
 				ECE08B882AAB129B00F84DC9 /* themedListBG.swift in Sources */,

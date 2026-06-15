@@ -42,6 +42,7 @@ struct AuroraRoot: View {
   @State private var feedPath: [Router.NavDest] = []
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
+  @State private var savedListSummaries: [SavedListSummary] = []
 
   init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     self.router = router
@@ -115,12 +116,22 @@ struct AuroraRoot: View {
     }
     .diagnosticScreen("aurora.posts")
     .onAppear {
+      reloadSavedListSummaries()
       consumeContextualDestinationIfNeeded()
     }
     .onChange(of: selectedSubID) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
       // CachedSub @FetchRequest re-syncs); only react to a real new pick.
       guard let newID else { return }
+      if newID == SavedListsRoute.overviewID || SavedListsRoute.listID(from: newID) != nil {
+        selectedPostID = nil
+        detailPost = nil
+        detailHighlightID = nil
+        feedPath = []
+        if !router.fullPath.isEmpty { router.fullPath = [] }
+        preferredColumn = .content
+        return
+      }
       let sub = resolve(newID).sub
       AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
       model.prepare(for: sub)
@@ -134,6 +145,7 @@ struct AuroraRoot: View {
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
+      reloadSavedListSummaries()
     }
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
@@ -161,6 +173,9 @@ struct AuroraRoot: View {
       } else {
         preferredColumn = .detail
       }
+    }
+    .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
+      reloadSavedListSummaries()
     }
   }
 
@@ -264,7 +279,22 @@ struct AuroraRoot: View {
   }
 
   @ViewBuilder private var feedContent: some View {
-    if model.subreddit.id == "saved" {
+    if selectedSubID == SavedListsRoute.overviewID {
+      SavedListsOverviewScreen(
+        mode: .manage,
+        onListSelected: { list in selectedSubID = SavedListsRoute.id(for: list.id) },
+        onPostSelected: selectSavedPost,
+        onCommentSelected: selectSavedComment
+      )
+      .diagnosticScreen("aurora.savedLists")
+    } else if let listID = SavedListsRoute.listID(from: selectedSubID) {
+      SavedListDetailScreen(
+        listID: listID,
+        onPostSelected: selectSavedPost,
+        onCommentSelected: selectSavedComment
+      )
+      .diagnosticScreen("aurora.savedList.\(listID.uuidString)")
+    } else if model.subreddit.id == "saved" {
       AuroraSavedScreen(onPostSelected: selectSavedPost, onCommentSelected: selectSavedComment)
         .diagnosticScreen("aurora.saved")
     } else {
@@ -327,8 +357,16 @@ struct AuroraRoot: View {
         feedRow("Home", id: "home", systemImage: "house.fill")
         feedRow("Popular", id: "popular", systemImage: "chart.line.uptrend.xyaxis")
         feedRow("Saved", id: "saved", systemImage: "bookmark.fill")
+        feedRow("Saved Lists", id: SavedListsRoute.overviewID, systemImage: "list.bullet.rectangle")
         // r/all is intentionally omitted: Reddit's feed GraphQL returns a server
         // "internal error" for it (no SDUI feed exists), so there's nothing to show.
+      }
+      if !savedListSummaries.isEmpty {
+        Section("Favorite Lists") {
+          ForEach(savedListSummaries) { list in
+            savedListSidebarRow(list)
+          }
+        }
       }
       Section("Communities") {
         ForEach(subs.filter { $0.user_is_subscriber && $0.uuid != nil }, id: \.uuid) { sub in
@@ -349,12 +387,33 @@ struct AuroraRoot: View {
   private func refreshSubscriptions() async {
     guard let accountID else { return }
     await RedditWire.shared.fetchSubs(for: accountID)
+    reloadSavedListSummaries()
   }
 
   private func feedRow(_ label: String, id: String, systemImage: String) -> some View {
     Label(label, systemImage: systemImage)
       .tag(id)
       .listRowBackground(Color.clear)
+  }
+
+  private func savedListSidebarRow(_ list: SavedListSummary) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(list.name)
+          .lineLimit(1)
+        Text("\(list.count) items")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+      }
+    } icon: {
+      Image(systemName: "folder.fill")
+    }
+    .tag(SavedListsRoute.id(for: list.id))
+    .listRowBackground(Color.clear)
+  }
+
+  private func reloadSavedListSummaries() {
+    savedListSummaries = SavedListsStore.shared.favoriteLists()
   }
 
 }

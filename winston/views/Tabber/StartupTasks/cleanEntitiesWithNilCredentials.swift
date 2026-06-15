@@ -25,5 +25,7 @@ func cleanCredentialOrphanEntities() {
   PersistenceController.shared.container.viewContext.performAndWait {
     clean("CachedSub")
     clean("CachedMulti")
+    clean("SavedList")
+    clean("SavedListItem")
   }
 }

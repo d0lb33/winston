@@ -168,7 +168,7 @@ struct AuroraPostDetail: View {
           Spacer()
 
           glassCircleButton(data.saved ? "bookmark.fill" : "bookmark", tint: data.saved ? theme.accent : .secondary) {
-            Task { _ = await post.saveToggle() }
+            SaveChooserInstance.shared.enable(.post(post))
           }
           glassCircleButton("arrowshape.turn.up.left", tint: .secondary) {
             ReplyModalInstance.shared.enable(.post(post))
