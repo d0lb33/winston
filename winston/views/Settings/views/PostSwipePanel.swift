@@ -53,10 +53,9 @@ struct PostSwipePanel: View {
           }
 //          .themedListRowLikeBG(enablePadding: true, disableBG: true)
         }
-        .auroraSettingsSection()
         
       }
-      .auroraListChrome()
+      .nativeSettingsList()
       .navigationTitle("Posts Swipe Settings")
       .navigationBarTitleDisplayMode(.inline)
     }

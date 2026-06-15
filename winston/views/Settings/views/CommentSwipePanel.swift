@@ -53,10 +53,9 @@ struct CommentSwipePanel: View {
         }
 //        .themedListRowLikeBG(enablePadding: true, disableBG: true)
       }
-      .auroraSettingsSection()
       
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationTitle("Comments Swipe Settings")
     .navigationBarTitleDisplayMode(.inline)
   }

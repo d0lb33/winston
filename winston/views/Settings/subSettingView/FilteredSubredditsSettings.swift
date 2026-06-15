@@ -39,6 +39,7 @@ struct FilteredSubredditsSettings: View {
             }
         }
       }
+      .nativeSettingsList()
       .navigationTitle("Filtered Subreddits")
       .navigationBarItems(trailing:
         HStack {

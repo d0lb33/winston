@@ -34,11 +34,11 @@ struct AuroraSubFeedScreen: View {
       if subreddit.id == "saved" {
         AuroraSavedScreen(
           onPostSelected: { post in
-            navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+            navigateFromSubFeed(.reddit(.post(post)))
           },
           onCommentSelected: { comment in
             guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
-            navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
+            navigateFromSubFeed(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)))
           }
         )
       } else {
@@ -47,7 +47,8 @@ struct AuroraSubFeedScreen: View {
           title: subreddit.displayTitle,
           community: isCommunity ? subreddit : nil,
           selectedPostID: $selectedPostID,
-          sort: $sort
+          sort: $sort,
+          onCompactNavigate: navigateFromSubFeed
         )
       }
     }
@@ -56,11 +57,44 @@ struct AuroraSubFeedScreen: View {
     .background { AuroraBackdrop(theme: theme) }
     .toolbarBackground(.hidden, for: .navigationBar)
     .onChange(of: selectedPostID) { _, id in
-      // Stack-push the post rather than driving a detail pane.
+      // Route through the inherited split model so content-origin post taps replace
+      // the detail column instead of stacking on top of stale detail content.
       if let id, let post = model.post(id: id) {
+        AppDiagnostics.asyncBreadcrumb(
+          "AuroraSubFeedScreen post selected",
+          metadata: [
+            "sub": subreddit.id,
+            "post": id,
+            "hasSplitModel": "\(redditNavigationModel != nil)",
+            "origin": redditNavigationOrigin.diagnosticsName
+          ]
+        )
         selectedPostID = nil
-        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+        navigateFromSubFeed(.reddit(.post(post)))
+      } else if let id {
+        AppDiagnostics.asyncBreadcrumb(
+          "AuroraSubFeedScreen post selection missing",
+          metadata: [
+            "sub": subreddit.id,
+            "post": id,
+            "hasSplitModel": "\(redditNavigationModel != nil)",
+            "origin": redditNavigationOrigin.diagnosticsName
+          ]
+        )
       }
     }
+  }
+
+  private func navigateFromSubFeed(_ destination: Router.NavDest) {
+    AppDiagnostics.asyncBreadcrumb(
+      "AuroraSubFeedScreen navigate",
+      metadata: [
+        "sub": subreddit.id,
+        "destination": destination.diagnosticsName,
+        "hasSplitModel": "\(redditNavigationModel != nil)",
+        "origin": redditNavigationOrigin.diagnosticsName
+      ]
+    )
+    navigateRedditDestination(destination, model: redditNavigationModel, origin: redditNavigationOrigin)
   }
 }

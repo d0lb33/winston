@@ -37,9 +37,8 @@ struct FilteredSubredditsSettings: View {
               }
           }
         }
-        .auroraSettingsSection()
       }
-      .auroraListChrome()
+      .nativeSettingsList()
       .navigationTitle("Filtered Subreddits")
       .navigationBarItems(trailing:
         HStack {

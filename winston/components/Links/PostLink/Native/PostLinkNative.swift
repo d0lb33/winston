@@ -88,22 +88,12 @@ struct PostLinkNative: View, Equatable, Identifiable {
 
   // MARK: - Media
 
-  /// A usable Reddit preview image for an external link post, if any.
-  private func linkImage(_ data: PostData) -> (url: URL, size: CGSize)? {
-    guard let src = data.preview?.images?.first?.source, let raw = src.url else { return nil }
-    let rewritten = raw.replacingOccurrences(of: "/preview.", with: "/i.")
-    guard let url = URL(string: rewritten.escape) ?? URL(string: raw.escape) else { return nil }
-    let w = src.width ?? 0, h = src.height ?? 0
-    guard w > 0, h > 0 else { return nil }
-    return (url, CGSize(width: w, height: h))
-  }
-
   @ViewBuilder
   private func mediaBlock(_ data: PostData, liveWidth: CGFloat) -> some View {
     if let media = winstonData.extractedMediaForcedNormal {
       if case .repost(let repost) = media, let repostWinstonData = repost.winstonData {
         CrosspostCardNative(repost: repost, winstonData: repostWinstonData)
-      } else if case .link(let previewModel) = media, let img = linkImage(data) {
+      } else if case .link(let previewModel) = media, let img = redditPreviewLinkImage(data) {
         LinkImageCardNative(
           imageURL: img.url,
           sourceSize: img.size,

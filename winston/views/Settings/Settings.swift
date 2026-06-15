@@ -73,17 +73,21 @@ private struct SettingsSidebarList: View {
   var body: some View {
     List {
       SettingsMainSection(selectedSetting: selectedSetting)
-      SettingsSupportSection(
+      SettingsInfoSection(
         selectedSetting: selectedSetting,
         showWhatsNew: showWhatsNew,
-        showAnnouncements: showAnnouncements,
-        showGraphQLDebug: showGraphQLDebug,
+        showAnnouncements: showAnnouncements
+      )
+      SettingsDeveloperSection(
+        selectedSetting: selectedSetting,
+        showGraphQLDebug: showGraphQLDebug
+      )
+      SettingsSupportSection(
         donateMonthly: donateMonthly,
         openTipJar: openTipJar
       )
     }
-    .auroraSettingsSection()
-    .auroraListChrome()
+    .nativeSettingsList()
   }
 }
 
@@ -91,56 +95,70 @@ private struct SettingsMainSection: View {
   let selectedSetting: Router.NavDest.Setting?
 
   var body: some View {
-    Section {
-      AuroraNavigationRow(.setting(.general), active: selectedSetting == .general, title: "General", systemImage: "gear")
-      AuroraNavigationRow(.setting(.behavior), active: selectedSetting == .behavior, title: "Behavior", systemImage: "arrow.triangle.turn.up.right.diamond.fill")
-      AuroraNavigationRow(.setting(.appearance), active: selectedSetting == .appearance, title: "Appearance", systemImage: "theatermask.and.paintbrush.fill")
-      AuroraNavigationRow(.setting(.accounts), active: selectedSetting == .accounts, title: "Accounts", systemImage: "person.crop.circle.fill")
-      AuroraNavigationRow(.setting(.diagnostics), active: selectedSetting == .diagnostics, title: "Diagnostics", systemImage: "stethoscope")
+    Section("App") {
+      NativeSettingsNavigationRow(.setting(.general), active: selectedSetting == .general, title: "General", systemImage: "gearshape.fill", iconColor: .gray)
+      NativeSettingsNavigationRow(.setting(.behavior), active: selectedSetting == .behavior, title: "Behavior", systemImage: "hand.tap.fill", iconColor: .blue)
+      NativeSettingsNavigationRow(.setting(.appearance), active: selectedSetting == .appearance, title: "Appearance", systemImage: "paintpalette.fill", iconColor: .purple)
+      NativeSettingsNavigationRow(.setting(.accounts), active: selectedSetting == .accounts, title: "Accounts", systemImage: "person.crop.circle.fill", iconColor: .green)
+      NativeSettingsNavigationRow(.setting(.diagnostics), active: selectedSetting == .diagnostics, title: "Diagnostics", systemImage: "stethoscope", iconColor: .orange)
+    }
+  }
+}
+
+private struct SettingsInfoSection: View {
+  let selectedSetting: Router.NavDest.Setting?
+  let showWhatsNew: () -> Void
+  let showAnnouncements: () -> Void
+
+  var body: some View {
+    Section("Info") {
+      NativeSettingsNavigationRow(.setting(.faq), active: selectedSetting == .faq, title: "FAQ", systemImage: "questionmark.circle.fill", iconColor: .teal)
+      NativeSettingsNavigationRow(.setting(.about), active: selectedSetting == .about, title: "About", systemImage: "info.circle.fill", iconColor: .indigo)
+
+      NativeSettingsActionRow(title: "Whats New", systemImage: "sparkles", iconColor: .yellow) {
+        showWhatsNew()
+      }
+      .disabled(getCurrentChangelog().isEmpty)
+
+      NativeSettingsActionRow(title: "Announcements", systemImage: "newspaper.fill", iconColor: .cyan) {
+        showAnnouncements()
+      }
+    }
+  }
+}
+
+private struct SettingsDeveloperSection: View {
+  let selectedSetting: Router.NavDest.Setting?
+  let showGraphQLDebug: () -> Void
+
+  var body: some View {
+    Section("Developer") {
+      NativeSettingsActionRow(title: "GraphQL (experimental)", systemImage: "flask.fill", iconColor: .mint) {
+        showGraphQLDebug()
+      }
+
+      NativeSettingsNavigationRow(.setting(.designLab), active: selectedSetting == .designLab, title: "Design Lab", systemImage: "slider.horizontal.3", iconColor: .pink)
     }
   }
 }
 
 private struct SettingsSupportSection: View {
-  let selectedSetting: Router.NavDest.Setting?
-  let showWhatsNew: () -> Void
-  let showAnnouncements: () -> Void
-  let showGraphQLDebug: () -> Void
   let donateMonthly: () -> Void
   let openTipJar: () -> Void
 
   var body: some View {
-    Section {
-      AuroraNavigationRow(.setting(.faq), active: selectedSetting == .faq, title: "FAQ", systemImage: "exclamationmark.questionmark")
-      AuroraNavigationRow(.setting(.about), active: selectedSetting == .about, title: "About", systemImage: "cup.and.saucer.fill")
-      AuroraActionRow(title: "Whats New", systemImage: "star") {
-        showWhatsNew()
-      }
-      .disabled(getCurrentChangelog().isEmpty)
-
-      AuroraActionRow(title: "Announcements", systemImage: "newspaper") {
-        showAnnouncements()
-      }
-
-      AuroraActionRow(title: "GraphQL (experimental)", systemImage: "flask") {
-        showGraphQLDebug()
-      }
-
-      AuroraNavigationRow(.setting(.designLab), active: selectedSetting == .designLab, title: "Design Lab", systemImage: "paintpalette.fill")
-
-      AuroraActionRow(title: "Donate monthly", systemImage: "heart.fill") {
+    Section("Support") {
+      NativeSettingsActionRow(title: "Donate monthly", systemImage: "heart.fill", iconColor: .red) {
         donateMonthly()
       }
 
-      AuroraRowButton {
+      NativeSettingsActionRow {
         openTipJar()
       } label: {
         Label {
           Text("Tip jar")
         } icon: {
-          Image(.jar)
-            .resizable()
-            .scaledToFit()
+          SettingsIcon(systemImage: "cup.and.saucer.fill", color: .brown)
         }
       }
     }

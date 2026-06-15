@@ -55,8 +55,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   var firstSelected: NavDest? {
     get { fullPath.isEmpty ? nil : fullPath[0] }
     set {
-      if let newValue = newValue {
-        if fullPath.count == 0 { fullPath.append(newValue) } else { fullPath[0] = newValue } } else { fullPath = [] }
+      replacePath(newValue.map { fullPath.isEmpty ? [$0] : [$0] + path } ?? [])
     }
   }
   @Published var fullPath: [NavDest] = []
@@ -83,20 +82,45 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   }
   
   func goBack() {
+    guard !fullPath.isEmpty else { return }
     AppDiagnostics.asyncBreadcrumb("Router.goBack", metadata: ["router": id])
     _ = withAnimation { self.fullPath.removeLast() }
   }
   func resetNavPath() {
     AppDiagnostics.asyncBreadcrumb("Router.resetNavPath", metadata: ["router": id])
-    withAnimation { self.fullPath.removeAll() }
+    replacePath([])
   }
-  func navigateTo(_ dest: NavDest, _ reset: Bool = false) {
+  func navigateTo(_ dest: NavDest, _ reset: Bool = false, animated: Bool = true) {
     AppDiagnostics.asyncBreadcrumb("Router.navigateTo", metadata: ["router": id, "destination": dest.diagnosticsName, "reset": "\(reset)"])
-    withAnimation { self.path = reset ? [dest] : self.path + [dest] }
+    if animated {
+      withAnimation {
+        self.path = reset ? [dest] : self.path + [dest]
+      }
+    } else {
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) {
+        self.path = reset ? [dest] : self.path + [dest]
+      }
+    }
   }
   func navigateContextually(to dest: NavDest) {
     AppDiagnostics.asyncBreadcrumb("Router.navigateContextually", metadata: ["router": id, "destination": dest.diagnosticsName])
     contextualDestination = dest
+  }
+
+  func replacePath(_ newPath: [NavDest], animated: Bool = true) {
+    if animated {
+      withAnimation {
+        fullPath = newPath
+      }
+    } else {
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) {
+        fullPath = newPath
+      }
+    }
   }
   
   enum NavDest: Hashable, Codable, Identifiable {

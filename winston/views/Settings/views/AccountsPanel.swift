@@ -12,7 +12,6 @@ import Nuke
 
 struct AccountsPanel: View {
   @ObservedObject private var wire = RedditWire.shared
-  @Environment(\.auroraTheme) private var theme
 
   var body: some View {
     Group {
@@ -23,7 +22,6 @@ struct AccountsPanel: View {
       }
     }
     .navigationTitle("Accounts")
-    .background { AuroraBackdrop(theme: theme) }
     .toolbar {
       ToolbarItem {
         Button {
@@ -44,18 +42,15 @@ struct AccountsList: View {
 
   var body: some View {
     List {
-      Group {
-        Section {
-          ForEach(accounts) { account in
-            AccountItem(account: account, inUse: account.id == selectedID)
-          }
-        } footer: {
-          Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
+      Section {
+        ForEach(accounts) { account in
+          AccountItem(account: account, inUse: account.id == selectedID)
         }
+      } footer: {
+        Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
       }
-      .auroraSettingsSection()
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationBarTitleDisplayMode(.large)
   }
 }
@@ -66,7 +61,7 @@ struct AccountItem: View {
   @State private var logoutAlertOpened = false
 
   var body: some View {
-    AuroraRowButton {
+    NativeSettingsActionRow {
       guard !inUse else { return }
       Task { await RedditWire.shared.selectAccount(account.id) }
     } label: {
@@ -89,13 +84,9 @@ struct AccountItem: View {
         Spacer()
 
         if inUse {
-          Text("IN USE")
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.5), radius: 8, y: 4)
-            .fontSize(12, .semibold)
-            .padding(.vertical, 1)
-            .padding(.horizontal, 4)
-            .background(RR(4, Color.accentColor))
+          Image(systemName: "checkmark")
+            .font(.body.weight(.semibold))
+            .foregroundStyle(Color.accentColor)
         }
       }
     }

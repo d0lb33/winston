@@ -251,13 +251,12 @@ enum AuroraPalette {
   }
 }
 
-// MARK: - Living mesh backdrop
+// MARK: - App backdrop
 
-/// A slow, state-driven aurora. Animated as a single GPU mesh layer (no per-frame
-/// TimelineView redraw, no live-blur surfaces in front) so it stays smooth under scroll.
+/// Background hook for Aurora surfaces. Kept neutral until Aurora background
+/// treatment is wired consistently through the main app surfaces.
 struct AuroraBackdrop: View {
   let theme: AuroraTheme
-  @State private var drift: CGFloat = 0
 
   var body: some View {
     Color(uiColor: .systemBackground)

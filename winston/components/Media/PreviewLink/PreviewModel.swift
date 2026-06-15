@@ -50,16 +50,17 @@ final class PreviewModel: ObservableObject, Equatable {
       headers["User-Agent"] = "facebookexternalhit/1.1"
       headers["charset"] = "UTF-8"
       if let og = try? await OpenGraph.fetch(url: previewURL, headers: headers) {
-        if let imgURL = URL(string: og[.image] ?? "") {
+        let image = og[.image]?.escape
+        if let image, let imgURL = URL(string: image) {
           let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
           Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: CGSize(width: imageSize, height: imageSize))], priority: .veryLow)])
         }
         await MainActor.run {
           withAnimation {
-            image = og[.image]
+            self.image = image
             title = og[.title]
             description = og[.description]
-            url = URL(string: og[.url] ?? "")
+            url = URL(string: og[.url]?.escape ?? "")
             loading = false
           }
         }

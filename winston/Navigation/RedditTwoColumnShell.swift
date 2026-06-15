@@ -21,18 +21,22 @@ struct RedditTwoColumnShell<Source: View>: View {
     NavigationSplitView(columnVisibility: $navigation.columnVisibility, preferredCompactColumn: $navigation.preferredColumn) {
       NavigationStack(path: $navigation.contentPath) {
         source(navigation)
-          .redditNavigation(navigation, origin: .content)
           .injectInTabDestinations(viewControllerHolder: router.navController)
+          .redditNavigation(navigation, origin: .content)
       }
       .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
       NavigationStack(path: $router.fullPath) {
         RedditDetailColumnContent(navigation: navigation)
-          .redditNavigation(navigation, origin: .detail)
           .injectInTabDestinations(viewControllerHolder: router.navController)
+          .redditNavigation(navigation, origin: .detail)
       }
     }
     .navigationSplitViewStyle(.balanced)
+    .redditForwardNavigationGesture(navigation: navigation) {
+      source(navigation)
+        .redditNavigation(navigation, origin: .content)
+    }
     .environment(\.auroraTheme, auroraTheme)
     .tint(auroraTheme.accent)
     .fontDesign(auroraTheme.fontDesign)
@@ -41,7 +45,8 @@ struct RedditTwoColumnShell<Source: View>: View {
       navigation.attach(router: router)
       _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
     }
-    .onChange(of: router.fullPath) { _, path in
+    .onChange(of: router.fullPath) { oldPath, path in
+      navigation.recordRouterPathChange(from: oldPath, to: path)
       if navigation.absorbRootNavigationPathIfNeeded(router: router) {
         return
       }
@@ -52,6 +57,9 @@ struct RedditTwoColumnShell<Source: View>: View {
       } else {
         navigation.focusDetail()
       }
+    }
+    .onChange(of: navigation.preferredColumn) { oldColumn, newColumn in
+      navigation.recordPreferredColumnChange(from: oldColumn, to: newColumn)
     }
   }
 }

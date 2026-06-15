@@ -24,73 +24,81 @@ extension View {
     self
       .modifier(AttachViewControllerToRouterModifier(viewControllerHolder: viewControllerHolder))
       .navigationDestination(for: Router.NavDest.self, destination: { dest in
-        switch dest {
-        case .reddit(let reddDest):
-          switch reddDest {
-          case .post(let (post)):
-            RedditPostDestination(post: post)
-          case .postHighlighted(let post, let highlightID):
-            RedditPostDestination(post: post, highlightID: highlightID)
-          case .subFeed(let sub):
-            AuroraSubFeedScreen(subreddit: sub)
-              .diagnosticScreen("reddit.subFeed.\(sub.id)")
-          case .subInfo(let sub):
-            SubredditInfo(subreddit: sub)
-              .diagnosticScreen("reddit.subInfo.\(sub.id)")
-          case .multiFeed(let multi):
-            MultiPostsView(multi: multi)
-              .diagnosticScreen("reddit.multiFeed.\(multi.id)")
-          case .multiInfo(_):
-            EmptyView()
-              .diagnosticScreen("reddit.multiInfo")
-          case .user(let user):
-            UserView(user: user)
-              .diagnosticScreen("reddit.user.\(user.id)")
-          }
-        case .setting(let settingsDest):
-          switch settingsDest {
-          case .general:
-            GeneralPanel()
-              .diagnosticScreen("setting.general")
-          case .behavior:
-            BehaviorPanel()
-              .diagnosticScreen("setting.behavior")
-          case .appearance:
-            AppearancePanel()
-              .diagnosticScreen("setting.appearance")
-          case .accounts:
-            AccountsPanel()
-              .diagnosticScreen("setting.accounts")
-          case .diagnostics:
-            DiagnosticsPanel()
-              .diagnosticScreen("setting.diagnostics")
-          case .about:
-            AboutPanel()
-              .diagnosticScreen("setting.about")
-          case .commentSwipe:
-            CommentSwipePanel()
-              .diagnosticScreen("setting.commentSwipe")
-          case .postSwipe:
-            PostSwipePanel()
-              .diagnosticScreen("setting.postSwipe")
-          case .accessibility:
-            AccessibilityPanel()
-              .diagnosticScreen("setting.accessibility")
-          case .filteredSubreddits:
-            FilteredSubredditsSettings()
-              .diagnosticScreen("setting.filteredSubreddits")
-          case .faq:
-            FAQPanel()
-              .diagnosticScreen("setting.faq")
-          case .appIcon:
-            AppIconSetting()
-              .diagnosticScreen("setting.appIcon")
-          case .designLab:
-            DesignLabGallery()
-              .diagnosticScreen("setting.designLab")
-          }
-        }
+        RouterDestinationView(destination: dest)
       })
+  }
+}
+
+struct RouterDestinationView: View {
+  let destination: Router.NavDest
+
+  var body: some View {
+    switch destination {
+    case .reddit(let reddDest):
+      switch reddDest {
+      case .post(let (post)):
+        RedditPostDestination(post: post)
+      case .postHighlighted(let post, let highlightID):
+        RedditPostDestination(post: post, highlightID: highlightID)
+      case .subFeed(let sub):
+        AuroraSubFeedScreen(subreddit: sub)
+          .diagnosticScreen("reddit.subFeed.\(sub.id)")
+      case .subInfo(let sub):
+        SubredditInfo(subreddit: sub)
+          .diagnosticScreen("reddit.subInfo.\(sub.id)")
+      case .multiFeed(let multi):
+        MultiPostsView(multi: multi)
+          .diagnosticScreen("reddit.multiFeed.\(multi.id)")
+      case .multiInfo(_):
+        EmptyView()
+          .diagnosticScreen("reddit.multiInfo")
+      case .user(let user):
+        UserView(user: user)
+          .diagnosticScreen("reddit.user.\(user.id)")
+      }
+    case .setting(let settingsDest):
+      switch settingsDest {
+      case .general:
+        GeneralPanel()
+          .diagnosticScreen("setting.general")
+      case .behavior:
+        BehaviorPanel()
+          .diagnosticScreen("setting.behavior")
+      case .appearance:
+        AppearancePanel()
+          .diagnosticScreen("setting.appearance")
+      case .accounts:
+        AccountsPanel()
+          .diagnosticScreen("setting.accounts")
+      case .diagnostics:
+        DiagnosticsPanel()
+          .diagnosticScreen("setting.diagnostics")
+      case .about:
+        AboutPanel()
+          .diagnosticScreen("setting.about")
+      case .commentSwipe:
+        CommentSwipePanel()
+          .diagnosticScreen("setting.commentSwipe")
+      case .postSwipe:
+        PostSwipePanel()
+          .diagnosticScreen("setting.postSwipe")
+      case .accessibility:
+        AccessibilityPanel()
+          .diagnosticScreen("setting.accessibility")
+      case .filteredSubreddits:
+        FilteredSubredditsSettings()
+          .diagnosticScreen("setting.filteredSubreddits")
+      case .faq:
+        FAQPanel()
+          .diagnosticScreen("setting.faq")
+      case .appIcon:
+        AppIconSetting()
+          .diagnosticScreen("setting.appIcon")
+      case .designLab:
+        DesignLabGallery()
+          .diagnosticScreen("setting.designLab")
+      }
+    }
   }
 }
 

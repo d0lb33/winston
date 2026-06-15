@@ -44,10 +44,9 @@ struct AppIconSetting: View {
           }
         }
       }
-      .auroraSettingsSection()
       
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .onChange(of: appIcon) { _, icon in
       appIconManager.setIcon(icon) { x in
       }

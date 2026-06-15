@@ -101,6 +101,9 @@ struct AuroraRoot: View {
       detailColumn
     }
     .navigationSplitViewStyle(.balanced)
+    .redditForwardNavigationGesture(navigation: navigation) {
+      contentColumn
+    }
     .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
     .overlay(alignment: .topTrailing) {
@@ -147,7 +150,8 @@ struct AuroraRoot: View {
         AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
       }
     }
-    .onChange(of: router.fullPath) { _, path in
+    .onChange(of: router.fullPath) { oldPath, path in
+      navigation.recordRouterPathChange(from: oldPath, to: path)
       if navigation.absorbRootNavigationPathIfNeeded(router: router) {
         return
       }
@@ -160,6 +164,9 @@ struct AuroraRoot: View {
       } else {
         navigation.focusDetail()
       }
+    }
+    .onChange(of: navigation.preferredColumn) { oldColumn, newColumn in
+      navigation.recordPreferredColumnChange(from: oldColumn, to: newColumn)
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
@@ -199,8 +206,9 @@ struct AuroraRoot: View {
     }
 
     if selectedPost != nil || !router.fullPath.isEmpty {
-      router.navigateTo(destination)
+      navigation.navigate(destination, from: .detail)
     } else if !navigation.contentPath.isEmpty {
+      navigation.clearForwardHistoryForNewBranch()
       navigation.contentPath.append(destination)
       navigation.focusContent()
     } else {
@@ -216,8 +224,9 @@ struct AuroraRoot: View {
     }
 
     if selectedPost != nil || !router.fullPath.isEmpty {
-      router.navigateTo(destination)
+      navigation.navigate(destination, from: .detail)
     } else {
+      navigation.clearForwardHistoryForNewBranch()
       navigation.contentPath.append(destination)
       navigation.focusContent()
     }
@@ -231,7 +240,7 @@ struct AuroraRoot: View {
 
     navigation.detailPost = detail.post
     navigation.detailHighlightID = detail.highlightID
-    router.fullPath = Array(router.fullPath.dropFirst())
+    navigation.replaceRouterPathWithoutForwardRecording(Array(router.fullPath.dropFirst()))
     navigation.focusDetail()
   }
 
@@ -240,8 +249,8 @@ struct AuroraRoot: View {
 
     return NavigationStack(path: $navigation.contentPath) {
       feedContent
-        .redditNavigation(navigation, origin: .content)
         .injectInTabDestinations(viewControllerHolder: router.navController)
+        .redditNavigation(navigation, origin: .content)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
@@ -276,8 +285,8 @@ struct AuroraRoot: View {
   private var detailColumn: some View {
     NavigationStack(path: $router.fullPath) {
       detailContent
-        .redditNavigation(navigation, origin: .detail)
         .injectInTabDestinations(viewControllerHolder: router.navController)
+        .redditNavigation(navigation, origin: .detail)
     }
   }
 

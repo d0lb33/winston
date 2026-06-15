@@ -62,7 +62,7 @@ struct BehaviorPanel: View {
           }
           .pickerStyle(DefaultPickerStyle())
           
-          AuroraNavigationRow(.setting(.filteredSubreddits), title: "Filtered Subreddits")
+          NativeSettingsNavigationRow(.setting(.filteredSubreddits), title: "Filtered Subreddits")
         }
         
         
@@ -81,7 +81,7 @@ struct BehaviorPanel: View {
         }
         
         Section("Posts") {
-          AuroraNavigationRow(.setting(.postSwipe), title: "Posts swipe settings")
+          NativeSettingsNavigationRow(.setting(.postSwipe), title: "Posts swipe settings")
           Toggle("Loop videos", isOn: $videoDefSettings.loop)
           Toggle("Autoplay videos (muted)", isOn: $videoDefSettings.autoPlay)
           Toggle("Start videos muted", isOn: $videoDefSettings.mute)
@@ -215,10 +215,9 @@ struct BehaviorPanel: View {
             Slider(value: $postLinkDefSettings.maxMediaHeightScreenPercentage, in: 10...110, step: 10)
           }
         }
-        .auroraSettingsSection()
         
         Section("Comments") {
-          AuroraNavigationRow(.setting(.commentSwipe), title: "Comments Swipe Settings")
+          NativeSettingsNavigationRow(.setting(.commentSwipe), title: "Comments Swipe Settings")
           
           Picker("Comments Sorting", selection: $commentsSectionDefSettings.preferredSort) {
             ForEach(CommentSortOption.allCases, id: \.self) { val in
@@ -232,9 +231,8 @@ struct BehaviorPanel: View {
         }
         
       }
-      .auroraSettingsSection()
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationTitle("Behavior")
     .navigationBarTitleDisplayMode(.inline)
   }

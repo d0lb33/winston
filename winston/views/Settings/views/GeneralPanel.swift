@@ -22,11 +22,8 @@ struct GeneralPanel: View {
     List{
       
       Group {
-        Section("General"){
-        }
-        
         Section("Backup"){
-          AuroraRowButton {
+          NativeSettingsActionRow {
             let date = Date()
             let file = exportUserDefaultsToJSON(fileName: "WinstonSettings-" + date.ISO8601Format() + ".json")
             if let file {
@@ -34,16 +31,14 @@ struct GeneralPanel: View {
               settingsFileURL = file
             }
           } label: {
-            HStack {
-              Image(systemName: "arrowshape.turn.up.left")
-              Text("Export Settings").foregroundStyle(Color.accentColor)
-            }
+            Label("Export Settings", systemImage: "square.and.arrow.up")
+              .foregroundStyle(Color.accentColor)
           }
           .fileMover(isPresented: $isMoving, file: URL(string: settingsFileURL), onCompletion: { completion in
             //          print(completion)
           })
           
-          AuroraRowButton {
+          NativeSettingsActionRow {
             doImport.toggle()
           } label: {
             Label("Import Settings", systemImage: "square.and.arrow.down")
@@ -65,21 +60,21 @@ struct GeneralPanel: View {
         
         Section("Advanced") {
           
-          AuroraRowButton(role: .destructive) {
+          NativeSettingsActionRow(role: .destructive) {
             resetPreferences()
           } label: {
             Label("Reset preferences", systemImage: "trash")
               .foregroundColor(.red)
           }
           
-          AuroraRowButton(role: .destructive) {
+          NativeSettingsActionRow(role: .destructive) {
             showResetReadHistoryAlert = true
           } label: {
             Label("Reset read history", systemImage: "eye.slash")
               .foregroundColor(.red)
           }
           
-          AuroraRowButton(role: .destructive) {
+          NativeSettingsActionRow(role: .destructive) {
             clearCache()
             resetCaches()
             resetCoreData()
@@ -92,10 +87,9 @@ struct GeneralPanel: View {
           }
         }
       }
-      .auroraSettingsSection()
       
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationTitle("General")
     .navigationBarTitleDisplayMode(.inline)
     .alert("Reset read history?", isPresented: $showResetReadHistoryAlert) {

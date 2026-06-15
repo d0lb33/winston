@@ -50,43 +50,51 @@ struct DiagnosticsPanel: View {
       }
 
       Section("Export") {
-        AuroraActionRow(title: isExporting ? "Preparing Export..." : "Export Diagnostics Bundle", systemImage: "square.and.arrow.up") {
+        NativeSettingsActionRow {
           Task { await exportDiagnostics() }
+        } label: {
+          Label(isExporting ? "Preparing Export..." : "Export Diagnostics Bundle", systemImage: "square.and.arrow.up")
         }
         .disabled(isExporting)
 
-        AuroraActionRow(title: "Copy Snapshot", systemImage: "doc.on.doc") {
+        NativeSettingsActionRow {
           Task {
             let text = await diagnostics.snapshotText()
             UIPasteboard.general.string = text
             diagnostics.record(.info, category: "diagnostics", message: "Copied diagnostics snapshot")
           }
+        } label: {
+          Label("Copy Snapshot", systemImage: "doc.on.doc")
         }
       }
 
       Section("Breadcrumbs") {
-        AuroraActionRow(title: "Add Manual Marker", systemImage: "mappin.and.ellipse") {
+        NativeSettingsActionRow {
           diagnostics.breadcrumb("Manual marker from Diagnostics screen")
+        } label: {
+          Label("Add Manual Marker", systemImage: "mappin.and.ellipse")
         }
 
-        AuroraActionRow(title: "Record Settings Route Smoke", systemImage: "checklist") {
+        NativeSettingsActionRow {
           diagnostics.breadcrumb("Settings route smoke start")
           for route in Router.NavDest.Setting.allDiagnosticsRoutes {
             diagnostics.breadcrumb("Settings route available", metadata: ["route": route.rawValue])
           }
           diagnostics.breadcrumb("Settings route smoke end")
+        } label: {
+          Label("Record Settings Route Smoke", systemImage: "checklist")
         }
       }
 
       Section("Recovery") {
-        AuroraRowButton(role: .destructive) {
+        NativeSettingsActionRow(role: .destructive) {
           showResetGraphQLAlert = true
         } label: {
           Label("Reset GraphQL Account State", systemImage: "person.crop.circle.badge.xmark")
             .foregroundStyle(.red)
         }
 
-        AuroraRowButton(role: .destructive) {
+        NativeSettingsActionRow(role: .destructive) {
           showClearAlert = true
         } label: {
           Label("Clear Diagnostic Logs and Network Console", systemImage: "trash")
@@ -117,8 +125,7 @@ struct DiagnosticsPanel: View {
         }
       }
     }
-    .auroraSettingsSection()
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationTitle("Diagnostics")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {

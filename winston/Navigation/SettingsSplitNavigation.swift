@@ -55,7 +55,7 @@ final class SettingsSplitNavigationModel {
     } else {
       detailPath = [destination] + Array(router.fullPath.dropFirst())
     }
-    router.fullPath = []
+    router.resetNavPath()
     focusDetail()
     return true
   }
@@ -64,7 +64,7 @@ final class SettingsSplitNavigationModel {
     selectedSetting = setting.splitRoot
     detailPath = setting == setting.splitRoot ? [] : [.setting(setting)]
     if router?.fullPath.isEmpty == false {
-      router?.fullPath = []
+      router?.resetNavPath()
     }
     focusDetail()
   }

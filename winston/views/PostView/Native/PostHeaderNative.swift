@@ -55,6 +55,16 @@ struct PostHeaderNative: View {
         // render that as an inline crosspost card.
         if case .repost(let repost) = extractedMedia, let repostWinstonData = repost.winstonData {
           CrosspostCardNative(repost: repost, winstonData: repostWinstonData)
+        } else if case .link(let previewModel) = extractedMedia, let img = redditPreviewLinkImage(data) {
+          LinkImageCardNative(
+            imageURL: img.url,
+            sourceSize: img.size,
+            displayURL: previewModel.previewURL ?? img.url,
+            columnWidth: max(1, winstonData.postDimensionsForcedNormal.mediaSize?.width ?? .screenW),
+            maxMediaHeightPct: maxMediaHeightPct,
+            cornerRadius: 12
+          )
+          .equatable()
         } else {
           PostMediaNative(
             postID: post.id,

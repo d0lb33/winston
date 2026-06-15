@@ -31,14 +31,13 @@ struct AppearancePanel: View {
         AuroraThemePickerSection(selection: $auroraThemeID)
 
         Section {
-          AuroraNavigationRow(value: .setting(.appIcon)) {
+          NativeSettingsNavigationRow(value: .setting(.appIcon)) {
             HStack{
               AppIconPreview(icon: appIconManager.current, size: 32, radius: 10)
               Text("App icon")
             }
           }
         }
-        .listSectionSpacing(15)
 
         Section("General") {
           Toggle("Show Username in Tab Bar", isOn: $appearanceDefSettings.showUsernameInTabBar)
@@ -112,9 +111,8 @@ struct AppearancePanel: View {
         }
 
       }
-      .auroraSettingsSection()
     }
-    .auroraListChrome()
+    .nativeSettingsList()
     .navigationTitle("Appearance")
     .navigationBarTitleDisplayMode(.inline)
   }

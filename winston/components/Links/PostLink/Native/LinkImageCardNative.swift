@@ -15,6 +15,15 @@
 import SwiftUI
 import NukeUI
 
+func redditPreviewLinkImage(_ data: PostData) -> (url: URL, size: CGSize)? {
+  guard let src = data.preview?.images?.first?.source, let raw = src.url else { return nil }
+  let rewritten = raw.replacingOccurrences(of: "/preview.", with: "/i.")
+  guard let url = URL(string: rewritten.escape) ?? URL(string: raw.escape) else { return nil }
+  let w = src.width ?? 0, h = src.height ?? 0
+  guard w > 0, h > 0 else { return nil }
+  return (url, CGSize(width: w, height: h))
+}
+
 struct LinkImageCardNative: View, Equatable {
   static func == (lhs: LinkImageCardNative, rhs: LinkImageCardNative) -> Bool {
     lhs.imageURL == rhs.imageURL && lhs.displayURL == rhs.displayURL && lhs.widthBucket == rhs.widthBucket
