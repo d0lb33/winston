@@ -187,12 +187,15 @@ struct SavedListDetailScreen: View {
 
   @State private var list: SavedListSummary?
   @State private var items: [SavedListItemSummary] = []
+  @State private var hydratedPosts: [String: Post] = [:]
+  @State private var hydrateKey = ""
 
   private let store = SavedListsStore.shared
 
   var body: some View {
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
+      let currentHydrateKey = items.filter { $0.kind == .post }.map(\.fullname).joined(separator: "|")
       List {
         if items.isEmpty {
           Section {
@@ -204,6 +207,7 @@ struct SavedListDetailScreen: View {
               SavedListItemRow(
                 item: item,
                 rowWidth: rowWidth,
+                hydratedPost: hydratedPosts[item.fullname],
                 remove: {
                   store.remove(itemID: item.id)
                   reload()
@@ -217,6 +221,9 @@ struct SavedListDetailScreen: View {
             }
           }
         }
+      }
+      .task(id: currentHydrateKey) {
+        await hydratePosts(contentWidth: rowWidth, key: currentHydrateKey)
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
@@ -237,12 +244,35 @@ struct SavedListDetailScreen: View {
   private func reload() {
     list = store.listSummary(id: listID)
     items = store.items(in: listID)
+    hydratedPosts = hydratedPosts.filter { fullname, _ in
+      items.contains { $0.fullname == fullname }
+    }
+  }
+
+  private func hydratePosts(contentWidth: CGFloat, key: String) async {
+    guard !key.isEmpty, key != hydrateKey else { return }
+    hydrateKey = key
+    let postItems = items.filter { $0.kind == .post }
+    let missing = postItems.filter { hydratedPosts[$0.fullname] == nil }
+    guard !missing.isEmpty else { return }
+
+    let fullnames = missing.map(\.fullname)
+    let datas = await RedditWire.shared.postData(forIDs: fullnames)
+    var hydrated = hydratedPosts
+    for data in datas {
+      let post = Post(data: data, contentWidth: contentWidth)
+      hydrated[data.name] = post
+      hydrated["t3_\(data.id)"] = post
+      hydrated[data.id] = post
+    }
+    hydratedPosts = hydrated
   }
 }
 
 private struct SavedListItemRow: View {
   let item: SavedListItemSummary
   let rowWidth: CGFloat
+  let hydratedPost: Post?
   let remove: () -> Void
   let selectPost: (Post) -> Void
   let selectComment: (Comment) -> Void
@@ -253,9 +283,12 @@ private struct SavedListItemRow: View {
     Group {
       switch item.kind {
       case .post:
-        if let post = store.openPost(from: item) {
-          AuroraPostResultRow(post: post, availableRowWidth: rowWidth, select: selectPost)
-            .contextMenu { menuItems(post: post, comment: nil) }
+        if let rowPost = hydratedPost ?? store.snapshotPost(from: item, contentWidth: rowWidth),
+           let openPost = hydratedPost ?? store.openPost(from: item) {
+          AuroraPostResultRow(post: rowPost, availableRowWidth: rowWidth) { _ in
+            selectPost(openPost)
+          }
+          .contextMenu { menuItems(post: openPost, comment: nil) }
         }
       case .comment:
         if let comment = store.openComment(from: item) {

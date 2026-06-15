@@ -67,7 +67,7 @@ struct PostViewNative: View {
             ProgressView()
               .frame(maxWidth: .infinity, minHeight: 200)
           }
-          PostActionBarNative(post: post)
+          PostActionBarNative(post: post, updateComments: appendReplyComment)
         }
         .listRowSeparator(.hidden)
 
@@ -204,6 +204,16 @@ struct PostViewNative: View {
         commentLoadError = "Pull to refresh and try loading comments again."
         loadingComments = false
       }
+    }
+  }
+
+  private func appendReplyComment(_ comment: Comment) {
+    guard !model.rootArray.data.contains(where: { $0.id == comment.id }) else { return }
+    comment.parentWinston = model.rootArray
+    model.rootArray.data.append(comment)
+    withAnimation {
+      loadingComments = false
+      model.rebuild(force: true)
     }
   }
 }

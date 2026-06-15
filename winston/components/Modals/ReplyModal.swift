@@ -77,7 +77,7 @@ struct ReplyModalComment: View {
 
 struct ReplyModalPost: View {
   var post: Post
-  var updateComments: (()->())?
+  var updateComments: ((Comment)->())?
   
   func action(_ endLoading: (@escaping (Bool) -> ()), text: String) {
     Task(priority: .background) {

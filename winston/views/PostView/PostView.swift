@@ -187,7 +187,7 @@ struct PostView: View, Equatable {
               //              .equatable()
               
               if selectedTheme.posts.inlineFloatingPill {
-                PostFloatingPill(post: post, subreddit: subreddit, showUpVoteRatio: defSettings.showUpVoteRatio)
+                PostFloatingPill(post: post, subreddit: subreddit, updateComments: appendReplyComment, showUpVoteRatio: defSettings.showUpVoteRatio)
                   .padding(-10)
               }
               
@@ -239,7 +239,7 @@ struct PostView: View, Equatable {
         }
         .overlay(alignment: .bottomTrailing) {
           if !selectedTheme.posts.inlineFloatingPill {
-            PostFloatingPill(post: post, subreddit: subreddit, showUpVoteRatio: defSettings.showUpVoteRatio)
+            PostFloatingPill(post: post, subreddit: subreddit, updateComments: appendReplyComment, showUpVoteRatio: defSettings.showUpVoteRatio)
           }
         }
         .navigationBarTitle("\(navtitle)", displayMode: .inline)
@@ -318,6 +318,15 @@ struct PostView: View, Equatable {
                         comments: comments,
                         reader: proxy)
       }
+    }
+  }
+
+  private func appendReplyComment(_ comment: Comment) {
+    guard !comments.data.contains(where: { $0.id == comment.id }) else { return }
+    comment.parentWinston = comments
+    withAnimation {
+      comments.data.append(comment)
+      loadingComments = false
     }
   }
 }

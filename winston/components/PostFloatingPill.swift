@@ -12,7 +12,7 @@ import AlertToast
 struct PostFloatingPill: View {
   @ObservedObject var post: Post
   @ObservedObject var subreddit: Subreddit
-  var updateComments: (()->())?
+  var updateComments: ((Comment)->())?
   var showUpVoteRatio: Bool
   
   @Default(.postsInBox) private var postsInBox

@@ -561,14 +561,15 @@ extension Post {
     return ids
   }
   
-  func reply(_ text: String, updateComments: (() -> ())? = nil) async -> Bool {
+  func reply(_ text: String, updateComments: ((Comment) -> ())? = nil) async -> Bool {
     if let fullname = data?.name {
       let result = await RedditWire.shared.newReply(text, to: fullname)
       if result {
+        let comment = await optimisticReplyComment(text)
         if let updateComments = updateComments {
           await MainActor.run {
             withAnimation {
-              updateComments()
+              updateComments(comment)
             }
           }
         }
@@ -576,6 +577,46 @@ extension Post {
       return result
     }
     return false
+  }
+
+  private func optimisticReplyComment(_ text: String) async -> Comment {
+    let meData = await RedditWire.shared.me?.data
+    let now = Double(Int(Date().timeIntervalSince1970))
+    var newComment = CommentData(id: UUID().uuidString)
+    newComment.subreddit_id = data?.subreddit_id
+    newComment.subreddit = data?.subreddit
+    newComment.likes = true
+    newComment.saved = false
+    newComment.archived = false
+    newComment.count = 0
+    newComment.author = meData?.name ?? ""
+    newComment.created_utc = now
+    newComment.send_replies = nil
+    newComment.parent_id = data?.name
+    newComment.score = nil
+    newComment.author_fullname = "t2_\(meData?.id ?? "")"
+    newComment.approved_by = nil
+    newComment.mod_note = nil
+    newComment.collapsed = false
+    newComment.body = text
+    newComment.top_awarded_type = nil
+    newComment.name = nil
+    newComment.is_submitter = true
+    newComment.downs = 0
+    newComment.children = nil
+    newComment.body_html = nil
+    newComment.permalink = nil
+    newComment.created = now
+    newComment.link_id = data?.name
+    newComment.link_title = data?.title
+    newComment.subreddit_name_prefixed = data?.subreddit_name_prefixed
+    newComment.depth = 0
+    newComment.author_flair_background_color = nil
+    newComment.collapsed_because_crowd_control = nil
+    newComment.mod_reports = nil
+    newComment.num_reports = nil
+    newComment.ups = 1
+    return Comment(data: newComment)
   }
   
   func refreshPostResult(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> PostRefreshResult {

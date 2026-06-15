@@ -258,10 +258,12 @@ final class SavedListsStore {
 
   func openPost(from item: SavedListItemSummary) -> Post? {
     guard let postID = item.postID else { return nil }
-    if item.kind == .post {
-      return Post(data: postData(from: item), contentWidth: .screenW)
-    }
     return Post(id: postID, subID: item.subreddit ?? "")
+  }
+
+  func snapshotPost(from item: SavedListItemSummary, contentWidth: CGFloat) -> Post? {
+    guard item.kind == .post else { return nil }
+    return Post(data: postData(from: item), contentWidth: contentWidth)
   }
 
   func openComment(from item: SavedListItemSummary) -> Comment? {

@@ -216,6 +216,8 @@ struct CrosspostCardNative: View {
 /// Compact, native action bar for the post (vote / comments / save / reply / share).
 struct PostActionBarNative: View {
   @ObservedObject var post: Post
+  var updateComments: ((Comment) -> ())? = nil
+  @State private var showReplyModal = false
 
   var body: some View {
     if let data = post.data {
@@ -244,7 +246,7 @@ struct PostActionBarNative: View {
         .accessibilityLabel(data.saved ? "Unsave" : "Save")
 
         Button {
-          ReplyModalInstance.shared.enable(.post(post))
+          showReplyModal = true
         } label: {
           Image(systemName: "arrowshape.turn.up.left")
             .foregroundStyle(.secondary)
@@ -265,6 +267,9 @@ struct PostActionBarNative: View {
       .font(.subheadline)
       .buttonStyle(.borderless)
       .padding(.vertical, 6)
+      .sheet(isPresented: $showReplyModal) {
+        ReplyModalPost(post: post, updateComments: updateComments)
+      }
     }
   }
 }
