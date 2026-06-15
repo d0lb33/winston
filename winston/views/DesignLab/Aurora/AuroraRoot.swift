@@ -342,6 +342,14 @@ struct AuroraRoot: View {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .navigationTitle("Aurora")
+    .refreshable {
+      await refreshSubscriptions()
+    }
+  }
+
+  private func refreshSubscriptions() async {
+    guard let accountID else { return }
+    await RedditWire.shared.fetchSubs(for: accountID)
   }
 
   private func feedRow(_ label: String, id: String, systemImage: String) -> some View {

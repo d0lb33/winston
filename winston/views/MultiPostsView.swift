@@ -148,39 +148,45 @@ struct MultiPostsView: View {
   }
   
   var body: some View {
-    List {
-      let filteredPosts = visiblePosts(posts.data)
+    GeometryReader { geometry in
+      let rowWidth = max(1, geometry.size.width)
 
-      ForEach(filteredPosts) { post in
-        AuroraPostCardRow(post: post) {
-          Nav.to(.reddit(.post(post)))
-        }
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-          .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-          .onAppear {
-            if post.id == filteredPosts.last?.id && !loading && !reachedEndOfFeed {
-              fetch(loadMore: true)
-            }
+      List {
+        let filteredPosts = visiblePosts(posts.data)
+
+        ForEach(filteredPosts) { post in
+          AuroraPostCardRow(post: post, availableRowWidth: rowWidth) {
+            Nav.to(.reddit(.post(post)))
           }
-      }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .onAppear {
+              if post.id == filteredPosts.last?.id && !loading && !reachedEndOfFeed {
+                fetch(loadMore: true)
+              }
+            }
+        }
 
-      if loading {
-        HStack { Spacer(); ProgressView(); Spacer() }
-          .padding(.vertical, filteredPosts.isEmpty ? 160 : 16)
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-      } else if reachedEndOfFeed {
-        EndOfFeedView()
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
+        if loading {
+          HStack { Spacer(); ProgressView(); Spacer() }
+            .padding(.vertical, filteredPosts.isEmpty ? 160 : 16)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        } else if reachedEndOfFeed {
+          EndOfFeedView()
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
       }
+      //.themedListBG(selectedTheme.postLinks.bg)
+      .listStyle(.plain)
+      .environment(\.defaultMinListRowHeight, 1)
+      .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
+      //.loader(loading && posts.data.count == 0 && !reachedEndOfFeed)
+      .refreshable { await asyncFetch(force: true) }
+      .scrollContentBackground(.hidden)
     }
-    //.themedListBG(selectedTheme.postLinks.bg)
-    .listStyle(.plain)
-    .environment(\.defaultMinListRowHeight, 1)
-    .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
-    //.loader(loading && posts.data.count == 0 && !reachedEndOfFeed)
     .navigationBarItems(
       trailing:
         HStack {
@@ -214,9 +220,7 @@ struct MultiPostsView: View {
     .onChange(of: subredditFeedDefSettings.postStylePerSubreddit) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: postLinkDefSettings) { _ in updatePostsCalcs(selectedTheme) }
     .onChange(of: selectedTheme, perform: updatePostsCalcs)
-    .refreshable { await asyncFetch(force: true) }
     .navigationTitle(multi.data?.name ?? "MultiZ")
-    .scrollContentBackground(.hidden)
     //.background(.thinMaterial)
   }
   

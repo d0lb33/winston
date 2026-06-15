@@ -14,6 +14,9 @@ import Combine
 struct YTMediaPostPlayer: View, Equatable {
   static func == (lhs: YTMediaPostPlayer, rhs: YTMediaPostPlayer) -> Bool {
     lhs.ytMediaExtracted.id == rhs.ytMediaExtracted.id
+      && lhs.compact == rhs.compact
+      && lhs.contentWidth == rhs.contentWidth
+      && lhs.diagnosticContext == rhs.diagnosticContext
   }
   var compact: Bool
   var player: YouTubePlayer

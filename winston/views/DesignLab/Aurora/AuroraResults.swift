@@ -54,10 +54,11 @@ struct AuroraLoadMoreFooter: View {
 
 struct AuroraPostResultRow: View {
   let post: Post
+  var availableRowWidth: CGFloat? = nil
   let select: (Post) -> Void
 
   var body: some View {
-    AuroraPostCardRow(post: post) {
+    AuroraPostCardRow(post: post, availableRowWidth: availableRowWidth) {
       select(post)
     }
   }
@@ -379,57 +380,61 @@ struct AuroraSavedScreen: View {
   @Environment(\.contentWidth) private var contentWidth
 
   var body: some View {
-    List {
-      if !model.posts.isEmpty {
-        Section(header: AuroraResultSectionHeader(title: "Posts", count: model.posts.count)) {
-          ForEach(model.posts) { post in
-            AuroraPostResultRow(post: post, select: onPostSelected)
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-              .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-              .onAppear {
-                if post.id == model.posts.last?.id {
+    GeometryReader { geometry in
+      let rowWidth = max(1, geometry.size.width)
+
+      List {
+        if !model.posts.isEmpty {
+          Section(header: AuroraResultSectionHeader(title: "Posts", count: model.posts.count)) {
+            ForEach(model.posts) { post in
+              AuroraPostResultRow(post: post, availableRowWidth: rowWidth, select: onPostSelected)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                .onAppear {
+                  if post.id == model.posts.last?.id {
+                    Task { await model.loadMorePosts(contentWidth: contentWidth) }
+                  }
+                }
+            }
+            if model.canLoadMorePosts {
+              AuroraLoadMoreFooter(loading: model.loadingPosts)
+                .onAppear {
                   Task { await model.loadMorePosts(contentWidth: contentWidth) }
                 }
-              }
-          }
-          if model.canLoadMorePosts {
-            AuroraLoadMoreFooter(loading: model.loadingPosts)
-              .onAppear {
-                Task { await model.loadMorePosts(contentWidth: contentWidth) }
-              }
+            }
           }
         }
-      }
 
-      if !model.comments.isEmpty {
-        Section(header: AuroraResultSectionHeader(title: "Comments", count: model.comments.count)) {
-          ForEach(model.comments) { comment in
-            AuroraCommentResultRow(comment: comment, select: onCommentSelected)
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-              .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
-              .onAppear {
-                if comment.id == model.comments.last?.id {
+        if !model.comments.isEmpty {
+          Section(header: AuroraResultSectionHeader(title: "Comments", count: model.comments.count)) {
+            ForEach(model.comments) { comment in
+              AuroraCommentResultRow(comment: comment, select: onCommentSelected)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+                .onAppear {
+                  if comment.id == model.comments.last?.id {
+                    Task { await model.loadMoreComments() }
+                  }
+                }
+            }
+            if model.canLoadMoreComments {
+              AuroraLoadMoreFooter(loading: model.loadingComments)
+                .onAppear {
                   Task { await model.loadMoreComments() }
                 }
-              }
-          }
-          if model.canLoadMoreComments {
-            AuroraLoadMoreFooter(loading: model.loadingComments)
-              .onAppear {
-                Task { await model.loadMoreComments() }
-              }
+            }
           }
         }
       }
+      .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .refreshable { await model.reload(contentWidth: contentWidth) }
+      .overlay { emptyState }
     }
-    .listStyle(.plain)
-    .scrollContentBackground(.hidden)
     .navigationTitle("Saved")
     .navigationBarTitleDisplayMode(.inline)
-    .refreshable { await model.reload(contentWidth: contentWidth) }
-    .overlay { emptyState }
     .onAppear {
       Task { await model.loadInitialIfNeeded(contentWidth: contentWidth) }
     }

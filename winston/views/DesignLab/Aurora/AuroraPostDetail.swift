@@ -15,6 +15,7 @@
 
 import SwiftUI
 import Defaults
+import MarkdownUI
 
 struct AuroraPostDetail: View {
   @ObservedObject var post: Post
@@ -64,7 +65,15 @@ struct AuroraPostDetail: View {
         List {
           Section {
             if let winstonData = post.winstonData {
-              PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit)
+              if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
+                AuroraPostHeader(
+                  post: post,
+                  repost: repost,
+                  contentWidth: max(1, contentWidth - 32)
+                )
+              } else {
+                PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit)
+              }
             } else {
               ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             }
@@ -280,5 +289,53 @@ struct AuroraPostDetail: View {
         loadingComments = false
       }
     }
+  }
+}
+
+private struct AuroraPostHeader: View {
+  @ObservedObject var post: Post
+  @ObservedObject var repost: Post
+  let contentWidth: CGFloat
+
+  var body: some View {
+    let data = post.data ?? emptyPostData
+    VStack(alignment: .leading, spacing: 12) {
+      Text(data.title)
+        .font(.title3.weight(.semibold))
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+      HStack(spacing: 6) {
+        Text("u/\(data.author)")
+          .foregroundStyle(.secondary)
+        Text("·").foregroundStyle(.tertiary)
+        Text(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+          .foregroundStyle(.secondary)
+        if let flair = data.link_flair_text, !flair.isEmpty {
+          Text(flair)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .padding(.horizontal, 6).padding(.vertical, 1)
+            .background(.quaternary, in: Capsule())
+        }
+        Spacer(minLength: 0)
+      }
+      .font(.footnote)
+
+      AuroraCrosspostCard(
+        repost: repost,
+        outerPostID: post.id,
+        contentWidth: contentWidth
+      )
+
+      if !data.selftext.isEmpty {
+        Markdown(MarkdownUtil.formatForMarkdown(data.selftext))
+          .markdownTheme(.winstonMarkdown(fontSize: 16, lineSpacing: 2))
+          .frame(maxWidth: .infinity, alignment: .leading)
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding(.vertical, 8)
+    .onAppear { Task { await post.toggleSeen(true) } }
   }
 }

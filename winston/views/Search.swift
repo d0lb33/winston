@@ -607,20 +607,32 @@ struct Search: View {
   @StateObject private var searchQuery = DebouncedText(delay: 0.25)
   
   @State private var searchViewLoaded: Bool = false
+  @State private var listWidth: CGFloat = 0
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
   
   var body: some View {
     NavigationStack(path: $router.fullPath) {
-      List {
-        listContent
-          .listRowSeparator(.hidden)
-          .listRowBackground(Color.clear)
-          .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
-      }
-      .scrollContentBackground(.hidden)
-      .listStyle(.plain)
+	      List {
+	        listContent
+	          .listRowSeparator(.hidden)
+	          .listRowBackground(Color.clear)
+	          .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+	      }
+	      .onGeometryChange(for: CGFloat.self) { geometry in
+	        geometry.size.width
+	      } action: { newWidth in
+	        let measuredWidth = max(1, newWidth)
+	        guard abs(measuredWidth - listWidth) > 0.5 else { return }
+	        var transaction = Transaction()
+	        transaction.disablesAnimations = true
+	        withTransaction(transaction) {
+	          listWidth = measuredWidth
+	        }
+	      }
+	      .scrollContentBackground(.hidden)
+	      .listStyle(.plain)
       .loader(model.loadingInitial, model.showEmpty)
       .injectInTabDestinations(viewControllerHolder: router.navController)
       .scrollDismissesKeyboard(.automatic)
@@ -750,15 +762,15 @@ struct Search: View {
     }
   }
 
-  @ViewBuilder private var postsSection: some View {
-    if shows(.posts) && !model.visiblePosts.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Posts", count: model.visiblePosts.count)) {
-        ForEach(model.visiblePosts) { post in
-          AuroraPostResultRow(post: post, select: selectPost)
-        }
-      }
-    }
-  }
+	  @ViewBuilder private var postsSection: some View {
+	    if shows(.posts) && !model.visiblePosts.isEmpty {
+	      Section(header: AuroraResultSectionHeader(title: "Posts", count: model.visiblePosts.count)) {
+	        ForEach(model.visiblePosts) { post in
+	          AuroraPostResultRow(post: post, availableRowWidth: listWidth > 0 ? max(1, listWidth - 28) : nil, select: selectPost)
+	        }
+	      }
+	    }
+	  }
 
   @ViewBuilder private var communitiesSection: some View {
     if shows(.subreddits) && !model.subreddits.isEmpty {

@@ -43,69 +43,73 @@ struct AuroraFeed: View {
   var body: some View {
     let visiblePosts = model.visiblePosts
 
-    List(selection: $selectedPostID) {
-      if let community {
-        AuroraCommunityHeader(sub: community)
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-          .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
-      }
-      ForEach(visiblePosts) { post in
-        AuroraPostCardRow(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
-          .tag(post.id)
-          .background {
-            if postLinkDefSettings.readOnScroll {
-              GeometryReader { proxy in
-                Color.clear.preference(
-                  key: AuroraReadCandidatePreferenceKey.self,
-                  value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
-                )
+    GeometryReader { geometry in
+      let rowWidth = max(1, geometry.size.width)
+
+      List(selection: $selectedPostID) {
+        if let community {
+          AuroraCommunityHeader(sub: community)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
+        }
+        ForEach(visiblePosts) { post in
+          AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
+            .tag(post.id)
+            .background {
+              if postLinkDefSettings.readOnScroll {
+                GeometryReader { proxy in
+                  Color.clear.preference(
+                    key: AuroraReadCandidatePreferenceKey.self,
+                    value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
+                  )
+                }
               }
             }
-          }
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
-          .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-          .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
-              .tint(.orange)
-            Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
-              .tint(.indigo)
-          }
-          .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-            Button { Task { _ = await post.saveToggle() } } label: {
-              Label(post.data?.saved == true ? "Unsave" : "Save", systemImage: "bookmark")
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+              Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
+                .tint(.orange)
+              Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
+                .tint(.indigo)
             }
-            .tint(.green)
-          }
-          .onAppear {
-            if post.id == visiblePosts.last?.id {
-              Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+              Button { Task { _ = await post.saveToggle() } } label: {
+                Label(post.data?.saved == true ? "Unsave" : "Save", systemImage: "bookmark")
+              }
+              .tint(.green)
             }
-          }
+            .onAppear {
+              if post.id == visiblePosts.last?.id {
+                Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
+              }
+            }
+        }
+        if model.loading && !visiblePosts.isEmpty {
+          HStack { Spacer(); ProgressView(); Spacer() }
+            .padding(.vertical, 16)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+        }
       }
-      if model.loading && !visiblePosts.isEmpty {
-        HStack { Spacer(); ProgressView(); Spacer() }
-          .padding(.vertical, 16)
-          .listRowBackground(Color.clear)
-          .listRowSeparator(.hidden)
+      .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentOffset.y
+      } action: { _, newOffsetY in
+        markReadCandidatesIfNeeded(offsetY: newOffsetY, visiblePosts: visiblePosts)
       }
+      .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
+        latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
+      }
+      .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
+      .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
     }
-    .listStyle(.plain)
-    .scrollContentBackground(.hidden)
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
-    .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
-    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-      geometry.contentOffset.y
-    } action: { _, newOffsetY in
-      markReadCandidatesIfNeeded(offsetY: newOffsetY, visiblePosts: visiblePosts)
-    }
-    .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
-      latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
-    }
-    .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
-    .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
     .overlay(alignment: .bottomTrailing) {
       FeedFloatingToolbar {
         Task { await model.hideReadPosts(sort: sort, contentWidth: contentWidth) }

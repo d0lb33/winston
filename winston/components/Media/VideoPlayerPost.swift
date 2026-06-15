@@ -103,7 +103,13 @@ final class SharedVideo: Equatable {
 
 struct VideoPlayerPost: View, Equatable {
   static func == (lhs: VideoPlayerPost, rhs: VideoPlayerPost) -> Bool {
-    lhs.url == rhs.url && lhs.sharedVideo == rhs.sharedVideo && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
+    lhs.url == rhs.url
+      && lhs.sharedVideo == rhs.sharedVideo
+      && lhs.compact == rhs.compact
+      && lhs.contentWidth == rhs.contentWidth
+      && lhs.maxMediaHeightScreenPercentage == rhs.maxMediaHeightScreenPercentage
+      && lhs.diagnosticContext == rhs.diagnosticContext
+      && lhs.feedItemKey == rhs.feedItemKey
   }
   
   weak var controller: UIViewController?

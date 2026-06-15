@@ -261,29 +261,43 @@ struct AuroraCommunityHeader: View {
 
 struct AuroraPostCardRow: View {
   @ObservedObject var post: Post
+  var availableRowWidth: CGFloat? = nil
   var isSelected: Bool = false
   var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
   var onSelect: (() -> Void)? = nil
 
-  @State private var cardWidth: CGFloat = 0
+  @State private var measuredCardWidth: CGFloat = 0
+
+  private var rowWidth: CGFloat? {
+    availableRowWidth.map { max(1, $0) }
+  }
+
+  private var cardWidth: CGFloat {
+    if let rowWidth {
+      return max(1, rowWidth - 28)
+    }
+    return measuredCardWidth
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 0) {
-      Color.clear
-        .frame(height: 0)
-        .frame(maxWidth: .infinity)
-        .onGeometryChange(for: CGFloat.self) { proxy in
-          proxy.size.width
-        } action: { newWidth in
-          let measuredWidth = max(1, newWidth)
-          guard abs(measuredWidth - cardWidth) > 0.5 else { return }
-          var transaction = Transaction()
-          transaction.disablesAnimations = true
-          withTransaction(transaction) {
-            ScrollPerfProbe.shared.bump("auroraRowWidthChange")
-            cardWidth = measuredWidth
+      if rowWidth == nil {
+        Color.clear
+          .frame(height: 0)
+          .frame(maxWidth: .infinity)
+          .onGeometryChange(for: CGFloat.self) { proxy in
+            proxy.size.width
+          } action: { newWidth in
+            let measuredWidth = max(1, newWidth)
+            guard abs(measuredWidth - measuredCardWidth) > 0.5 else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+              ScrollPerfProbe.shared.bump("auroraRowWidthChange")
+              measuredCardWidth = measuredWidth
+            }
           }
-        }
+      }
 
       if cardWidth > 0 {
         AuroraCard(
@@ -297,6 +311,7 @@ struct AuroraPostCardRow: View {
     }
     .padding(.horizontal, 14)
     .padding(.vertical, 7)
+    .frame(width: rowWidth, alignment: .leading)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
     .modifier(AuroraPostCardRowTapModifier(onSelect: onSelect))
@@ -325,22 +340,46 @@ struct AuroraCard: View {
   var body: some View {
     let _ = ScrollPerfProbe.shared.bump("auroraCardBody")
     if let winstonData = post.winstonData {
-      AuroraCardContent(
+      AuroraPostCardSurface(
         post: post,
         winstonData: winstonData,
         cardWidth: cardWidth,
-        isSelected: isSelected,
+        presentation: .feed(isSelected: isSelected),
         onCompactNavigate: onCompactNavigate
       )
     }
   }
 }
 
-private struct AuroraCardContent: View {
+private enum AuroraPostCardPresentation {
+  case feed(isSelected: Bool)
+  case embeddedCrosspost(outerPostID: String)
+
+  var isSelected: Bool {
+    if case .feed(let isSelected) = self { return isSelected }
+    return false
+  }
+
+  var isEmbeddedCrosspost: Bool {
+    if case .embeddedCrosspost = self { return true }
+    return false
+  }
+
+  var showsContextMenu: Bool {
+    !isEmbeddedCrosspost
+  }
+
+  var inlineVideoFeedKey: String? {
+    if case .embeddedCrosspost(let outerPostID) = self { return outerPostID }
+    return nil
+  }
+}
+
+private struct AuroraPostCardSurface: View {
   @ObservedObject var post: Post
   @ObservedObject var winstonData: PostWinstonData
   let cardWidth: CGFloat
-  let isSelected: Bool
+  let presentation: AuroraPostCardPresentation
   let onCompactNavigate: ((Router.NavDest) -> Void)?
   @Environment(\.auroraTheme) private var theme
   @Environment(\.useTheme) private var selectedTheme
@@ -350,7 +389,19 @@ private struct AuroraCardContent: View {
   /// Media is sized from the row-owned card width. The card never measures itself,
   /// so media cannot feed back into the width used to lay out the row.
   private var contentWidth: CGFloat {
-    max(1, cardWidth - 32)
+    max(1, cardWidth - (cardPadding * 2))
+  }
+
+  private var cardPadding: CGFloat {
+    presentation.isEmbeddedCrosspost ? 12 : 16
+  }
+
+  private var cardCornerRadius: CGFloat {
+    presentation.isEmbeddedCrosspost ? min(theme.cornerRadius, 12) : theme.cornerRadius
+  }
+
+  private var inlineVideoFeedKey: String {
+    presentation.inlineVideoFeedKey ?? post.id
   }
 
   private func markAsRead() async {
@@ -418,20 +469,28 @@ private struct AuroraCardContent: View {
         }
         .opacity(readOpacity)
       }
-      .padding(16)
+      .padding(cardPadding)
       .frame(width: cardWidth, alignment: .leading)
-      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
-      .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
       .overlay(
-        RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
-          .stroke(isSelected ? theme.accent.opacity(0.9) : theme.hairline,
-                  lineWidth: isSelected ? 1.8 : 0.7)
+        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+          .stroke(presentation.isSelected ? theme.accent.opacity(0.9) : theme.hairline,
+                  lineWidth: presentation.isSelected ? 1.8 : 0.7)
       )
-      .contextMenu { contextMenuItems(data) }
+      .contentShape(Rectangle())
+      .modifier(AuroraPostCardRowTapModifier(onSelect: presentation.isEmbeddedCrosspost ? openPost : nil))
+      .modifier(AuroraConditionalContextMenu(isEnabled: presentation.showsContextMenu) {
+        contextMenuItems(data)
+      })
     }
   }
 
   // MARK: - Card actions
+
+  private func openPost() {
+    navigate(.reddit(.post(post)))
+  }
 
   private func openAuthor(_ author: String) {
     guard !author.isEmpty, author != "[deleted]" else { return }
@@ -490,8 +549,13 @@ private struct AuroraCardContent: View {
   @ViewBuilder
   private func mediaBlock(_ data: PostData) -> some View {
     if let media = winstonData.extractedMediaForcedNormal {
-      if case .repost(let repost) = media, let repostWinstonData = repost.winstonData {
-        CrosspostCardNative(repost: repost, winstonData: repostWinstonData, contentWidth: contentWidth)
+      if case .repost(let repost) = media {
+        AuroraCrosspostCard(
+          repost: repost,
+          outerPostID: post.id,
+          contentWidth: contentWidth,
+          onCompactNavigate: onCompactNavigate
+        )
       } else {
         PostRowMediaNative(
           postID: post.id,
@@ -509,12 +573,82 @@ private struct AuroraCardContent: View {
           marksSeenOnPreview: defSettings.lightboxReadsPost,
           markAsSeen: markAsRead,
           dimsTheme: selectedTheme.postLinks.theme,
-          feedItemKey: post.id,
+          feedItemKey: inlineVideoFeedKey,
           resetVideo: nil
         )
         .equatable()
-        .trackInlineVideoCenter(key: post.id, coordinateSpace: "auroraFeed", enabled: media.isInlineVideo)
+        .trackInlineVideoCenter(key: inlineVideoFeedKey, coordinateSpace: "auroraFeed", enabled: media.isInlineVideo)
       }
+    }
+  }
+}
+
+private struct AuroraConditionalContextMenu<MenuItems: View>: ViewModifier {
+  let isEnabled: Bool
+  let menuItems: () -> MenuItems
+
+  init(isEnabled: Bool, @ViewBuilder menuItems: @escaping () -> MenuItems) {
+    self.isEnabled = isEnabled
+    self.menuItems = menuItems
+  }
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if isEnabled {
+      content.contextMenu(menuItems: menuItems)
+    } else {
+      content
+    }
+  }
+}
+
+struct AuroraCrosspostCard: View {
+  @ObservedObject var repost: Post
+  let outerPostID: String
+  let contentWidth: CGFloat
+  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  @Environment(\.horizontalSizeClass) private var hSize
+
+  private var cardWidth: CGFloat {
+    max(1, contentWidth)
+  }
+
+  var body: some View {
+    if let data = repost.data, let repostWinstonData = repost.winstonData {
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(spacing: 6) {
+          Image(systemName: "arrow.2.squarepath")
+          Text("Crossposted from r/\(data.subreddit)")
+            .fontWeight(.medium)
+            .lineLimit(1)
+          Spacer(minLength: 0)
+          Image(systemName: "chevron.right")
+            .foregroundStyle(.tertiary)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, 2)
+        .contentShape(Rectangle())
+        .onTapGesture { openOriginalPost() }
+
+        AuroraPostCardSurface(
+          post: repost,
+          winstonData: repostWinstonData,
+          cardWidth: cardWidth,
+          presentation: .embeddedCrosspost(outerPostID: outerPostID),
+          onCompactNavigate: onCompactNavigate
+        )
+      }
+      .frame(width: cardWidth, alignment: .leading)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    }
+  }
+
+  private func openOriginalPost() {
+    if hSize == .compact, let onCompactNavigate {
+      onCompactNavigate(.reddit(.post(repost)))
+    } else {
+      Nav.to(.reddit(.post(repost)))
     }
   }
 }
