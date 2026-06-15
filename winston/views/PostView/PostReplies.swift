@@ -10,6 +10,7 @@ import Defaults
 
 struct PostReplies: View {
   var loading: Bool
+  var errorMessage: String?
   @ObservedObject var post: Post
   @ObservedObject var subreddit: Subreddit
   var ignoreSpecificComment: Bool
@@ -124,6 +125,15 @@ struct PostReplies: View {
             }
           }
           .id("loading-comments")
+      } else if let errorMessage, comments.data.count == 0 {
+        ContentUnavailableView(
+          "Couldn't Load Comments",
+          systemImage: "exclamationmark.bubble",
+          description: Text(errorMessage)
+        )
+        .frame(maxWidth: .infinity, minHeight: 300)
+        .listRowBackground(Color.clear)
+        .id("comments-load-error")
       } else if comments.data.count == 0 {
         Text(QuirkyMessageUtil.noCommentsFoundMessage())
           .frame(maxWidth: .infinity, minHeight: 300)

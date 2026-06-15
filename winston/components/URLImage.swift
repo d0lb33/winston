@@ -17,6 +17,7 @@ struct URLImage: View, Equatable {
   }
   
   let url: URL
+  @Environment(\.deferMediaWorkWhileScrolling) private var deferMediaWorkWhileScrolling
   var doLiveText: Bool = false
   var imgRequest: ImageRequest? = nil
   var pipeline: ImagePipeline? = nil
@@ -56,6 +57,14 @@ struct URLImage: View, Equatable {
 
   private var shouldRenderLiveText: Bool {
     doLiveText && liveTextActivationTrigger && ImageAnalyzer.isSupported && (liveTextActivationDelay == nil || liveTextReady)
+  }
+
+  private var shouldDeferFeedWork: Bool {
+    deferMediaWorkWhileScrolling && FeedScrollWorkCoordinator.shared.shouldDeferWork
+  }
+
+  private var requestWorkKey: String {
+    "\(requestIdentity.hashValue)"
   }
   
   var body: some View {
@@ -101,7 +110,6 @@ struct URLImage: View, Equatable {
         loadCompleted = true
         recordCompletion(result, source: "gif")
         if case .failure(let error) = result {
-          onLoadFailed?()
           AppDiagnostics.asyncRecord(
             .warning,
             category: "ui.image",
@@ -111,6 +119,8 @@ struct URLImage: View, Equatable {
         }
         if case .failure = result, retryCount < 2 {
           retryImageLoad(source: "gif-failure")
+        } else if case .failure = result {
+          onLoadFailed?()
         }
         if case .success = result {
           onLoadSucceeded?()
@@ -176,7 +186,6 @@ struct URLImage: View, Equatable {
           loadCompleted = true
           recordCompletion(result, source: "request")
           if case .failure(let error) = result {
-            onLoadFailed?()
             AppDiagnostics.asyncRecord(
               .warning,
               category: "ui.image",
@@ -186,6 +195,8 @@ struct URLImage: View, Equatable {
           }
           if case .failure = result, retryCount < 2 {
             retryImageLoad(source: "request-failure")
+          } else if case .failure = result {
+            onLoadFailed?()
           }
           if case .success = result {
             onLoadSucceeded?()
@@ -244,7 +255,6 @@ struct URLImage: View, Equatable {
           loadCompleted = true
           recordCompletion(result, source: "url")
           if case .failure(let error) = result {
-            onLoadFailed?()
             AppDiagnostics.asyncRecord(
               .warning,
               category: "ui.image",
@@ -254,6 +264,8 @@ struct URLImage: View, Equatable {
           }
           if case .failure = result, retryCount < 2 {
             retryImageLoad(source: "url-failure")
+          } else if case .failure = result {
+            onLoadFailed?()
           }
           if case .success = result {
             onLoadSucceeded?()
@@ -356,22 +368,42 @@ struct URLImage: View, Equatable {
     loadGeneration = generation
     loadCompleted = false
     DispatchQueue.main.asyncAfter(deadline: .now() + stallTimeout) {
-      guard isVisible && loadGeneration == generation && !loadCompleted else { return }
-      ScrollPerfProbe.shared.bump("imageLoadStalled")
-      AppDiagnostics.asyncRecord(
-        .warning,
-        category: "ui.image",
-        message: "Image still loading after \(stallTimeout)s",
-        metadata: imageDiagnosticsMetadata(source: source, error: nil)
-      )
-      onLoadStalled?()
-      retryImageLoad(source: source)
+      runStallCheck(source: source, generation: generation)
     }
+  }
+
+  private func runStallCheck(source: String, generation: UUID) {
+    guard isVisible && loadGeneration == generation && !loadCompleted else { return }
+    if shouldDeferFeedWork {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "image.stall.\(requestWorkKey)") {
+        runStallCheck(source: source, generation: generation)
+      }
+      return
+    }
+    ScrollPerfProbe.shared.bump("imageLoadStalled")
+    AppDiagnostics.asyncRecord(
+      .warning,
+      category: "ui.image",
+      message: "Image still loading after \(stallTimeout)s",
+      metadata: imageDiagnosticsMetadata(source: source, error: nil)
+    )
+    guard retryCount >= 2 else {
+      retryImageLoad(source: source)
+      return
+    }
+    onLoadStalled?()
+    retryImageLoad(source: source)
   }
 
   private func retryImageLoad(source: String) {
     guard isVisible && retryCount < 2 else {
       recordImageEvent(.debug, message: "Image retry skipped", source: source, phase: "retry-skipped")
+      return
+    }
+    if shouldDeferFeedWork {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "image.retry.\(requestWorkKey)") {
+        retryImageLoad(source: source)
+      }
       return
     }
     ScrollPerfProbe.shared.bump("imageRetry")
@@ -383,15 +415,25 @@ struct URLImage: View, Equatable {
       metadata: imageDiagnosticsMetadata(source: "\(source)-retry", error: nil)
     )
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-      guard isVisible else {
-        recordImageEvent(.debug, message: "Image retry aborted before refresh", source: source, phase: "retry-aborted")
-        return
-      }
-      loadCompleted = false
-      recordImageEvent(.debug, message: "Image retry refreshing request", source: source, phase: "retry-refresh")
-      retryID = UUID()
-      scheduleStallCheck(source: "\(source)-retry")
+      refreshRetryImageLoad(source: source)
     }
+  }
+
+  private func refreshRetryImageLoad(source: String) {
+    guard isVisible else {
+      recordImageEvent(.debug, message: "Image retry aborted before refresh", source: source, phase: "retry-aborted")
+      return
+    }
+    if shouldDeferFeedWork {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "image.retryRefresh.\(requestWorkKey)") {
+        refreshRetryImageLoad(source: source)
+      }
+      return
+    }
+    loadCompleted = false
+    recordImageEvent(.debug, message: "Image retry refreshing request", source: source, phase: "retry-refresh")
+    retryID = UUID()
+    scheduleStallCheck(source: "\(source)-retry")
   }
 
   private func recordCompletion<Failure: Error>(_ result: Result<ImageResponse, Failure>, source: String) {
@@ -467,17 +509,10 @@ struct URLImagePlaceholderView: View, Equatable {
 
   var body: some View {
     Rectangle()
-      .fill(.regularMaterial)
+      .fill(Color.primary.opacity(0.06))
       .overlay {
-        URLImageLoader(size: loaderSize).equatable()
-      }
-      .overlay {
-        LinearGradient(
-          colors: [.clear, .white.opacity(0.08), .clear],
-          startPoint: .topLeading,
-          endPoint: .bottomTrailing
-        )
-        .allowsHitTesting(false)
+        ProgressView()
+          .controlSize(loaderSize < 32 ? .small : .regular)
       }
   }
 }

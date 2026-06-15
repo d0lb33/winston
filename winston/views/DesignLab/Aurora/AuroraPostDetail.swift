@@ -21,11 +21,13 @@ struct AuroraPostDetail: View {
   var subreddit: Subreddit
   var highlightID: String?
 
-  @State private var model = CommentTreeModel()
+  @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
   @State private var loadingComments = true
+  @State private var commentLoadError: String? = nil
   @State private var isFetching = false
   @State private var pendingHighlight: String? = nil
+  @State private var pendingLoadMoreAnchor: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -47,6 +49,7 @@ struct AuroraPostDetail: View {
 
     let defSettings = Defaults[.PostPageDefSettings]
     let commentsDefSettings = Defaults[.CommentsSectionDefSettings]
+    _model = State(initialValue: CommentTreeModel(postID: post.id))
     _sort = State(initialValue: defSettings.perPostSort ? (defSettings.postSorts[post.id] ?? commentsDefSettings.preferredSort) : commentsDefSettings.preferredSort)
   }
 
@@ -79,13 +82,15 @@ struct AuroraPostDetail: View {
             CommentsTreeView(
               model: model,
               loading: loadingComments,
+              errorMessage: commentLoadError,
               post: post,
               postFullname: post.data?.name ?? "",
               opAuthor: post.data?.author,
               swipeActions: commentDefSettings.swipeActions,
               swipeAnywhere: swipeAnywhere,
               maxMediaHeightPct: maxMediaHeightPct,
-              contentWidth: contentWidth
+              contentWidth: contentWidth,
+              onLoadMoreWillRebuild: { pendingLoadMoreAnchor = $0 }
             )
           }
           .listRowBackground(Color.clear)
@@ -108,9 +113,14 @@ struct AuroraPostDetail: View {
           Task { await fetch(true) }
         }
         .onChange(of: model.rows.count) { _, _ in
-          guard let target = pendingHighlight else { return }
-          withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
-          pendingHighlight = nil
+          if let target = pendingHighlight {
+            withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
+            pendingHighlight = nil
+            pendingLoadMoreAnchor = nil
+          } else if let anchorID = pendingLoadMoreAnchor {
+            withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(anchorID, anchor: .bottom) }
+            pendingLoadMoreAnchor = nil
+          }
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild() } }
@@ -247,10 +257,14 @@ struct AuroraPostDetail: View {
     guard !isFetching else { return }
     isFetching = true
     defer { isFetching = false }
+    if model.rows.isEmpty {
+      loadingComments = true
+    }
+    commentLoadError = nil
 
     let commentID = effectiveCommentID
-    let result = await post.refreshPost(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full)
-    if let result, let newComments = result.0 {
+    switch await post.refreshPostResult(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full) {
+    case .loaded(let newComments, _):
       withAnimation {
         model.setRoots(newComments)
         loadingComments = false
@@ -258,8 +272,16 @@ struct AuroraPostDetail: View {
       if let commentID {
         pendingHighlight = commentID.hasPrefix("t1_") ? String(commentID.dropFirst(3)) : commentID
       }
-    } else {
-      withAnimation { loadingComments = false }
+    case .empty:
+      withAnimation {
+        model.setRoots([])
+        loadingComments = false
+      }
+    case .transientEmpty(_), .failed(_):
+      withAnimation {
+        commentLoadError = "Pull to refresh and try loading comments again."
+        loadingComments = false
+      }
     }
   }
 }

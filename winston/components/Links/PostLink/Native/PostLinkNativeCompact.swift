@@ -47,8 +47,8 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
     }
   }
   func onDisappear() {
-    Task(priority: .background) {
-      if defSettings.readOnScroll { await post.toggleSeen(true, optimistic: true) }
+    if defSettings.readOnScroll {
+      FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
     }
   }
 

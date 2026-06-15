@@ -24,6 +24,7 @@ struct CommentRowView: View {
   /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
+  let onLoadMoreWillRebuild: (String) -> Void
 
   @State private var swipePresented = false
   @State private var loadingMore = false
@@ -219,6 +220,9 @@ struct CommentRowView: View {
     let count = comment.data?.count ?? 0
     return Button {
       guard let parent = row.parent else { return }
+      if let anchorID = model.loadMoreScrollAnchor(before: row.id) {
+        onLoadMoreWillRebuild(anchorID)
+      }
       withAnimation(spring) { loadingMore = true }
       Task {
         await comment.loadChildren(parent: parent, postFullname: postFullname, avatarSize: 28, post: post)

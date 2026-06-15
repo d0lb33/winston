@@ -621,12 +621,34 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   func hideUnavailablePoster(reason: String, url: URL, sharedVideo: SharedVideo) {
+    let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
+    if feedItemKey != nil, FeedScrollWorkCoordinator.shared.shouldDeferWork {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "video.posterUnavailable.\(cacheKey.hashValue)") {
+        hideUnavailablePoster(reason: reason, url: url, sharedVideo: sharedVideo)
+      }
+      return
+    }
     guard self.sharedVideo == sharedVideo else {
       recordVideoEvent(.debug, message: "Poster unavailable callback ignored", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "stale-video", "url": url.absoluteString])
       return
     }
     guard showInlinePoster, !posterUnavailable else {
       recordVideoEvent(.debug, message: "Poster unavailable callback ignored", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": "poster-not-visible-or-already-unavailable", "url": url.absoluteString])
+      return
+    }
+    guard playerReadyForDisplay else {
+      recordVideoEvent(
+        .warning,
+        message: "Keeping unavailable video poster surface until player has a frame",
+        sharedVideo: sharedVideo,
+        category: "ui.videoPoster",
+        extra: [
+          "reason": reason,
+          "url": url.absoluteString,
+          "playerReadyForDisplay": "\(playerReadyForDisplay)"
+        ]
+      )
+      refreshInlineVideoSurface(reason: "poster-\(reason)-needs-frame", sharedVideo: sharedVideo)
       return
     }
     posterUnavailable = true

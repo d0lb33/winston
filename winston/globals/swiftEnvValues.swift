@@ -37,6 +37,10 @@ private struct ContentWidthKey: EnvironmentKey {
   static let defaultValue: Double = .screenW
 }
 
+private struct DeferMediaWorkWhileScrollingKey: EnvironmentKey {
+  static let defaultValue = false
+}
+
 extension EnvironmentValues {
   var sheetHeight: Double {
     get { self[SheetHeightKey.self] }
@@ -66,5 +70,8 @@ extension EnvironmentValues {
     get { self[CurrentThemeKey.self] }
     set { self[CurrentThemeKey.self] = newValue }
   }
+  var deferMediaWorkWhileScrolling: Bool {
+    get { self[DeferMediaWorkWhileScrollingKey.self] }
+    set { self[DeferMediaWorkWhileScrollingKey.self] = newValue }
+  }
 }
-

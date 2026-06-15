@@ -331,7 +331,7 @@ private struct AuroraCardContent: View {
       .onDisappear {
         if defSettings.readOnScroll {
           ScrollPerfProbe.shared.bump("auroraReadOnDisappear")
-          Task(priority: .background) { await post.toggleSeen(true, optimistic: true) }
+          FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
         }
       }
     }

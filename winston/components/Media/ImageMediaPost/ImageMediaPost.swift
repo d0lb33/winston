@@ -92,6 +92,7 @@ struct ImageMediaPost: View, Equatable {
 }
 
 private struct ImageMediaSinglePreview: View {
+  @Environment(\.deferMediaWorkWhileScrolling) private var deferMediaWorkWhileScrolling
   @Binding var postDimensions: PostDimensions
   let cornerRadius: Double
   let compact: Bool
@@ -120,6 +121,33 @@ private struct ImageMediaSinglePreview: View {
     return min((maxMediaHeightScreenPercentage / 100) * .screenH, proportionalHeight)
   }
 
+  private var mediaSizeWorkKey: String {
+    "imageMediaSize.\((diagnosticContext ?? image.url.absoluteString).hashValue)"
+  }
+
+  private func sizesMatch(_ lhs: CGSize?, _ rhs: CGSize) -> Bool {
+    guard let lhs else { return false }
+    return abs(lhs.width - rhs.width) < 0.5 && abs(lhs.height - rhs.height) < 0.5
+  }
+
+  private func writeMediaSize(_ newSize: CGSize) {
+    guard !sizesMatch(postDimensions.mediaSize, newSize) else { return }
+
+    let apply = {
+      guard !sizesMatch(postDimensions.mediaSize, newSize) else { return }
+      ScrollPerfProbe.shared.bump("imageMediaSizeWrite")
+      postDimensions.mediaSize = newSize
+    }
+
+    if deferMediaWorkWhileScrolling && FeedScrollWorkCoordinator.shared.shouldDeferWork {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: mediaSizeWorkKey) {
+        apply()
+      }
+    } else {
+      apply()
+    }
+  }
+
   var body: some View {
     GalleryThumb(
       cornerRadius: cornerRadius,
@@ -136,12 +164,10 @@ private struct ImageMediaSinglePreview: View {
         ? GeometryReader { geo in
           Color.clear
             .onAppear {
-              ScrollPerfProbe.shared.bump("imageMediaSizeWrite")
-              postDimensions.mediaSize = geo.size
+              writeMediaSize(geo.size)
             }
             .onChange(of: geo.size) { _, newSize in
-              ScrollPerfProbe.shared.bump("imageMediaSizeWrite")
-              postDimensions.mediaSize = newSize
+              writeMediaSize(newSize)
             }
         }
         : nil

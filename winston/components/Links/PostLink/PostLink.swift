@@ -142,10 +142,8 @@ extension View {
       .foregroundStyle(.primary)
       .multilineTextAlignment(.leading)
       .onDisappear {
-        Task(priority: .background) {
-          if readPostOnScroll {
-            await post.toggleSeen(true, optimistic: true)
-          }
+        if readPostOnScroll {
+          FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
         }
       }
   }

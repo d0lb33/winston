@@ -15,6 +15,13 @@ import Alamofire
 
 typealias Post = GenericRedditEntity<PostData, PostWinstonData>
 
+enum PostRefreshResult {
+  case loaded(comments: [Comment], next: String?)
+  case empty
+  case transientEmpty(String)
+  case failed(String)
+}
+
 extension Post {
   static var prefetcher = ImagePrefetcher(pipeline: ImagePipeline.shared, destination: .memoryCache, maxConcurrentRequestCount: 10)
   static var prefix = "t3"
@@ -211,12 +218,23 @@ extension Post {
       
       Task(priority: .background) { await RedditWire.shared.updatePostsWithAvatar(posts: repostsAvatars, avatarSize: getEnabledTheme().postLinks.theme.badge.avatar.size) }
       
-      let imgRequests: [ImageRequest] = posts.reduce(into: []) { prev, curr in
+      var imgRequests: [ImageRequest] = posts.reduce(into: []) { prev, curr in
         if case .imgs(let imgsExtracted) = curr.winstonData?.extractedMedia {
           let reqs = imgsExtracted.map { $0.request }
           prev = prev + reqs
         }
       }
+      let videoPosterRequests: [ImageRequest] = posts.compactMap { post in
+        guard case .video(let sharedVideo) = post.winstonData?.extractedMedia,
+              let posterURL = sharedVideo.posterURL else { return nil }
+        return winstonImageRequest(
+          url: posterURL,
+          processors: [ImageProcessors.ScaleFixer()],
+          priority: .high,
+          thumbnail: nil
+        )
+      }
+      imgRequests.append(contentsOf: videoPosterRequests)
       let mediaKinds = posts.prefix(8).map { post in
         "\(post.id):\(Post.diagnosticsMediaKind(post.winstonData?.extractedMedia))"
       }.joined(separator: ",")
@@ -233,6 +251,7 @@ extension Post {
         metadata: [
           "posts": "\(posts.count)",
           "requests": "\(imgRequests.count)",
+          "videoPosterRequests": "\(videoPosterRequests.count)",
           "firstMediaKinds": mediaKinds,
           "videoPosters": "\(videoPosterURLs.count)",
           "firstVideoPosters": videoPosterURLs.prefix(5).joined(separator: ",")
@@ -508,7 +527,7 @@ extension Post {
     return false
   }
   
-  func refreshPost(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> ([Comment]?, String?)? {
+  func refreshPostResult(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> PostRefreshResult {
     // Post + comment forest over GraphQL. The flat forest is assembled into
     // the reply tree by nestComments; continuation nodes surface as "more"
     // stubs. Comment-listing pagination doesn't exist on this surface, so the
@@ -525,7 +544,41 @@ extension Post {
         extra: ["phase": "start"]
       )
     )
-    let (newData, children) = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
+    let fetchResult = await RedditWire.shared.postWithComments(postID: id, commentID: commentID, sort: sort)
+    let newData: PostData?
+    let children: [ListingChild<CommentData>]
+    let terminalResult: PostRefreshResult?
+    switch fetchResult {
+    case .success(let postData, let fetchedChildren):
+      newData = postData
+      children = fetchedChildren
+      terminalResult = nil
+    case .empty(let postData):
+      newData = postData
+      children = []
+      terminalResult = .empty
+    case .transientEmpty(let postData, let message):
+      newData = postData
+      children = []
+      terminalResult = .transientEmpty(message)
+    case .failure(let message):
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.commentTree",
+        message: "Post.refreshPost failed",
+        metadata: refreshPostDiagnosticsMetadata(
+          commentID: commentID,
+          sort: sort,
+          full: full,
+          extra: [
+            "phase": "failed",
+            "error": message,
+            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+          ]
+        )
+      )
+      return .failed(message)
+    }
     AppDiagnostics.asyncRecord(
       .info,
       category: "ui.commentTree",
@@ -627,6 +680,25 @@ extension Post {
       }
     }
     let postFullname = postData?.name ?? postFullnameFromComment
+    if case .transientEmpty(let message) = terminalResult {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.commentTree",
+        message: "Post.refreshPost completed with transient empty comments",
+        metadata: refreshPostDiagnosticsMetadata(
+          commentID: commentID,
+          sort: sort,
+          full: full,
+          extra: [
+            "phase": "transient-empty",
+            "postFullname": postFullname,
+            "error": message,
+            "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+          ]
+        )
+      )
+      return .transientEmpty(message)
+    }
     await saveSeenComments(comments: ListingData(after: nil, dist: nil, modhash: nil, geo_filter: nil, children: children))
     let comments = nestComments(children, parentID: postFullname)
     let missingBodies = comments.compactMap { comment -> String? in
@@ -665,7 +737,21 @@ extension Post {
         ]
       )
     )
-    return (comments, nil)
+    if case .empty = terminalResult {
+      return .empty
+    }
+    return .loaded(comments: comments, next: nil)
+  }
+
+  func refreshPost(commentID: String? = nil, sort: CommentSortOption = .confidence, after: String? = nil, subreddit: String? = nil, full: Bool = true, subId: String? = nil) async -> ([Comment]?, String?)? {
+    switch await refreshPostResult(commentID: commentID, sort: sort, after: after, subreddit: subreddit, full: full, subId: subId) {
+    case .loaded(let comments, let next):
+      return (comments, next)
+    case .empty:
+      return ([], nil)
+    case .transientEmpty, .failed:
+      return nil
+    }
   }
 
   func refreshPostDiagnosticsMetadata(commentID: String?, sort: CommentSortOption, full: Bool, extra: [String: String] = [:]) -> [String: String] {

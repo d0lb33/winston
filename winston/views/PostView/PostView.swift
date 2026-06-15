@@ -29,6 +29,7 @@ struct PostView: View, Equatable {
   @State private var sort: CommentSortOption
   @State private var isFetching = false
   @State private var loadingComments = true
+  @State private var commentLoadError: String? = nil
   
   @State private var topVisibleCommentId: String? = nil
   @State private var previousScrollTarget: String? = nil
@@ -67,7 +68,13 @@ struct PostView: View, Equatable {
       message: "PostView fetch started",
       metadata: postDetailMetadata(full: full, extra: ["phase": "start"])
     )
-    if let result = await post.refreshPost(commentID: ignoreSpecificComment ? nil : highlightID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full), let newComments = result.0 {
+    if comments.data.isEmpty {
+      loadingComments = true
+    }
+    commentLoadError = nil
+
+    switch await post.refreshPostResult(commentID: ignoreSpecificComment ? nil : highlightID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full) {
+    case .loaded(let newComments, _):
       AppDiagnostics.asyncRecord(
         .info,
         category: "ui.postDetail",
@@ -113,16 +120,25 @@ struct PostView: View, Equatable {
           }
         }
       }
-    } else {
-      withAnimation { loadingComments = false }
+    case .empty:
+      withAnimation {
+        comments.data = []
+        loadingComments = false
+      }
+    case .transientEmpty(let message), .failed(let message):
+      withAnimation {
+        commentLoadError = "Pull to refresh and try loading comments again."
+        loadingComments = false
+      }
       AppDiagnostics.asyncRecord(
         .warning,
         category: "ui.postDetail",
-        message: "PostView fetch returned no comments",
+        message: "PostView fetch did not load comments",
         metadata: postDetailMetadata(
           full: full,
           extra: [
-            "phase": "empty",
+            "phase": "failed",
+            "error": message,
             "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
           ]
         )
@@ -184,7 +200,7 @@ struct PostView: View, Equatable {
             .listRowBackground(Color.clear)
             
             if !hideElements {
-              PostReplies(loading: loadingComments, post: post, subreddit: subreddit, ignoreSpecificComment: ignoreSpecificComment, highlightID: highlightID, sort: sort, fetch: { full in await asyncFetch(full, proxy: proxy) }, comments: comments)
+              PostReplies(loading: loadingComments, errorMessage: commentLoadError, post: post, subreddit: subreddit, ignoreSpecificComment: ignoreSpecificComment, highlightID: highlightID, sort: sort, fetch: { full in await asyncFetch(full, proxy: proxy) }, comments: comments)
             }
             
             if !ignoreSpecificComment && highlightID != nil {

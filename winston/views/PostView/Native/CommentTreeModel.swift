@@ -17,11 +17,11 @@
 //  reply/delete/load-more reflecting live without the legacy "re-render the whole
 //  list on every avatar update" cost.
 //
-//  Collapse state lives here, in memory, scoped to this post-view instance —
-//  it is NOT the global `CollapsedComment` Core Data table the legacy path uses
-//  (that one leaked collapse across posts and sessions). It is seeded once from
-//  each comment's API `collapsed` flag (crowd-control / collapsed-by-mods) and
-//  the AutoModerator preference.
+//  Collapse state lives here, scoped by post id. It is NOT the global
+//  `CollapsedComment` Core Data table the legacy path uses (that one leaked
+//  collapse across posts). If the user has saved state for this post, that wins;
+//  otherwise the model seeds once from each comment's API `collapsed` flag
+//  (crowd-control / collapsed-by-mods) and the AutoModerator preference.
 //
 
 import SwiftUI
@@ -70,6 +70,7 @@ final class CommentTreeModel {
   /// Owned, not observed by any view — keeps the comment objects alive and is
   /// the splice target for root-level "load more".
   @ObservationIgnored let rootArray = ObservableArray<Comment>()
+  @ObservationIgnored private var postID: String
   @ObservationIgnored private var collapsed: Set<String> = []
   @ObservationIgnored private var didSeedCollapse = false
   @ObservationIgnored private var treeCancellable: AnyCancellable?
@@ -86,6 +87,10 @@ final class CommentTreeModel {
     return formatter
   }()
 
+  init(postID: String) {
+    self.postID = postID
+  }
+
   /// Install a freshly fetched root comment forest.
   func setRoots(_ comments: [Comment]) {
     comments.forEach { $0.parentWinston = rootArray }
@@ -98,12 +103,21 @@ final class CommentTreeModel {
 
   func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
 
+  func loadMoreScrollAnchor(before rowID: String) -> String? {
+    guard let index = rows.firstIndex(where: { $0.id == rowID }), index > rows.startIndex else { return nil }
+    for row in rows[..<index].reversed() where row.kind == .comment {
+      return row.id
+    }
+    return nil
+  }
+
   func toggleCollapse(_ id: String) {
     if collapsed.contains(id) {
       collapsed.remove(id)
     } else {
       collapsed.insert(id)
     }
+    persistCollapse()
     let out = computeRows()
     // Animating a huge insert/remove (collapsing/expanding a deep subtree is hundreds of
     // rows) blocks the main thread long enough to hang. Animate only modest changes; snap
@@ -161,6 +175,10 @@ final class CommentTreeModel {
   private func seedInitialCollapseIfNeeded() {
     guard !didSeedCollapse else { return }
     didSeedCollapse = true
+    if let saved = Defaults[.collapsedCommentsByPost][postID] {
+      collapsed = Set(saved)
+      return
+    }
     let collapseAutoMod = Defaults[.CommentsSectionDefSettings].collapseAutoModerator
     func walk(_ nodes: [Comment]) {
       for node in nodes {
@@ -174,6 +192,12 @@ final class CommentTreeModel {
       }
     }
     walk(rootArray.data)
+  }
+
+  private func persistCollapse() {
+    var saved = Defaults[.collapsedCommentsByPost]
+    saved[postID] = collapsed.sorted()
+    Defaults[.collapsedCommentsByPost] = saved
   }
 
   // MARK: - Flatten

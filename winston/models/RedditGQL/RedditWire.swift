@@ -87,6 +87,13 @@ struct RedditSearchPageResults {
   }
 }
 
+enum RedditPostCommentsResult {
+  case success(postData: PostData?, children: [ListingChild<CommentData>])
+  case empty(postData: PostData?)
+  case transientEmpty(postData: PostData?, message: String)
+  case failure(String)
+}
+
 @MainActor
 final class RedditWire: ObservableObject {
   static let shared = RedditWire()
@@ -650,17 +657,16 @@ final class RedditWire: ObservableObject {
     }
   }
 
-  /// Fetch a post + its comment forest over GraphQL. Returns the adapted
+  /// Fetch a post + its comment forest over GraphQL. On success, returns the adapted
   /// PostData and a FLAT list of comment children (each tagged with parent_id)
-  /// ready for `nestComments(_, parentID:)`. MVP: initial tree only (no
-  /// load-more; "more" nodes are dropped).
-  func postWithComments(postID: String, commentID: String? = nil, sort: CommentSortOption = .confidence) async -> (PostData?, [ListingChild<CommentData>]) {
+  /// ready for `nestComments(_, parentID:)`.
+  func postWithComments(postID: String, commentID: String? = nil, sort: CommentSortOption = .confidence) async -> RedditPostCommentsResult {
     do {
       if let commentID, !commentID.isEmpty {
         let resp = try await client.commentByIdWithChildrenResponse(commentID: commentID, sort: redditCommentSort(from: sort))
         guard let commentById = resp.data?.commentById else {
           status = "commentByIdWithChildren: no comment in response"
-          return (nil, [])
+          return .failure("No highlighted comment in response.")
         }
         let postFullname = commentById.postInfo?.id ?? (postID.hasPrefix("t3_") ? postID : "t3_\(postID)")
         let trees = commentById.children?.trees ?? []
@@ -683,16 +689,31 @@ final class RedditWire: ObservableObject {
         // to / highlights the target instead.
         logCommentFetchDiagnostics(postID: postFullname, commentID: commentID, children: children)
         status = "commentByIdWithChildren \(commentID) → \(children.count) comment nodes"
-        return (commentById.postInfo.map(PostData.init(graphQL:)), children)
+        return .success(postData: commentById.postInfo.map(PostData.init(graphQL:)), children: children)
       }
 
       let resp = try await client.postCommentsResponse(postID: postID, sort: redditCommentSort(from: sort))
       guard let post = resp.data?.postInfoById else {
         status = "postComments: no post in response"
-        return (nil, [])
+        return .failure("No post in comments response.")
+      }
+      let trees = post.commentForest?.trees ?? []
+      if trees.isEmpty, (post.commentCount ?? 0) > 0 {
+        let message = "Post comments returned an empty tree for a post with \(post.commentCount ?? 0) comments."
+        status = "postComments transient empty tree"
+        AppDiagnostics.asyncRecord(
+          .warning,
+          category: "ui.commentTree",
+          message: "PostComments returned transient empty comment tree",
+          metadata: [
+            "postID": post.id,
+            "phase": "transient-empty-tree",
+            "commentCount": "\(post.commentCount ?? 0)"
+          ]
+        )
+        return .transientEmpty(postData: PostData(graphQL: post), message: message)
       }
       let postFullname = post.id // "t3_…"
-      let trees = post.commentForest?.trees ?? []
       status = "postComments \(postFullname) → \(trees.count) comment nodes"
       let children = adaptCommentTrees(trees, postFullname: postFullname)
       logCommentFetchDiagnostics(postID: postFullname, commentID: nil, children: children)
@@ -706,12 +727,13 @@ final class RedditWire: ObservableObject {
             "phase": "empty-tree"
           ]
         )
-        return (nil, children)
+        return .empty(postData: PostData(graphQL: post))
       }
-      return (PostData(graphQL: post), children)
+      return .success(postData: PostData(graphQL: post), children: children)
     } catch {
-      status = "postComments failed: \(describe(error))"
-      return (nil, [])
+      let message = describe(error)
+      status = "postComments failed: \(message)"
+      return .failure(message)
     }
   }
 

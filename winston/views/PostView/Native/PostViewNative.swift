@@ -20,11 +20,13 @@ struct PostViewNative: View {
   var subreddit: Subreddit
   var highlightID: String?
 
-  @State private var model = CommentTreeModel()
+  @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
   @State private var loadingComments = true
+  @State private var commentLoadError: String? = nil
   @State private var isFetching = false
   @State private var pendingHighlight: String? = nil
+  @State private var pendingLoadMoreAnchor: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -48,6 +50,7 @@ struct PostViewNative: View {
 
     let defSettings = Defaults[.PostPageDefSettings]
     let commentsDefSettings = Defaults[.CommentsSectionDefSettings]
+    _model = State(initialValue: CommentTreeModel(postID: post.id))
     _sort = State(initialValue: defSettings.perPostSort ? (defSettings.postSorts[post.id] ?? commentsDefSettings.preferredSort) : commentsDefSettings.preferredSort)
   }
 
@@ -74,15 +77,17 @@ struct PostViewNative: View {
           if isSingleThread {
             viewAllCommentsBanner
           }
-          CommentsTreeView(
-            model: model,
-            loading: loadingComments,
-            post: post,
+            CommentsTreeView(
+              model: model,
+              loading: loadingComments,
+              errorMessage: commentLoadError,
+              post: post,
             postFullname: post.data?.name ?? "",
             opAuthor: post.data?.author,
             swipeActions: commentDefSettings.swipeActions,
             swipeAnywhere: swipeAnywhere,
-            maxMediaHeightPct: maxMediaHeightPct
+            maxMediaHeightPct: maxMediaHeightPct,
+            onLoadMoreWillRebuild: { pendingLoadMoreAnchor = $0 }
           )
         } header: {
           if !model.rows.isEmpty {
@@ -110,9 +115,14 @@ struct PostViewNative: View {
         Task { await fetch(true) }
       }
       .onChange(of: model.rows.count) { _, _ in
-        guard let target = pendingHighlight else { return }
-        withAnimation(spring) { proxy.scrollTo(target, anchor: .center) }
-        pendingHighlight = nil
+        if let target = pendingHighlight {
+          withAnimation(spring) { proxy.scrollTo(target, anchor: .center) }
+          pendingHighlight = nil
+          pendingLoadMoreAnchor = nil
+        } else if let anchorID = pendingLoadMoreAnchor {
+          withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(anchorID, anchor: .bottom) }
+          pendingLoadMoreAnchor = nil
+        }
       }
       // A reply/edit posted through the global modal mutates the comment tree;
       // rebuild when it dismisses so the new comment shows without a refetch.
@@ -176,10 +186,14 @@ struct PostViewNative: View {
     guard !isFetching else { return }
     isFetching = true
     defer { isFetching = false }
+    if model.rows.isEmpty {
+      loadingComments = true
+    }
+    commentLoadError = nil
 
     let commentID = effectiveCommentID
-    if let result = await post.refreshPost(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full),
-       let newComments = result.0 {
+    switch await post.refreshPostResult(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full) {
+    case .loaded(let newComments, _):
       withAnimation {
         model.setRoots(newComments)
         loadingComments = false
@@ -187,8 +201,16 @@ struct PostViewNative: View {
       if let commentID {
         pendingHighlight = commentID.hasPrefix("t1_") ? String(commentID.dropFirst(3)) : commentID
       }
-    } else {
-      withAnimation { loadingComments = false }
+    case .empty:
+      withAnimation {
+        model.setRoots([])
+        loadingComments = false
+      }
+    case .transientEmpty(_), .failed(_):
+      withAnimation {
+        commentLoadError = "Pull to refresh and try loading comments again."
+        loadingComments = false
+      }
     }
   }
 }

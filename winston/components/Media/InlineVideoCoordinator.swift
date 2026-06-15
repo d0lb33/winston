@@ -17,6 +17,107 @@ import Observation
 import Foundation
 
 @MainActor
+final class FeedScrollWorkCoordinator {
+  static let shared = FeedScrollWorkCoordinator()
+
+  let idleDelay: TimeInterval = 0.18
+  private(set) var isScrolling = false
+  private(set) var isSettling = false
+
+  private var idleWorkItem: DispatchWorkItem?
+  private var scheduledWorkItems: [String: DispatchWorkItem] = [:]
+  private var pendingWork: [String: () -> Void] = [:]
+  private var pendingSeenPosts: [String: Post] = [:]
+
+  var shouldDeferWork: Bool { isScrolling || isSettling }
+
+  private init() {}
+
+  func setScrolling(_ scrolling: Bool) {
+    guard scrolling != isScrolling else { return }
+    isScrolling = scrolling
+
+    if scrolling {
+      isSettling = false
+      idleWorkItem?.cancel()
+      idleWorkItem = nil
+      cancelScheduledWorkItems()
+    } else {
+      isSettling = true
+      scheduleIdleFlush()
+    }
+  }
+
+  func performWhenIdle(key: String, delay: TimeInterval? = nil, _ work: @escaping () -> Void) {
+    pendingWork[key] = work
+    scheduledWorkItems[key]?.cancel()
+
+    guard !shouldDeferWork else { return }
+    schedulePendingWork(key: key, delay: delay ?? 0)
+  }
+
+  func cancel(key: String) {
+    pendingWork.removeValue(forKey: key)
+    scheduledWorkItems.removeValue(forKey: key)?.cancel()
+  }
+
+  func markSeenWhenIdle(_ post: Post) {
+    guard post.data?.winstonSeen != true else { return }
+    pendingSeenPosts[post.id] = post
+
+    guard !shouldDeferWork else { return }
+    scheduleIdleFlush(delay: 0)
+  }
+
+  func flushPendingWork() {
+    idleWorkItem?.cancel()
+    idleWorkItem = nil
+    isSettling = false
+    cancelScheduledWorkItems()
+
+    let workItems = pendingWork
+    pendingWork.removeAll(keepingCapacity: true)
+    workItems.values.forEach { $0() }
+
+    let seenPosts = Array(pendingSeenPosts.values)
+    pendingSeenPosts.removeAll(keepingCapacity: true)
+    seenPosts.forEach { post in
+      Task(priority: .background) {
+        await post.toggleSeen(true, optimistic: true)
+      }
+    }
+  }
+
+  private func scheduleIdleFlush(delay: TimeInterval? = nil) {
+    idleWorkItem?.cancel()
+    let item = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        self?.flushPendingWork()
+      }
+    }
+    idleWorkItem = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + (delay ?? idleDelay), execute: item)
+  }
+
+  private func schedulePendingWork(key: String, delay: TimeInterval) {
+    let item = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        guard let self, !self.shouldDeferWork, let work = self.pendingWork.removeValue(forKey: key) else { return }
+        self.scheduledWorkItems.removeValue(forKey: key)
+        work()
+      }
+    }
+    scheduledWorkItems[key] = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: item)
+  }
+
+  private func cancelScheduledWorkItems() {
+    scheduledWorkItems.values.forEach { $0.cancel() }
+    scheduledWorkItems.removeAll(keepingCapacity: true)
+  }
+}
+
+@MainActor
 @Observable
 final class InlineVideoCoordinator {
   static let shared = InlineVideoCoordinator()
@@ -59,6 +160,10 @@ final class InlineVideoCoordinator {
     guard scrolling != isScrolling else { return }
     ScrollPerfProbe.shared.bump(scrolling ? "scrollBegan" : "scrollEnded")
     isScrolling = scrolling
+    if scrolling {
+      setActive(nil)
+      updateWarmVideoKeys(forceEmpty: true)
+    }
   }
 
   func isActive(_ key: String?) -> Bool {
@@ -82,7 +187,7 @@ final class InlineVideoCoordinator {
     // thread) is the main remaining source of fast-scroll hitches. `electCenteredVideo`
     // already warms neighbors when the feed settles, so the next video is still ready by
     // the time you stop — we just stop paying for it during the scroll itself.
-    guard !isScrolling else { return }
+    guard !isScrolling, !FeedScrollWorkCoordinator.shared.shouldDeferWork else { return }
     updateWarmVideoKeys()
   }
 
@@ -219,23 +324,45 @@ extension View {
   /// nothing plays while scrolling, so the centered choice only matters at rest.
   func driveInlineVideoCoordinator(coordinateSpace: String) -> some View {
     self
+      .modifier(FeedScrollCoordinatorDriver(coordinateSpace: coordinateSpace))
+  }
+}
+
+private struct FeedScrollCoordinatorDriver: ViewModifier {
+  @Environment(\.scenePhase) private var scenePhase
+  let coordinateSpace: String
+
+  func body(content: Content) -> some View {
+    content
+      .environment(\.deferMediaWorkWhileScrolling, true)
       .coordinateSpace(.named(coordinateSpace))
       .onScrollPhaseChange { _, phase in
         let scrolling = phase != .idle
+        FeedScrollWorkCoordinator.shared.setScrolling(scrolling)
         InlineVideoCoordinator.shared.setScrolling(scrolling)
-        if !scrolling { InlineVideoCoordinator.shared.electCenteredVideo() }
+        if !scrolling {
+          FeedScrollWorkCoordinator.shared.performWhenIdle(key: "inlineVideo.elect.\(coordinateSpace)") {
+            InlineVideoCoordinator.shared.electCenteredVideo()
+          }
+        }
       }
       .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, newHeight in
         if newHeight > 0 { InlineVideoCoordinator.shared.viewportHeight = newHeight }
       }
       .onPreferenceChange(InlineVideoCenterPreferenceKey.self) { centers in
-        // Cheap per-frame sink. Only elect when at rest (debounced for the initial,
-        // no-scroll layout where onScrollPhaseChange never fires).
         InlineVideoCoordinator.shared.updateCenters(centers)
         guard !InlineVideoCoordinator.shared.isScrolling else { return }
-        DispatchQueue.main.debounce(delay: 0.1, context: "inlineVideoActive") {
+        FeedScrollWorkCoordinator.shared.performWhenIdle(key: "inlineVideo.elect.\(coordinateSpace)") {
           InlineVideoCoordinator.shared.electCenteredVideo()
         }
+      }
+      .onChange(of: scenePhase) { _, newPhase in
+        if newPhase != .active {
+          FeedScrollWorkCoordinator.shared.flushPendingWork()
+        }
+      }
+      .onDisappear {
+        FeedScrollWorkCoordinator.shared.flushPendingWork()
       }
   }
 }

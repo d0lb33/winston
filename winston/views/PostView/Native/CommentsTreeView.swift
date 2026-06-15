@@ -17,6 +17,7 @@ import SwiftUI
 struct CommentsTreeView: View {
   let model: CommentTreeModel
   let loading: Bool
+  let errorMessage: String?
   weak var post: Post?
   let postFullname: String
   let opAuthor: String?
@@ -24,20 +25,24 @@ struct CommentsTreeView: View {
   let swipeAnywhere: Bool
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
+  let onLoadMoreWillRebuild: (String) -> Void
 
   init(
     model: CommentTreeModel,
     loading: Bool,
+    errorMessage: String? = nil,
     post: Post?,
     postFullname: String,
     opAuthor: String?,
     swipeActions: SwipeActionsSet,
     swipeAnywhere: Bool,
     maxMediaHeightPct: CGFloat,
-    contentWidth: CGFloat = .screenW
+    contentWidth: CGFloat = .screenW,
+    onLoadMoreWillRebuild: @escaping (String) -> Void = { _ in }
   ) {
     self.model = model
     self.loading = loading
+    self.errorMessage = errorMessage
     self.post = post
     self.postFullname = postFullname
     self.opAuthor = opAuthor
@@ -45,6 +50,7 @@ struct CommentsTreeView: View {
     self.swipeAnywhere = swipeAnywhere
     self.maxMediaHeightPct = maxMediaHeightPct
     self.contentWidth = contentWidth
+    self.onLoadMoreWillRebuild = onLoadMoreWillRebuild
   }
 
   var body: some View {
@@ -55,6 +61,14 @@ struct CommentsTreeView: View {
         Spacer()
       }
       .padding(.vertical, 48)
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
+    } else if let errorMessage, model.rows.isEmpty {
+      ContentUnavailableView(
+        "Couldn't Load Comments",
+        systemImage: "exclamationmark.bubble",
+        description: Text(errorMessage)
+      )
       .listRowSeparator(.hidden)
       .listRowBackground(Color.clear)
     } else if model.rows.isEmpty {
@@ -77,7 +91,8 @@ struct CommentsTreeView: View {
           swipeActions: swipeActions,
           swipeAnywhere: swipeAnywhere,
           maxMediaHeightPct: maxMediaHeightPct,
-          contentWidth: contentWidth
+          contentWidth: contentWidth,
+          onLoadMoreWillRebuild: onLoadMoreWillRebuild
         )
       }
     }
