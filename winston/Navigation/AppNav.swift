@@ -331,15 +331,55 @@ final class StackNav {
 
 // MARK: - Settings (sidebar selection | detail)
 
+/// Single source of truth for the Settings split (sidebar selection | detail). Same
+/// native model as the others: the detail stack is owned here (`detailPath`). The leading
+/// column is a selection list (no push stack), so `contentPath` is unused — it only
+/// exists to satisfy `RedditSplitForwardNavigating`. Conforms to `RedditNavigator` so
+/// reddit destinations opened from a settings panel push into the detail.
 @Observable
 @MainActor
-final class SettingsNav {
+final class SettingsNav: RedditNavigator, RedditSplitForwardNavigating {
+  /// Selected settings panel (the sidebar root). Drives the detail column's root.
   var selection: Router.NavDest.Setting? = .general
+  /// Unused for settings (the sidebar is selection-based, not a push stack); always empty.
+  var contentPath: [Router.NavDest] = []
+  /// Pushes deeper into the detail column (a sub-panel / reddit link opened from a panel).
   var detailPath: [Router.NavDest] = []
   var preferredColumn: NavigationSplitViewColumn = .sidebar
+  var forwardStack: [RedditSplitForwardEntry] = []
+  @ObservationIgnored var suppressNextForwardRecording = false
+  var forwardContentColumn: NavigationSplitViewColumn { .sidebar }
+  var hasForwardDetailRoot: Bool { selection != nil }
+
+  // MARK: Settings navigation
+
+  /// Select a panel from the sidebar. Collapses sub-panels to their split root (e.g. Post
+  /// Swipe → Behavior) and seeds the detail stack with the specific panel.
+  func select(_ setting: Router.NavDest.Setting) {
+    beginUserNavigation()
+    selection = setting.splitRoot
+    detailPath = setting == setting.splitRoot ? [] : [.setting(setting)]
+    preferredColumn = .detail
+  }
+
+  /// Push a destination deeper into the detail stack (a link tapped inside a panel).
+  func pushDetail(_ destination: Router.NavDest) {
+    beginUserNavigation()
+    detailPath.append(destination)
+    preferredColumn = .detail
+  }
+
+  // MARK: RedditNavigator (reddit destinations opened from a settings panel)
+
+  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
+    pushDetail(destination)
+  }
 
   func reset() {
+    forwardStack = []
+    suppressNextForwardRecording = false
     selection = .general
+    contentPath = []
     detailPath = []
     preferredColumn = .sidebar
   }

@@ -30,7 +30,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   }
   static func resetStack() {
     AppDiagnostics.asyncBreadcrumb("Nav.resetStack", metadata: ["tab": Nav.shared.activeTab.rawValue])
-    Nav.shared.activeRouter.resetNavPath()
+    Nav.shared.activeRouter.requestRootReset()
   }
   /* </Util static functions for ease of use> */
   
@@ -61,7 +61,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   var id: UUID
   @Published var activeTab: TabIdentifier {
     willSet {
-      if activeTab == newValue { self.activeRouter.resetNavPath() }
+      if activeTab == newValue { self.activeRouter.requestRootReset() }
       AppDiagnostics.asyncBreadcrumb("Tab changed", metadata: ["from": activeTab.rawValue, "to": newValue.rawValue])
     }
   }
@@ -112,7 +112,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   
   func resetStack() {
     AppDiagnostics.asyncBreadcrumb("Nav.resetStack instance", metadata: ["tab": activeTab.rawValue])
-    activeRouter.resetNavPath()
+    activeRouter.requestRootReset()
   }
 
   @MainActor

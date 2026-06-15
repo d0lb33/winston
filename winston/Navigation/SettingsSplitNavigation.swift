@@ -2,9 +2,10 @@
 //  SettingsSplitNavigation.swift
 //  winston
 //
-//  Shared routing state for the settings split view. Sidebar selections replace
-//  the detail root, while links opened from a detail panel push deeper in the
-//  detail stack.
+//  Settings navigation environment seam. Sidebar selections replace the detail root,
+//  while links opened from a detail panel push deeper in the detail stack. The state
+//  itself lives in `SettingsNav` (see AppNav.swift); this file only carries the
+//  environment plumbing so settings rows route through the same call sites unchanged.
 //
 
 import SwiftUI
@@ -14,68 +15,8 @@ enum SettingsNavigationOrigin: Equatable {
   case detail
 }
 
-@Observable
-@MainActor
-final class SettingsSplitNavigationModel {
-  var columnVisibility: NavigationSplitViewVisibility = .all
-  var preferredColumn: NavigationSplitViewColumn = .sidebar
-  var selectedSetting: Router.NavDest.Setting? = .general
-  var detailPath: [Router.NavDest] = []
-
-  @ObservationIgnored private weak var router: Router?
-
-  func attach(router: Router) {
-    self.router = router
-  }
-
-  func navigate(_ destination: Router.NavDest, from origin: SettingsNavigationOrigin) {
-    guard case .setting(let setting) = destination else {
-      router?.navigateTo(destination)
-      return
-    }
-
-    switch origin {
-    case .sidebar:
-      select(setting)
-    case .detail:
-      detailPath.append(destination)
-      focusDetail()
-    }
-  }
-
-  @discardableResult
-  func absorbRootNavigationPathIfNeeded(router: Router) -> Bool {
-    guard let destination = router.fullPath.first,
-          case .setting(let setting) = destination
-    else { return false }
-
-    selectedSetting = setting.splitRoot
-    if setting == setting.splitRoot {
-      detailPath = Array(router.fullPath.dropFirst())
-    } else {
-      detailPath = [destination] + Array(router.fullPath.dropFirst())
-    }
-    router.resetNavPath()
-    focusDetail()
-    return true
-  }
-
-  private func select(_ setting: Router.NavDest.Setting) {
-    selectedSetting = setting.splitRoot
-    detailPath = setting == setting.splitRoot ? [] : [.setting(setting)]
-    if router?.fullPath.isEmpty == false {
-      router?.resetNavPath()
-    }
-    focusDetail()
-  }
-
-  private func focusDetail() {
-    preferredColumn = .detail
-  }
-}
-
 private struct SettingsNavigationModelKey: EnvironmentKey {
-  static let defaultValue: SettingsSplitNavigationModel? = nil
+  static let defaultValue: SettingsNav? = nil
 }
 
 private struct SettingsNavigationOriginKey: EnvironmentKey {
@@ -83,7 +24,7 @@ private struct SettingsNavigationOriginKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-  var settingsNavigationModel: SettingsSplitNavigationModel? {
+  var settingsNavigationModel: SettingsNav? {
     get { self[SettingsNavigationModelKey.self] }
     set { self[SettingsNavigationModelKey.self] = newValue }
   }
@@ -95,7 +36,7 @@ extension EnvironmentValues {
 }
 
 extension View {
-  func settingsNavigation(_ model: SettingsSplitNavigationModel, origin: SettingsNavigationOrigin) -> some View {
+  func settingsNavigation(_ model: SettingsNav, origin: SettingsNavigationOrigin) -> some View {
     self
       .environment(\.settingsNavigationModel, model)
       .environment(\.settingsNavigationOrigin, origin)
@@ -105,15 +46,21 @@ extension View {
 @MainActor
 func navigateSettingsDestination(
   _ destination: Router.NavDest,
-  model: SettingsSplitNavigationModel?,
+  model: SettingsNav?,
   origin: SettingsNavigationOrigin
 ) -> Bool {
-  guard let model, case .setting = destination else { return false }
-  model.navigate(destination, from: origin)
+  guard let model, case .setting(let setting) = destination else { return false }
+  switch origin {
+  case .sidebar:
+    model.select(setting)
+  case .detail:
+    model.pushDetail(destination)
+  }
   return true
 }
 
-private extension Router.NavDest.Setting {
+extension Router.NavDest.Setting {
+  /// The sidebar root a (possibly nested) settings panel belongs to.
   var splitRoot: Router.NavDest.Setting {
     switch self {
     case .postSwipe, .commentSwipe, .filteredSubreddits:

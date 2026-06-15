@@ -30,7 +30,9 @@ func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
 }
 
 private func openRedditDestination(_ destination: Router.NavDest) {
-  Nav.shared.activeTab = .posts
+  if Nav.shared.activeTab != .posts {
+    Nav.shared.activeTab = .posts
+  }
   Nav.shared[.posts].navigateContextually(to: destination)
 }
 

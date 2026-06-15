@@ -60,6 +60,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   }
   @Published var fullPath: [NavDest] = []
   @Published var contextualDestination: NavDest? = nil
+  @Published private(set) var rootResetToken = UUID()
   var path: [NavDest] {
     get { Array(self.fullPath.dropFirst()) }
     set {
@@ -89,6 +90,12 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   func resetNavPath() {
     AppDiagnostics.asyncBreadcrumb("Router.resetNavPath", metadata: ["router": id])
     replacePath([])
+  }
+  func requestRootReset() {
+    AppDiagnostics.asyncBreadcrumb("Router.requestRootReset", metadata: ["router": id])
+    replacePath([])
+    contextualDestination = nil
+    rootResetToken = UUID()
   }
   func navigateTo(_ dest: NavDest, _ reset: Bool = false, animated: Bool = true) {
     AppDiagnostics.asyncBreadcrumb("Router.navigateTo", metadata: ["router": id, "destination": dest.diagnosticsName, "reset": "\(reset)"])

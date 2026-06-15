@@ -11,19 +11,20 @@ import WhatsNewKit
 
 struct Settings: View {
   @ObservedObject var router: Router
-  @State private var navigation = SettingsSplitNavigationModel()
+  @State private var nav = SettingsNav()
   @Environment(\.openURL) private var openURL
+  @Environment(\.horizontalSizeClass) private var hSize
   @State private var presentingWhatsNew: Bool = false
   @State private var presentingAnnouncement: Bool = false
   @State private var presentingGQLDebug: Bool = false
 
   var body: some View {
-    @Bindable var navigation = navigation
+    @Bindable var nav = nav
 
-    NavigationSplitView(columnVisibility: $navigation.columnVisibility, preferredCompactColumn: $navigation.preferredColumn) {
+    NavigationSplitView(preferredCompactColumn: $nav.preferredColumn) {
       NavigationStack {
         SettingsSidebarList(
-          selectedSetting: navigation.selectedSetting,
+          selectedSetting: nav.selection,
           showWhatsNew: { presentingWhatsNew.toggle() },
           showAnnouncements: { presentingAnnouncement.toggle() },
           showGraphQLDebug: { presentingGQLDebug.toggle() },
@@ -31,18 +32,24 @@ struct Settings: View {
           openTipJar: { openURL(URL(string: "https://ko-fi.com/locafe")!) }
         )
         .navigationTitle("Settings")
-        .settingsNavigation(navigation, origin: .sidebar)
-        .injectInTabDestinations(viewControllerHolder: router.navController)
+        .settingsNavigation(nav, origin: .sidebar)
+        .redditNavigation(nav, origin: .content)
+        .toolbar { forwardToolbarItem }
       }
       .navigationSplitViewColumnWidth(min: 300, ideal: 360)
     } detail: {
-      NavigationStack(path: $navigation.detailPath) {
-        SettingsDetailColumnContent(setting: navigation.selectedSetting)
-          .settingsNavigation(navigation, origin: .detail)
-          .injectInTabDestinations(viewControllerHolder: router.navController)
+      NavigationStack(path: $nav.detailPath) {
+        SettingsDetailColumnContent(setting: nav.selection)
+          .settingsNavigation(nav, origin: .detail)
+          .redditNavigation(nav, origin: .detail)
+          .navigationDestination(for: Router.NavDest.self) { destination in
+            RouterDestinationView(destination: destination)
+          }
+          .toolbar { forwardToolbarItem }
       }
     }
     .navigationSplitViewStyle(.balanced)
+    .forwardEdgeSwipe(isActive: hSize != .regular, navigation: nav)
     .sheet(isPresented: $presentingWhatsNew){
       if let isNew = getCurrentChangelog().first {
         WhatsNewView(whatsNew: isNew)
@@ -52,12 +59,55 @@ struct Settings: View {
       RedditGQLDebugView()
     }
     .onAppear {
-      navigation.attach(router: router)
-      _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
+      consumeContextualDestinationIfNeeded()
+      consumeRouterPathIfNeeded(router.fullPath)
       AppDiagnostics.shared.breadcrumb("Opened Settings root")
     }
-    .onChange(of: router.fullPath) { _, _ in
-      _ = navigation.absorbRootNavigationPathIfNeeded(router: router)
+    .onChange(of: router.contextualDestination) { _, _ in
+      consumeContextualDestinationIfNeeded()
+    }
+    .onChange(of: router.fullPath) { _, path in
+      consumeRouterPathIfNeeded(path)
+    }
+    .onChange(of: router.rootResetToken) { _, _ in
+      nav.reset()
+    }
+    .onChange(of: nav.forwardSnapshot) { old, new in
+      nav.recordForwardTransition(from: old, to: new)
+    }
+  }
+
+  @ToolbarContentBuilder private var forwardToolbarItem: some ToolbarContent {
+    if nav.canGoForward {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button { nav.goForward() } label: {
+          Image(systemName: "chevron.forward")
+        }
+        .accessibilityLabel("Go forward")
+      }
+    }
+  }
+
+  /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
+  private func consumeContextualDestinationIfNeeded() {
+    guard let destination = router.contextualDestination else { return }
+    router.contextualDestination = nil
+    openExternalDestination(destination)
+  }
+
+  /// `Nav.to(...)` appends to the active tab's `Router.fullPath`. Translate anything that
+  /// lands there into `nav` and clear the Router (it no longer drives this surface).
+  private func consumeRouterPathIfNeeded(_ path: [Router.NavDest]) {
+    guard !path.isEmpty else { return }
+    for destination in path { openExternalDestination(destination) }
+    router.resetNavPath()
+  }
+
+  private func openExternalDestination(_ destination: Router.NavDest) {
+    if case .setting(let setting) = destination {
+      nav.select(setting)
+    } else {
+      nav.pushDetail(destination)
     }
   }
 }

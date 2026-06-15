@@ -65,6 +65,9 @@ struct RedditTwoColumnShell<Source: View>: View {
     .onChange(of: router.fullPath) { _, path in
       consumeRouterPathIfNeeded(path)
     }
+    .onChange(of: router.rootResetToken) { _, _ in
+      nav.reset()
+    }
     .onChange(of: nav.forwardSnapshot) { old, new in
       nav.recordForwardTransition(from: old, to: new)
     }

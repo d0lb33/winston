@@ -151,6 +151,9 @@ struct AuroraRoot: View {
     .onChange(of: router.fullPath) { _, path in
       consumeRouterPathIfNeeded(path)
     }
+    .onChange(of: router.rootResetToken) { _, _ in
+      posts.reset()
+    }
     .onChange(of: posts.selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected (regular width).
       guard let newID, let post = model.post(id: newID) else { return }

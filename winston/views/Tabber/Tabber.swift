@@ -24,7 +24,7 @@ struct Tabber: View, Equatable {
   
   func meTabTap() {
     if nav.activeTab == .me {
-      nav[.me].resetNavPath()
+      nav[.me].requestRootReset()
     } else {
       nav.activeTab = .me
     }
@@ -52,7 +52,9 @@ struct Tabber: View, Equatable {
   var body: some View {
     let accountScopeKey = wire.accountScopeID?.uuidString ?? "none"
 
-    TabView(selection: $nav.activeTab.onUpdate { newTab in if nav.activeTab == newTab { nav.resetStack() } }) {
+    TabView(selection: $nav.activeTab.onUpdate { newTab in
+      nav[newTab].requestRootReset()
+    }) {
       
       WithAccountOnly {
         SubredditsStack(router: nav[.posts])
