@@ -7,7 +7,6 @@
 
 import SwiftUI
 import Defaults
-import SwiftUIIntrospect
 
 enum MultiViewType: Hashable {
   case posts(Multi)
@@ -31,10 +30,8 @@ struct MultiPostsView: View {
   @Environment(\.useTheme) private var selectedTheme
   @Environment(\.contentWidth) private var contentWidth
 //  @Environment(\.colorScheme) private var cs
-	@Environment(\.horizontalSizeClass) private var hSizeClass
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
-  @Default(.PostPageDefSettings) private var postPageDefSettings
 
   func searchCallback(str: String?) {
     searchText = str ?? ""
@@ -151,20 +148,38 @@ struct MultiPostsView: View {
   }
   
   var body: some View {
-    Group {
+    List {
       let filteredPosts = visiblePosts(posts.data)
 
-      if postPageDefSettings.useNativeCommentsView {
-        PostsFeedNative(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
-      } else if IPAD && hSizeClass == .regular {
-        SubredditPostsIPAD(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
-      } else {
-        SubredditPostsIOS(showSub: true, feedStyleKey: multi.id, lastPostAfter: lastPostAfter, filters: [], posts: filteredPosts, filter: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, editCustomFilter: editCustomFilter, hideReadPosts: hideReadPosts, fetch: fetch, selectedTheme: selectedTheme, loading: loading, reachedEndOfFeed: $reachedEndOfFeed)
+      ForEach(filteredPosts) { post in
+        AuroraPostCardRow(post: post) {
+          Nav.to(.reddit(.post(post)))
+        }
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+          .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+          .onAppear {
+            if post.id == filteredPosts.last?.id && !loading && !reachedEndOfFeed {
+              fetch(loadMore: true)
+            }
+          }
+      }
+
+      if loading {
+        HStack { Spacer(); ProgressView(); Spacer() }
+          .padding(.vertical, filteredPosts.isEmpty ? 160 : 16)
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
+      } else if reachedEndOfFeed {
+        EndOfFeedView()
+          .listRowBackground(Color.clear)
+          .listRowSeparator(.hidden)
       }
     }
     //.themedListBG(selectedTheme.postLinks.bg)
     .listStyle(.plain)
     .environment(\.defaultMinListRowHeight, 1)
+    .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
     //.loader(loading && posts.data.count == 0 && !reachedEndOfFeed)
     .navigationBarItems(
       trailing:

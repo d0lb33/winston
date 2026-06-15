@@ -57,11 +57,9 @@ struct AuroraPostResultRow: View {
   let select: (Post) -> Void
 
   var body: some View {
-    AuroraCard(post: post)
-      .contentShape(Rectangle())
-      .onTapGesture {
-        select(post)
-      }
+    AuroraPostCardRow(post: post) {
+      select(post)
+    }
   }
 }
 
@@ -388,7 +386,7 @@ struct AuroraSavedScreen: View {
             AuroraPostResultRow(post: post, select: onPostSelected)
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
-              .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+              .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
               .onAppear {
                 if post.id == model.posts.last?.id {
                   Task { await model.loadMorePosts(contentWidth: contentWidth) }

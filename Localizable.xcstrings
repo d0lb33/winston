@@ -776,6 +776,9 @@
     "Clean" : {
 
     },
+    "Clear all" : {
+
+    },
     "Clear Diagnostic Logs and Network Console" : {
 
     },
@@ -783,6 +786,9 @@
 
     },
     "Clear Logs" : {
+
+    },
+    "Clear recent search" : {
 
     },
     "Close Design Lab preview" : {
@@ -2557,9 +2563,6 @@
       }
     },
     "Mute video" : {
-
-    },
-    "Native interface (beta)" : {
 
     },
     "Navigation everywhere" : {

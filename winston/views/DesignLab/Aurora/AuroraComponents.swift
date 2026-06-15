@@ -259,15 +259,79 @@ struct AuroraCommunityHeader: View {
 
 // MARK: - Feed card
 
+struct AuroraPostCardRow: View {
+  @ObservedObject var post: Post
+  var isSelected: Bool = false
+  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  var onSelect: (() -> Void)? = nil
+
+  @State private var cardWidth: CGFloat = 0
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Color.clear
+        .frame(height: 0)
+        .frame(maxWidth: .infinity)
+        .onGeometryChange(for: CGFloat.self) { proxy in
+          proxy.size.width
+        } action: { newWidth in
+          let measuredWidth = max(1, newWidth)
+          guard abs(measuredWidth - cardWidth) > 0.5 else { return }
+          var transaction = Transaction()
+          transaction.disablesAnimations = true
+          withTransaction(transaction) {
+            ScrollPerfProbe.shared.bump("auroraRowWidthChange")
+            cardWidth = measuredWidth
+          }
+        }
+
+      if cardWidth > 0 {
+        AuroraCard(
+          post: post,
+          cardWidth: cardWidth,
+          isSelected: isSelected,
+          onCompactNavigate: onCompactNavigate
+        )
+        .frame(width: cardWidth, alignment: .leading)
+      }
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 7)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .modifier(AuroraPostCardRowTapModifier(onSelect: onSelect))
+  }
+}
+
+private struct AuroraPostCardRowTapModifier: ViewModifier {
+  let onSelect: (() -> Void)?
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if let onSelect {
+      content.onTapGesture(perform: onSelect)
+    } else {
+      content
+    }
+  }
+}
+
 struct AuroraCard: View {
   @ObservedObject var post: Post
+  let cardWidth: CGFloat
   var isSelected: Bool = false
   var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
 
   var body: some View {
     let _ = ScrollPerfProbe.shared.bump("auroraCardBody")
     if let winstonData = post.winstonData {
-      AuroraCardContent(post: post, winstonData: winstonData, isSelected: isSelected, onCompactNavigate: onCompactNavigate)
+      AuroraCardContent(
+        post: post,
+        winstonData: winstonData,
+        cardWidth: cardWidth,
+        isSelected: isSelected,
+        onCompactNavigate: onCompactNavigate
+      )
     }
   }
 }
@@ -275,22 +339,18 @@ struct AuroraCard: View {
 private struct AuroraCardContent: View {
   @ObservedObject var post: Post
   @ObservedObject var winstonData: PostWinstonData
+  let cardWidth: CGFloat
   let isSelected: Bool
   let onCompactNavigate: ((Router.NavDest) -> Void)?
   @Environment(\.auroraTheme) private var theme
   @Environment(\.useTheme) private var selectedTheme
-  @Environment(\.contentWidth) private var envContentWidth
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var defSettings
-  /// Live row width, measured so feed media reflows on fold / rotate / split changes.
-  @State private var rowWidth: CGFloat = 0
 
-  /// Media is sized from the live row width; until the first geometry pass lands we
-  /// fall back to the environment content width (≈ the column width) instead of ~0, so
-  /// inline video and images never mount at a 1pt frame and render tiny.
+  /// Media is sized from the row-owned card width. The card never measures itself,
+  /// so media cannot feed back into the width used to lay out the row.
   private var contentWidth: CGFloat {
-    let base = rowWidth > 0 ? rowWidth : CGFloat(envContentWidth)
-    return max(1, base - 32)
+    max(1, cardWidth - 32)
   }
 
   private func markAsRead() async {
@@ -359,17 +419,14 @@ private struct AuroraCardContent: View {
         .opacity(readOpacity)
       }
       .padding(16)
-      .frame(maxWidth: .infinity, alignment: .leading)
+      .frame(width: cardWidth, alignment: .leading)
       .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
       .overlay(
         RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
           .stroke(isSelected ? theme.accent.opacity(0.9) : theme.hairline,
                   lineWidth: isSelected ? 1.8 : 0.7)
       )
-      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
-        ScrollPerfProbe.shared.bump("auroraRowWidthChange")
-        rowWidth = newWidth
-      }
       .contextMenu { contextMenuItems(data) }
     }
   }
@@ -434,7 +491,7 @@ private struct AuroraCardContent: View {
   private func mediaBlock(_ data: PostData) -> some View {
     if let media = winstonData.extractedMediaForcedNormal {
       if case .repost(let repost) = media, let repostWinstonData = repost.winstonData {
-        CrosspostCardNative(repost: repost, winstonData: repostWinstonData)
+        CrosspostCardNative(repost: repost, winstonData: repostWinstonData, contentWidth: contentWidth)
       } else {
         PostRowMediaNative(
           postID: post.id,

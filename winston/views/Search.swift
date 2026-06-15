@@ -91,47 +91,87 @@ struct SearchSectionHeader: View {
 
 struct SearchSuggestionRow: View {
   let suggestion: SearchSuggestion
-  let select: (String) -> Void
+  let select: (SearchSuggestion) -> Void
+  let clear: ((String) -> Void)?
 
   @Environment(\.auroraTheme) private var theme
 
   var body: some View {
-    Button {
-      select(suggestion.query)
-    } label: {
-      HStack(alignment: .center, spacing: 16) {
-        Image(systemName: suggestion.kind == .recent ? "clock" : "arrow.up.right")
-          .font(.headline.weight(.semibold))
-          .foregroundStyle(theme.accent)
-          .frame(width: 34, height: 34)
-          .background(theme.chipFill, in: .circle)
+    HStack(alignment: .center, spacing: 12) {
+      Button {
+        select(suggestion)
+      } label: {
+        HStack(alignment: .center, spacing: 16) {
+          Image(systemName: suggestion.kind == .recent ? "clock" : "arrow.up.right")
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(theme.accent)
+            .frame(width: 34, height: 34)
+            .background(theme.chipFill, in: .circle)
 
-        VStack(alignment: .leading, spacing: 3) {
-          Text(suggestion.displayQuery)
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.primary)
-            .lineLimit(2)
-            .multilineTextAlignment(.leading)
+          VStack(alignment: .leading, spacing: 3) {
+            Text(suggestion.displayQuery)
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(.primary)
+              .lineLimit(2)
+              .multilineTextAlignment(.leading)
 
-          if let subtitle = suggestion.subtitle, !subtitle.isEmpty {
-            Text(subtitle)
-              .font(.caption)
-              .foregroundStyle(.secondary)
-              .lineLimit(1)
+            if let subtitle = suggestion.subtitle, !subtitle.isEmpty {
+              Text(subtitle)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
           }
-        }
 
-        Spacer(minLength: 0)
+          Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
       }
-      .padding(14)
-      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
-          .stroke(theme.hairline, lineWidth: 0.7)
-      )
-      .contentShape(Rectangle())
+      .buttonStyle(.plain)
+
+      if suggestion.kind == .recent, let clear {
+        Button(role: .destructive) {
+          clear(suggestion.query)
+        } label: {
+          Image(systemName: "xmark")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .frame(width: 30, height: 30)
+            .background(theme.chipFill, in: .circle)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Clear recent search")
+        .accessibilityValue(suggestion.displayQuery)
+      }
     }
-    .buttonStyle(.plain)
+    .padding(14)
+    .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+        .stroke(theme.hairline, lineWidth: 0.7)
+    )
+  }
+}
+
+struct SearchRecentSectionHeader: View {
+  let clearAll: () -> Void
+
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    HStack(spacing: 12) {
+      AuroraResultSectionHeader(title: "Recent", count: nil)
+      Spacer(minLength: 8)
+      Button(role: .destructive) {
+        clearAll()
+      } label: {
+        Label("Clear all", systemImage: "trash")
+          .font(.caption.weight(.semibold))
+          .foregroundStyle(theme.accent)
+      }
+      .buttonStyle(.plain)
+    }
+    .textCase(nil)
   }
 }
 
@@ -381,6 +421,23 @@ private final class SearchViewModel: ObservableObject {
     recent.insert(trimmed, at: 0)
     Defaults[.recentSearchQueries] = Array(recent.prefix(10))
     recentSuggestions = Self.localRecentSuggestions()
+  }
+
+  func removeRecentSearch(_ query: String) {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+
+    Defaults[.recentSearchQueries] = Defaults[.recentSearchQueries]
+      .filter { storedQuery in
+        let storedTrimmed = storedQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !storedTrimmed.isEmpty && storedTrimmed.caseInsensitiveCompare(trimmed) != .orderedSame
+      }
+    recentSuggestions = Self.localRecentSuggestions()
+  }
+
+  func clearRecentSearches() {
+    Defaults[.recentSearchQueries] = []
+    recentSuggestions = []
   }
 
   func cancel() {
@@ -642,9 +699,9 @@ struct Search: View {
 
   @ViewBuilder private var nullStateContent: some View {
     if !model.recentSuggestions.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Recent", count: nil)) {
+      Section(header: SearchRecentSectionHeader(clearAll: model.clearRecentSearches)) {
         ForEach(model.recentSuggestions) { suggestion in
-          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion)
+          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: model.removeRecentSearch)
         }
       }
     }
@@ -654,7 +711,7 @@ struct Search: View {
         AuroraLoadMoreFooter(loading: true)
       } else {
         ForEach(model.trendingSuggestions) { suggestion in
-          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion)
+          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: nil)
         }
       }
     }
@@ -775,10 +832,11 @@ struct Search: View {
     .buttonStyle(.plain)
   }
 
-  private func activateSuggestion(_ query: String) {
-    searchQuery.text = query
-    model.recordRecentSearch(query)
-    model.refreshQuickCommunities(query: query)
+  private func activateSuggestion(_ suggestion: SearchSuggestion) {
+    searchQuery.text = suggestion.query
+    searchScope = .all
+    model.recordRecentSearch(suggestion.query)
+    model.refreshFullSearch(query: suggestion.query, scope: .all, contentWidth: contentWidth)
   }
 
   private func selectPost(_ post: Post) {

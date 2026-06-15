@@ -51,7 +51,7 @@ struct AuroraFeed: View {
           .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
       }
       ForEach(visiblePosts) { post in
-        AuroraCard(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
+        AuroraPostCardRow(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
           .tag(post.id)
           .background {
             if postLinkDefSettings.readOnScroll {
@@ -65,7 +65,7 @@ struct AuroraFeed: View {
           }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
-          .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+          .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
           .swipeActions(edge: .leading, allowsFullSwipe: true) {
             Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
               .tint(.orange)

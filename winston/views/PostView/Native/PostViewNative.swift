@@ -8,8 +8,7 @@
 //  and crucially no whole-List re-render on every background avatar update (the
 //  comment forest is owned by CommentTreeModel, not observed here).
 //
-//  Lives behind PostPageDefSettings.useNativeCommentsView; the legacy PostView
-//  is the fallback.
+//  Native post + comments screen used by the Aurora navigation flow.
 //
 
 import SwiftUI

@@ -127,7 +127,18 @@ private struct PostMediaNative: View, Equatable {
 struct CrosspostCardNative: View {
   @ObservedObject var repost: Post
   @ObservedObject var winstonData: PostWinstonData
+  var contentWidth: CGFloat? = nil
   @Default(.PostPageDefSettings) private var defSettings
+  @Default(.PostLinkDefSettings) private var postLinkDefSettings
+  @Environment(\.useTheme) private var selectedTheme
+
+  private var constrainedWidth: CGFloat? {
+    contentWidth.map { max(1, $0) }
+  }
+
+  private var constrainedMediaWidth: CGFloat {
+    max(1, (constrainedWidth ?? 0) - 24)
+  }
 
   var body: some View {
     if let data = repost.data {
@@ -150,18 +161,41 @@ struct CrosspostCardNative: View {
           .frame(maxWidth: .infinity, alignment: .leading)
 
         if let media = winstonData.extractedMediaForcedNormal {
-          PostMediaNative(
-            postID: repost.id,
-            postTitle: data.title,
-            badgeKit: data.badgeKit,
-            avatarImageRequest: winstonData.avatarImageRequest,
-            media: media,
-            over18: data.over_18 ?? false,
-            blurNSFW: defSettings.blurNSFW,
-            maxMediaHeightPct: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
-            dimensions: $winstonData.postDimensionsForcedNormal
-          )
-          .equatable()
+          if constrainedWidth != nil {
+            PostRowMediaNative(
+              postID: repost.id,
+              postTitle: data.title,
+              badgeKit: data.badgeKit,
+              avatarImageRequest: winstonData.avatarImageRequest,
+              media: media,
+              over18: data.over_18 ?? false,
+              blurNSFW: defSettings.blurNSFW,
+              isMediaTappable: postLinkDefSettings.isMediaTappable,
+              compact: false,
+              columnWidth: constrainedMediaWidth,
+              maxMediaHeightPct: postLinkDefSettings.maxMediaHeightScreenPercentage,
+              cornerRadius: 12,
+              marksSeenOnPreview: postLinkDefSettings.lightboxReadsPost,
+              markAsSeen: { await repost.toggleSeen(true) },
+              dimsTheme: selectedTheme.postLinks.theme,
+              feedItemKey: repost.id,
+              resetVideo: nil
+            )
+            .equatable()
+          } else {
+            PostMediaNative(
+              postID: repost.id,
+              postTitle: data.title,
+              badgeKit: data.badgeKit,
+              avatarImageRequest: winstonData.avatarImageRequest,
+              media: media,
+              over18: data.over_18 ?? false,
+              blurNSFW: defSettings.blurNSFW,
+              maxMediaHeightPct: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
+              dimensions: $winstonData.postDimensionsForcedNormal
+            )
+            .equatable()
+          }
         }
 
         if !data.selftext.isEmpty {
@@ -171,8 +205,10 @@ struct CrosspostCardNative: View {
         }
       }
       .padding(12)
+      .frame(width: constrainedWidth, alignment: .leading)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+      .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
   }
 }
