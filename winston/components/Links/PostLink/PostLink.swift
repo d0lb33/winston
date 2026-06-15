@@ -141,11 +141,6 @@ extension View {
       .contextMenu(menuItems: { PostLinkContext(post: post) }, preview: { PostLinkContextPreview(post: post, sub: sub) })
       .foregroundStyle(.primary)
       .multilineTextAlignment(.leading)
-      .onDisappear {
-        if readPostOnScroll {
-          FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
-        }
-      }
   }
 
   func postReadDimmed(post: Post, theme: SubPostsListTheme) -> some View {

@@ -175,9 +175,11 @@ struct AuroraCommunityResultRow: View {
       )
     }
     .buttonStyle(.plain)
-    .task {
-      if subreddit.needsAuroraMetadataRefresh {
-        await subreddit.refreshSubreddit()
+    .onAppear {
+      Task {
+        if subreddit.needsAuroraMetadataRefresh {
+          await subreddit.refreshSubreddit()
+        }
       }
     }
   }
@@ -430,8 +432,8 @@ struct AuroraSavedScreen: View {
     .navigationBarTitleDisplayMode(.inline)
     .refreshable { await model.reload(contentWidth: contentWidth) }
     .overlay { emptyState }
-    .task {
-      await model.loadInitialIfNeeded(contentWidth: contentWidth)
+    .onAppear {
+      Task { await model.loadInitialIfNeeded(contentWidth: contentWidth) }
     }
     .onChange(of: wire.accountScopeID) { _, _ in
       model.resetForAccountSwitch()

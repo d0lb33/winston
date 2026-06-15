@@ -11,6 +11,19 @@
 import SwiftUI
 import Defaults
 
+private struct AuroraReadCandidate: Equatable {
+  let id: String
+  let maxY: CGFloat
+}
+
+private struct AuroraReadCandidatePreferenceKey: PreferenceKey {
+  static var defaultValue: [AuroraReadCandidate] = []
+
+  static func reduce(value: inout [AuroraReadCandidate], nextValue: () -> [AuroraReadCandidate]) {
+    value.append(contentsOf: nextValue())
+  }
+}
+
 struct AuroraFeed: View {
   let model: AuroraFeedModel
   let title: String
@@ -21,6 +34,11 @@ struct AuroraFeed: View {
   var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
+  @Default(.PostLinkDefSettings) private var postLinkDefSettings
+
+  @State private var previousScrollOffsetY: CGFloat?
+  @State private var latestReadCandidateMaxYByID: [String: CGFloat] = [:]
+  @State private var previousReadCandidateMaxYByID: [String: CGFloat] = [:]
 
   var body: some View {
     let visiblePosts = model.visiblePosts
@@ -35,6 +53,16 @@ struct AuroraFeed: View {
       ForEach(visiblePosts) { post in
         AuroraCard(post: post, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
           .tag(post.id)
+          .background {
+            if postLinkDefSettings.readOnScroll {
+              GeometryReader { proxy in
+                Color.clear.preference(
+                  key: AuroraReadCandidatePreferenceKey.self,
+                  value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
+                )
+              }
+            }
+          }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
           .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
@@ -68,6 +96,14 @@ struct AuroraFeed: View {
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
     .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.contentOffset.y
+    } action: { _, newOffsetY in
+      markReadCandidatesIfNeeded(offsetY: newOffsetY, visiblePosts: visiblePosts)
+    }
+    .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
+      latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
+    }
     .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
     .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
     .overlay(alignment: .bottomTrailing) {
@@ -78,13 +114,32 @@ struct AuroraFeed: View {
       .padding(.trailing, 12)
       .padding(.bottom, 12)
     }
-    .task(id: model.feedIdentity) {
-      await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
+    .onAppear {
+      Task { await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth) }
     }
     .onChange(of: sort) { _, newSort in
       Task { await model.reload(sort: newSort, contentWidth: contentWidth) }
     }
     .toolbar { sortToolbar }
+  }
+
+  private func markReadCandidatesIfNeeded(offsetY: CGFloat, visiblePosts: [Post]) {
+    defer {
+      previousScrollOffsetY = offsetY
+      previousReadCandidateMaxYByID = latestReadCandidateMaxYByID
+    }
+
+    guard postLinkDefSettings.readOnScroll, let previousScrollOffsetY, offsetY > previousScrollOffsetY else { return }
+
+    let crossedIDs: Set<String> = Set(latestReadCandidateMaxYByID.compactMap { id, maxY in
+      guard let previousMaxY = previousReadCandidateMaxYByID[id] else { return nil }
+      return previousMaxY > 0 && maxY <= 0 ? id : nil
+    })
+    guard !crossedIDs.isEmpty else { return }
+
+    visiblePosts
+      .filter { crossedIDs.contains($0.id) }
+      .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {

@@ -27,6 +27,7 @@ struct PostRowMediaNative: View, Equatable {
       && lhs.feedItemKey == rhs.feedItemKey
       && lhs.widthBucket == rhs.widthBucket
       && lhs.mediaIdentity == rhs.mediaIdentity
+      && lhs.marksSeenOnPreview == rhs.marksSeenOnPreview
   }
 
   let postID: String
@@ -43,6 +44,8 @@ struct PostRowMediaNative: View, Equatable {
   /// Pre-decoded once upstream — never read a Codable Default in a row body.
   let maxMediaHeightPct: CGFloat
   let cornerRadius: CGFloat
+  let marksSeenOnPreview: Bool
+  let markAsSeen: (() async -> ())?
   /// Stable feed key (the outer post id) for inline-video center election.
   let feedItemKey: String?
   let resetVideo: ((SharedVideo) -> ())?
@@ -65,6 +68,8 @@ struct PostRowMediaNative: View, Equatable {
     columnWidth: CGFloat,
     maxMediaHeightPct: CGFloat,
     cornerRadius: CGFloat,
+    marksSeenOnPreview: Bool,
+    markAsSeen: (() async -> ())?,
     dimsTheme: PostLinkTheme,
     feedItemKey: String?,
     resetVideo: ((SharedVideo) -> ())?
@@ -81,6 +86,8 @@ struct PostRowMediaNative: View, Equatable {
     self.columnWidth = columnWidth
     self.maxMediaHeightPct = maxMediaHeightPct
     self.cornerRadius = cornerRadius
+    self.marksSeenOnPreview = marksSeenOnPreview
+    self.markAsSeen = markAsSeen
     self.feedItemKey = feedItemKey
     self.resetVideo = resetVideo
     _dims = State(initialValue: PostDimensions(contentWidth: 0, compact: compact, theme: dimsTheme, titleSize: .zero, badgeSize: .zero, spacingHeight: 0))
@@ -135,7 +142,7 @@ struct PostRowMediaNative: View, Equatable {
       postTitle: postTitle,
       badgeKit: badgeKit,
       avatarImageRequest: avatarImageRequest,
-      markAsSeen: nil,
+      markAsSeen: marksSeenOnPreview ? markAsSeen : nil,
       cornerRadius: cornerRadius,
       blurPostLinkNSFW: blurNSFW,
       media: media,

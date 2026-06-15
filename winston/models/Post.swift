@@ -349,47 +349,56 @@ extension Post {
     
     return nil
   }
+
+  @MainActor
+  func setLocalSeenState(_ seen: Bool) {
+    guard (data?.winstonSeen ?? false) != seen else { return }
+
+    withAnimation {
+      ScrollPerfProbe.shared.bump("postSeenOptimistic")
+      var newData = data
+      newData?.winstonSeen = seen
+      data = newData
+    }
+  }
   
   func toggleSeen(_ seen: Bool? = nil, optimistic: Bool = false) async -> Void {
-    let context = PersistenceController.shared.primaryBGContext
-    if (self.data?.winstonSeen ?? false) == seen { return }
-    if optimistic {
-      let prev = self.data?.winstonSeen ?? false
-      let new = seen == nil ? !prev : seen
-      DispatchQueue.main.async {
-        withAnimation {
-          if prev != new {
-            ScrollPerfProbe.shared.bump("postSeenOptimistic")
-            self.data?.winstonSeen = new
-          }
-        }
+    let previous = self.data?.winstonSeen ?? false
+    let next = seen ?? !previous
+
+    if previous == next {
+      if next {
+        await Self.persistSeenPostIDs([id])
       }
+      return
     }
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    if let results = (await context.perform(schedule: .enqueued) { try? context.fetch(fetchRequest) }) {
-      await context.perform(schedule: .enqueued) {
-        let foundPost = results.first(where: { obj in obj.postID == self.id })
-        
-        if let foundPost = foundPost {
-          if seen == nil || seen == false {
-            context.delete(foundPost)
-            if !optimistic {
-              self.data?.winstonSeen = false
-            }
-          }
-        } else if seen == nil || seen == true {
-          let newSeenPost = SeenPost(context: context)
-          newSeenPost.postID = self.id
-          try? context.save()
-          if !optimistic {
-            DispatchQueue.main.async {
-              withAnimation {
-                self.data?.winstonSeen = true
-              }
-            }
-          }
-        }
-      }
+
+    if optimistic {
+      await setLocalSeenState(next)
+    }
+
+    if next {
+      await Self.persistSeenPostIDs([id])
+    } else {
+      await Self.deleteSeenPostID(id)
+    }
+
+    if !optimistic {
+      await setLocalSeenState(next)
+    }
+  }
+
+  static func deleteSeenPostID(_ id: String) async {
+    guard !id.isEmpty else { return }
+
+    let context = PersistenceController.shared.primaryBGContext
+    await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      fetchRequest.predicate = NSPredicate(format: "postID == %@", id as CVarArg)
+
+      guard let results = try? context.fetch(fetchRequest), !results.isEmpty else { return }
+      results.forEach { context.delete($0) }
+      try? context.save()
     }
   }
 

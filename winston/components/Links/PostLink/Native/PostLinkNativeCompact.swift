@@ -30,6 +30,8 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
   var over18: Bool { post.data?.over_18 ?? false }
   private var thumbSize: CGFloat { scaledCompactModeThumbSize(compact: true, thumbnailSize: defSettings.compactMode.thumbnailSize) }
 
+  func markAsRead() async { await post.toggleSeen(true) }
+
   func openPost() { Nav.to(.reddit(.post(post))) }
   func openSubreddit() {
     if let subName = post.data?.subreddit { Nav.to(.reddit(.subFeed(Subreddit(id: subName)))) }
@@ -84,6 +86,8 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
             columnWidth: thumbSize,
             maxMediaHeightPct: defSettings.maxMediaHeightScreenPercentage,
             cornerRadius: theme.theme.mediaCornerRadius,
+            marksSeenOnPreview: defSettings.lightboxReadsPost,
+            markAsSeen: markAsRead,
             dimsTheme: theme.theme,
             feedItemKey: id,
             resetVideo: resetVideo

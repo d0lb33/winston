@@ -46,7 +46,7 @@ final class AuroraFeedModel {
     posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
   }
 
-  /// Point the column at a different feed and clear state so the feed's `.task(id:)`
+  /// Point the column at a different feed and clear state so the next appearance
   /// reloads from the top. Synchronous so the view sees the reset immediately.
   func prepare(for sub: Subreddit) {
     guard feedIdentity(for: sub) != feedIdentity else { return }

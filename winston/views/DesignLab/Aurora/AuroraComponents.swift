@@ -233,9 +233,11 @@ struct AuroraCommunityHeader: View {
     .overlay(
       RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous).stroke(theme.hairline, lineWidth: 0.7)
     )
-    .task {
-      if sub.needsAuroraMetadataRefresh {
-        await sub.refreshSubreddit()
+    .onAppear {
+      Task {
+        if sub.needsAuroraMetadataRefresh {
+          await sub.refreshSubreddit()
+        }
       }
     }
   }
@@ -289,6 +291,10 @@ private struct AuroraCardContent: View {
   private var contentWidth: CGFloat {
     let base = rowWidth > 0 ? rowWidth : CGFloat(envContentWidth)
     return max(1, base - 32)
+  }
+
+  private func markAsRead() async {
+    await post.toggleSeen(true)
   }
 
   var body: some View {
@@ -361,12 +367,6 @@ private struct AuroraCardContent: View {
         rowWidth = newWidth
       }
       .contextMenu { contextMenuItems(data) }
-      .onDisappear {
-        if defSettings.readOnScroll {
-          ScrollPerfProbe.shared.bump("auroraReadOnDisappear")
-          FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
-        }
-      }
     }
   }
 
@@ -439,6 +439,8 @@ private struct AuroraCardContent: View {
           columnWidth: contentWidth,
           maxMediaHeightPct: defSettings.maxMediaHeightScreenPercentage,
           cornerRadius: theme.mediaRadius,
+          marksSeenOnPreview: defSettings.lightboxReadsPost,
+          markAsSeen: markAsRead,
           dimsTheme: selectedTheme.postLinks.theme,
           feedItemKey: post.id,
           resetVideo: nil

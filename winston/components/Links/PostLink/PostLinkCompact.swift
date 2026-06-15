@@ -71,9 +71,6 @@ struct PostLinkCompact: View, Equatable, Identifiable {
   }
   
   func onDisappear() {
-    if defSettings.readOnScroll {
-      FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
-    }
   }
   
   var over18: Bool { post.data?.over_18 ?? false }

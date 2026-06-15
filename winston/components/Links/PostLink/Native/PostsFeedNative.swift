@@ -23,7 +23,7 @@ private final class NativeReadOnScrollBatcher {
   private let maxBatchAge: TimeInterval = 1.0
 
   private(set) var isScrolling = false
-  private var velocityY: CGFloat = 0
+  private(set) var velocityY: CGFloat = 0
   private var triggeredPostIDs: Set<String> = []
   private var pendingPosts: [String: Post] = [:]
   private var maxAgeFlushWorkItem: DispatchWorkItem?
@@ -42,14 +42,12 @@ private final class NativeReadOnScrollBatcher {
 
   func markCrossed(_ post: Post) {
     guard post.data?.winstonSeen != true else { return }
+    if pendingPosts[post.id] == nil {
+      triggeredPostIDs.remove(post.id)
+    }
     guard triggeredPostIDs.insert(post.id).inserted else { return }
 
-    withAnimation {
-      ScrollPerfProbe.shared.bump("postSeenOptimistic")
-      var data = post.data
-      data?.winstonSeen = true
-      post.data = data
-    }
+    post.setLocalSeenState(true)
 
     if shouldPersistImmediately {
       persist([post])
@@ -70,6 +68,10 @@ private final class NativeReadOnScrollBatcher {
 
   private var shouldPersistImmediately: Bool {
     !isScrolling || abs(velocityY) < slowVelocityThreshold
+  }
+
+  var isMovingTowardLaterPosts: Bool {
+    velocityY > 0
   }
 
   private func scheduleMaxAgeFlush() {
@@ -136,6 +138,8 @@ struct PostsFeedNative: View {
   @State private var readBatcher = NativeReadOnScrollBatcher()
   @State private var previousScrollOffsetY: CGFloat?
   @State private var previousScrollOffsetTimestamp: TimeInterval?
+  @State private var latestReadCandidateMaxYByID: [String: CGFloat] = [:]
+  @State private var previousReadCandidateMaxYByID: [String: CGFloat] = [:]
 
   private let gutter: CGFloat = 12
   private let maxContentWidth: CGFloat = 1300
@@ -200,7 +204,7 @@ struct PostsFeedNative: View {
       readBatcher.flushPendingPosts()
     }
     .onPreferenceChange(NativeReadCandidatePreferenceKey.self) { candidates in
-      markReadCandidatesPastTop(candidates)
+      latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
     }
     .floatingMenu(subId: styleKey, filters: filters, selected: filter, filterCallback: filterCallback, searchText: searchText, searchCallback: searchCallback, customFilterCallback: editCustomFilter, hideReadPosts: hideReadPosts)
   }
@@ -254,10 +258,14 @@ struct PostsFeedNative: View {
     readBatcher.markCrossed(post)
   }
 
-  private func markReadCandidatesPastTop(_ candidates: [NativeReadCandidate]) {
-    guard postLinkDefSettings.readOnScroll, readBatcher.isScrolling else { return }
+  private func markReadCandidatesPastTop() {
+    defer { previousReadCandidateMaxYByID = latestReadCandidateMaxYByID }
+    guard postLinkDefSettings.readOnScroll, readBatcher.isScrolling, readBatcher.isMovingTowardLaterPosts else { return }
 
-    let crossedIDs = Set(candidates.lazy.filter { $0.maxY <= visibleFeedTop }.map(\.id))
+    let crossedIDs: Set<String> = Set(latestReadCandidateMaxYByID.compactMap { id, maxY in
+      guard let previousMaxY = previousReadCandidateMaxYByID[id] else { return nil }
+      return previousMaxY > visibleFeedTop && maxY <= visibleFeedTop ? id : nil
+    })
     guard !crossedIDs.isEmpty else { return }
 
     posts
@@ -276,6 +284,7 @@ struct PostsFeedNative: View {
 
     let elapsed = max(now - previousScrollOffsetTimestamp, 0.001)
     readBatcher.updateVelocity((offsetY - previousScrollOffsetY) / elapsed)
+    markReadCandidatesPastTop()
   }
 
   @ViewBuilder

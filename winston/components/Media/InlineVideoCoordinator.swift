@@ -21,10 +21,12 @@ final class FeedScrollWorkCoordinator {
   static let shared = FeedScrollWorkCoordinator()
 
   let idleDelay: TimeInterval = 0.18
+  private let seenBatchMaxAge: TimeInterval = 1.0
   private(set) var isScrolling = false
   private(set) var isSettling = false
 
   private var idleWorkItem: DispatchWorkItem?
+  private var seenBatchWorkItem: DispatchWorkItem?
   private var scheduledWorkItems: [String: DispatchWorkItem] = [:]
   private var pendingWork: [String: () -> Void] = [:]
   private var pendingSeenPosts: [String: Post] = [:]
@@ -62,16 +64,23 @@ final class FeedScrollWorkCoordinator {
   }
 
   func markSeenWhenIdle(_ post: Post) {
+    guard isScrolling || isSettling else { return }
     guard post.data?.winstonSeen != true else { return }
+    post.setLocalSeenState(true)
     pendingSeenPosts[post.id] = post
 
-    guard !shouldDeferWork else { return }
-    scheduleIdleFlush(delay: 0)
+    if shouldDeferWork {
+      scheduleSeenBatchFlush()
+    } else {
+      scheduleIdleFlush(delay: 0)
+    }
   }
 
   func flushPendingWork() {
     idleWorkItem?.cancel()
     idleWorkItem = nil
+    seenBatchWorkItem?.cancel()
+    seenBatchWorkItem = nil
     isSettling = false
     cancelScheduledWorkItems()
 
@@ -79,13 +88,7 @@ final class FeedScrollWorkCoordinator {
     pendingWork.removeAll(keepingCapacity: true)
     workItems.values.forEach { $0() }
 
-    let seenPosts = Array(pendingSeenPosts.values)
-    pendingSeenPosts.removeAll(keepingCapacity: true)
-    seenPosts.forEach { post in
-      Task(priority: .background) {
-        await post.toggleSeen(true, optimistic: true)
-      }
-    }
+    flushPendingSeenPosts()
   }
 
   private func scheduleIdleFlush(delay: TimeInterval? = nil) {
@@ -97,6 +100,31 @@ final class FeedScrollWorkCoordinator {
     }
     idleWorkItem = item
     DispatchQueue.main.asyncAfter(deadline: .now() + (delay ?? idleDelay), execute: item)
+  }
+
+  private func scheduleSeenBatchFlush() {
+    guard seenBatchWorkItem == nil else { return }
+
+    let item = DispatchWorkItem { [weak self] in
+      Task { @MainActor in
+        self?.flushPendingSeenPosts()
+      }
+    }
+    seenBatchWorkItem = item
+    DispatchQueue.main.asyncAfter(deadline: .now() + seenBatchMaxAge, execute: item)
+  }
+
+  private func flushPendingSeenPosts() {
+    seenBatchWorkItem?.cancel()
+    seenBatchWorkItem = nil
+
+    let seenPostIDs = Set(pendingSeenPosts.values.filter { $0.data?.winstonSeen == true }.map(\.id))
+    pendingSeenPosts.removeAll(keepingCapacity: true)
+    guard !seenPostIDs.isEmpty else { return }
+
+    Task(priority: .background) {
+      await Post.persistSeenPostIDs(seenPostIDs)
+    }
   }
 
   private func schedulePendingWork(key: String, delay: TimeInterval) {

@@ -34,6 +34,8 @@ struct PostLinkNative: View, Equatable, Identifiable {
   var inlineVideoFeedKey: String { inlineVideoKeyOverride ?? id }
   var over18: Bool { post.data?.over_18 ?? false }
 
+  func markAsRead() async { await post.toggleSeen(true) }
+
   func openPost() { Nav.to(.reddit(.post(post))) }
 
   func openSubreddit() {
@@ -119,6 +121,8 @@ struct PostLinkNative: View, Equatable, Identifiable {
           columnWidth: liveWidth,
           maxMediaHeightPct: defSettings.maxMediaHeightScreenPercentage,
           cornerRadius: theme.theme.mediaCornerRadius,
+          marksSeenOnPreview: defSettings.lightboxReadsPost,
+          markAsSeen: markAsRead,
           dimsTheme: theme.theme,
           feedItemKey: inlineVideoFeedKey,
           resetVideo: resetVideo
