@@ -27,7 +27,6 @@ struct AuroraPostDetail: View {
   @State private var commentLoadError: String? = nil
   @State private var isFetching = false
   @State private var pendingHighlight: String? = nil
-  @State private var pendingLoadMoreAnchor: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -89,8 +88,7 @@ struct AuroraPostDetail: View {
               swipeActions: commentDefSettings.swipeActions,
               swipeAnywhere: swipeAnywhere,
               maxMediaHeightPct: maxMediaHeightPct,
-              contentWidth: contentWidth,
-              onLoadMoreWillRebuild: { pendingLoadMoreAnchor = $0 }
+              contentWidth: contentWidth
             )
           }
           .listRowBackground(Color.clear)
@@ -116,10 +114,6 @@ struct AuroraPostDetail: View {
           if let target = pendingHighlight {
             withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
             pendingHighlight = nil
-            pendingLoadMoreAnchor = nil
-          } else if let anchorID = pendingLoadMoreAnchor {
-            withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(anchorID, anchor: .bottom) }
-            pendingLoadMoreAnchor = nil
           }
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in

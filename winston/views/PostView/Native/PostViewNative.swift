@@ -26,7 +26,6 @@ struct PostViewNative: View {
   @State private var commentLoadError: String? = nil
   @State private var isFetching = false
   @State private var pendingHighlight: String? = nil
-  @State private var pendingLoadMoreAnchor: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -86,8 +85,7 @@ struct PostViewNative: View {
             opAuthor: post.data?.author,
             swipeActions: commentDefSettings.swipeActions,
             swipeAnywhere: swipeAnywhere,
-            maxMediaHeightPct: maxMediaHeightPct,
-            onLoadMoreWillRebuild: { pendingLoadMoreAnchor = $0 }
+            maxMediaHeightPct: maxMediaHeightPct
           )
         } header: {
           if !model.rows.isEmpty {
@@ -118,10 +116,6 @@ struct PostViewNative: View {
         if let target = pendingHighlight {
           withAnimation(spring) { proxy.scrollTo(target, anchor: .center) }
           pendingHighlight = nil
-          pendingLoadMoreAnchor = nil
-        } else if let anchorID = pendingLoadMoreAnchor {
-          withAnimation(.snappy(duration: 0.2)) { proxy.scrollTo(anchorID, anchor: .bottom) }
-          pendingLoadMoreAnchor = nil
         }
       }
       // A reply/edit posted through the global modal mutates the comment tree;

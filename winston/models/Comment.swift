@@ -209,11 +209,9 @@ extension Comment {
       )
       // Nothing new came back: drop the stub so it stops advertising replies.
       await MainActor.run {
-        withAnimation {
-          switch parent {
-          case .comment(let comment): comment.childrenWinston.data.removeAll { $0.id == self.id }
-          case .post(let postArr): postArr.data.removeAll { $0.id == self.id }
-          }
+        switch parent {
+        case .comment(let comment): comment.childrenWinston.data.removeAll { $0.id == self.id }
+        case .post(let postArr): postArr.data.removeAll { $0.id == self.id }
         }
       }
       return
@@ -248,10 +246,8 @@ extension Comment {
       switch parent {
       case .comment(let comment):
         if let index = comment.childrenWinston.data.firstIndex(where: { $0.id == id }) {
-          withAnimation {
-            comment.childrenWinston.data.remove(at: index)
-            comment.childrenWinston.data.insert(contentsOf: loadedComments, at: index)
-          }
+          comment.childrenWinston.data.remove(at: index)
+          comment.childrenWinston.data.insert(contentsOf: loadedComments, at: index)
           AppDiagnostics.asyncRecord(
             .debug,
             category: "ui.commentTree",
@@ -266,10 +262,8 @@ extension Comment {
         }
       case .post(let postArr):
         if let index = postArr.data.firstIndex(where: { $0.id == id }) {
-          withAnimation {
-            postArr.data.remove(at: index)
-            postArr.data.insert(contentsOf: loadedComments, at: index)
-          }
+          postArr.data.remove(at: index)
+          postArr.data.insert(contentsOf: loadedComments, at: index)
           AppDiagnostics.asyncRecord(
             .debug,
             category: "ui.commentTree",

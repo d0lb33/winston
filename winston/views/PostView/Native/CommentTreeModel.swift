@@ -103,14 +103,6 @@ final class CommentTreeModel {
 
   func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
 
-  func loadMoreScrollAnchor(before rowID: String) -> String? {
-    guard let index = rows.firstIndex(where: { $0.id == rowID }), index > rows.startIndex else { return nil }
-    for row in rows[..<index].reversed() where row.kind == .comment {
-      return row.id
-    }
-    return nil
-  }
-
   func toggleCollapse(_ id: String) {
     if collapsed.contains(id) {
       collapsed.remove(id)

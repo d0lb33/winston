@@ -25,7 +25,6 @@ struct CommentsTreeView: View {
   let swipeAnywhere: Bool
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
-  let onLoadMoreWillRebuild: (String) -> Void
 
   init(
     model: CommentTreeModel,
@@ -37,8 +36,7 @@ struct CommentsTreeView: View {
     swipeActions: SwipeActionsSet,
     swipeAnywhere: Bool,
     maxMediaHeightPct: CGFloat,
-    contentWidth: CGFloat = .screenW,
-    onLoadMoreWillRebuild: @escaping (String) -> Void = { _ in }
+    contentWidth: CGFloat = .screenW
   ) {
     self.model = model
     self.loading = loading
@@ -50,7 +48,6 @@ struct CommentsTreeView: View {
     self.swipeAnywhere = swipeAnywhere
     self.maxMediaHeightPct = maxMediaHeightPct
     self.contentWidth = contentWidth
-    self.onLoadMoreWillRebuild = onLoadMoreWillRebuild
   }
 
   var body: some View {
@@ -91,8 +88,7 @@ struct CommentsTreeView: View {
           swipeActions: swipeActions,
           swipeAnywhere: swipeAnywhere,
           maxMediaHeightPct: maxMediaHeightPct,
-          contentWidth: contentWidth,
-          onLoadMoreWillRebuild: onLoadMoreWillRebuild
+          contentWidth: contentWidth
         )
       }
     }
