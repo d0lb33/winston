@@ -201,30 +201,38 @@ final class InlineVideoCoordinator {
     return warmVideoKeys.contains(key)
   }
 
-  /// Cheap per-frame sink for row centers. Does NOT elect (and does not invalidate
-  /// views) — election is deferred to rest so scroll updates do not churn playback.
+  /// Cheap per-frame sink for row centers. Slow scrolls may elect the centered video
+  /// immediately; fast scrolls wait until velocity drops or the feed settles.
   func updateCenters(_ centers: [InlineVideoCenter]) {
     ScrollPerfProbe.shared.bump("inlineCenterUpdate")
     latestCenters = centers.sorted { $0.midY < $1.midY }
     updateScrollVelocity(from: latestCenters)
+
+    if isScrolling {
+      guard !isFastScrolling else { return }
+      electCenteredVideo(updateWarmSet: false)
+      return
+    }
 
     // Only (re)populate the warm set at rest. Mounting paused AVPlayers + AVPlayerLayers
     // mid-scroll (attaching to the player and kicking off HLS asset loading on the main
     // thread) is the main remaining source of fast-scroll hitches. `electCenteredVideo`
     // already warms neighbors when the feed settles, so the next video is still ready by
     // the time you stop — we just stop paying for it during the scroll itself.
-    guard !isScrolling, !FeedScrollWorkCoordinator.shared.shouldDeferWork else { return }
+    guard !FeedScrollWorkCoordinator.shared.shouldDeferWork else { return }
     updateWarmVideoKeys()
   }
 
   /// Pick the video nearest the viewport center and make it active. Called when the
-  /// feed settles (scroll idle), not per-frame.
-  func electCenteredVideo() {
+  /// feed settles, or while slow scrolling.
+  func electCenteredVideo(updateWarmSet: Bool = true) {
     let center = viewportHeight / 2
     let nearest = latestCenters.min(by: { abs($0.midY - center) < abs($1.midY - center) })?.key
     setActive(nearest)
-    isFastScrolling = false
-    updateWarmVideoKeys()
+    if updateWarmSet {
+      isFastScrolling = false
+      updateWarmVideoKeys()
+    }
   }
 
   private func updateScrollVelocity(from centers: [InlineVideoCenter]) {
@@ -346,8 +354,8 @@ extension View {
   }
 
   /// Drive the coordinator from a scrollable feed: report scroll phase (for deferring
-  /// expensive work) and elect the centered video when the feed settles. No per-frame
-  /// election work, so the active video is stable while scrolling.
+  /// expensive work) and elect the centered video when the feed settles. Slow scrolls
+  /// can also elect from center updates; fast scrolls wait.
   func driveInlineVideoCoordinator(coordinateSpace: String) -> some View {
     self
       .modifier(FeedScrollCoordinatorDriver(coordinateSpace: coordinateSpace))
