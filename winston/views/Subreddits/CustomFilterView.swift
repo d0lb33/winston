@@ -143,3 +143,57 @@ struct BigColorPicker: View {
     }
   }
 }
+
+private struct ThemeColorPicker: View {
+  let label: String
+  @Binding var theme: ThemeColor
+
+  init(_ label: String, _ theme: Binding<ThemeColor>) {
+    self.label = label
+    self._theme = theme
+  }
+
+  var body: some View {
+    ColorPicker(label, selection: Binding(get: {
+      theme.color()
+    }, set: { val, _ in
+      var newTheme = theme
+      newTheme.hex = val.hex
+      newTheme.alpha = val.alpha
+      theme = newTheme
+    }))
+  }
+}
+
+private struct ResetterModifier<T>: ViewModifier {
+  @Binding var thing: T
+  var defaultVal: T
+  @State private var opened = false
+
+  func body(content: Content) -> some View {
+    content
+      .contentShape(Rectangle())
+      .onTapGesture { }
+      .gesture(
+        LongPressGesture(maximumDistance: 0)
+          .onEnded { _ in
+            let impact = UIImpactFeedbackGenerator(style: .medium)
+            impact.prepare()
+            impact.impactOccurred()
+            opened = true
+          }
+      )
+      .alert("Do you wanna reset this property?", isPresented: $opened) {
+        Button("Yes, reset", role: .destructive) {
+          thing = defaultVal
+        }
+        Button("Cancel", role: .cancel) { }
+      }
+  }
+}
+
+private extension View {
+  func resetter<T>(_ thing: Binding<T>, _ defaultVal: T) -> some View {
+    modifier(ResetterModifier(thing: thing, defaultVal: defaultVal))
+  }
+}

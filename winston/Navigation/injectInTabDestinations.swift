@@ -82,12 +82,6 @@ extension View {
           case .faq:
             FAQPanel()
               .diagnosticScreen("setting.faq")
-          case .themes:
-            ThemesPanel()
-              .diagnosticScreen("setting.themes")
-          case .themeStore:
-            ThemeStore()
-              .diagnosticScreen("setting.themeStore")
           case .appIcon:
             AppIconSetting()
               .diagnosticScreen("setting.appIcon")

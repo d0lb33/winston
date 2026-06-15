@@ -300,6 +300,7 @@ private struct AuroraCardContent: View {
   var body: some View {
     let _ = ScrollPerfProbe.shared.bump("auroraCardContentBody")
     if let data = post.data {
+      let readOpacity = data.winstonSeen == true ? 0.6 : 1
       VStack(alignment: .leading, spacing: 11) {
         HStack(spacing: 8) {
           Button { openSubreddit(data.subreddit) } label: {
@@ -316,20 +317,24 @@ private struct AuroraCardContent: View {
             Image(systemName: "pin.fill").font(.caption2).foregroundStyle(theme.accent)
           }
         }
+        .opacity(readOpacity)
 
         Text(data.title)
           .font(.headline)
           .foregroundStyle(.primary)
           .fixedSize(horizontal: false, vertical: true)
+          .opacity(readOpacity)
 
         if !data.selftext.isEmpty, !hasDisplayMedia {
           Text(data.selftext).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
+            .opacity(readOpacity)
         }
 
         mediaBlock(data)
 
         if let flair = flairWithoutEmojis(str: data.link_flair_text)?.first, !flair.isEmpty {
           AuroraFlair(text: flair)
+            .opacity(readOpacity)
         }
 
         HStack(spacing: 12) {
@@ -351,6 +356,7 @@ private struct AuroraCardContent: View {
           )
           .buttonStyle(.borderless)
         }
+        .opacity(readOpacity)
       }
       .padding(16)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -360,8 +366,6 @@ private struct AuroraCardContent: View {
           .stroke(isSelected ? theme.accent.opacity(0.9) : theme.hairline,
                   lineWidth: isSelected ? 1.8 : 0.7)
       )
-      // Dim posts already seen (opened, or scrolled past when read-on-scroll is on).
-      .opacity(data.winstonSeen == true ? 0.6 : 1)
       .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { newWidth in
         ScrollPerfProbe.shared.bump("auroraRowWidthChange")
         rowWidth = newWidth
@@ -410,7 +414,13 @@ private struct AuroraCardContent: View {
     Divider()
     if let url = permalink(data) {
       ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
-      Button { UIPasteboard.general.url = url } label: { Label("Copy Link", systemImage: "link") }
+        .simultaneousGesture(TapGesture().onEnded {
+          Task { await post.markInteractedAsRead() }
+        })
+      Button {
+        Task { await post.markInteractedAsRead() }
+        UIPasteboard.general.url = url
+      } label: { Label("Copy Link", systemImage: "link") }
     }
   }
 

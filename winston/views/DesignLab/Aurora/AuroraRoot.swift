@@ -118,6 +118,9 @@ struct AuroraRoot: View {
       }
     }
     .diagnosticScreen("aurora.posts")
+    .onAppear {
+      consumeContextualDestinationIfNeeded()
+    }
     .onChange(of: selectedSubID) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
       // CachedSub @FetchRequest re-syncs); only react to a real new pick.
@@ -135,6 +138,9 @@ struct AuroraRoot: View {
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
+    }
+    .onChange(of: router.contextualDestination) { _, _ in
+      consumeContextualDestinationIfNeeded()
     }
     .onChange(of: selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected.
@@ -172,6 +178,79 @@ struct AuroraRoot: View {
     model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
     if !router.fullPath.isEmpty { router.fullPath = [] }
     preferredColumn = .content
+  }
+
+  private func consumeContextualDestinationIfNeeded() {
+    guard let destination = router.contextualDestination else { return }
+    router.contextualDestination = nil
+    openContextualDestination(destination)
+  }
+
+  private func openContextualDestination(_ destination: Router.NavDest) {
+    promoteLeadingPostPathToDetailIfNeeded()
+
+    switch postDetail(from: destination) {
+    case .some(let detail):
+      openContextualPost(detail.post, highlightID: detail.highlightID)
+    case .none:
+      openContextualNonPost(destination)
+    }
+  }
+
+  private func openContextualPost(_ post: Post, highlightID: String?) {
+    let destination: Router.NavDest
+    if let highlightID {
+      destination = .reddit(.postHighlighted(post, highlightID))
+    } else {
+      destination = .reddit(.post(post))
+    }
+
+    if selectedPost != nil || !router.fullPath.isEmpty {
+      router.navigateTo(destination)
+    } else if !feedPath.isEmpty {
+      feedPath.append(destination)
+      preferredColumn = .content
+    } else {
+      selectedPostID = nil
+      detailPost = post
+      detailHighlightID = highlightID
+      if !router.fullPath.isEmpty { router.fullPath = [] }
+      preferredColumn = .detail
+    }
+  }
+
+  private func openContextualNonPost(_ destination: Router.NavDest) {
+    if selectedPost != nil || !router.fullPath.isEmpty {
+      router.navigateTo(destination)
+    } else {
+      feedPath.append(destination)
+      preferredColumn = .content
+    }
+  }
+
+  private func promoteLeadingPostPathToDetailIfNeeded() {
+    guard selectedPost == nil,
+          let first = router.fullPath.first,
+          let detail = postDetail(from: first)
+    else { return }
+
+    selectedPostID = nil
+    detailPost = detail.post
+    detailHighlightID = detail.highlightID
+    router.fullPath = Array(router.fullPath.dropFirst())
+    preferredColumn = .detail
+  }
+
+  private func postDetail(from destination: Router.NavDest) -> (post: Post, highlightID: String?)? {
+    guard case .reddit(let reddit) = destination else { return nil }
+    switch reddit {
+    case .post(let post):
+      return (post, nil)
+    case .postHighlighted(let post, let highlightID):
+      return (post, highlightID)
+    default:
+      return nil
+    }
   }
 
   private var contentColumn: some View {

@@ -120,6 +120,7 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
           footer(data)
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+        .postReadDimmed(post: post, theme: theme)
 
         if defSettings.compactMode.thumbnailSide == .trailing { thumb }
       }
@@ -127,7 +128,6 @@ struct PostLinkNativeCompact: View, Equatable, Identifiable {
       .padding(.vertical, 10)
       .frame(maxWidth: .infinity, alignment: .leading)
       .contentShape(Rectangle())
-      .postReadDimmed(post: post, theme: theme)
       .contextMenu { PostLinkContext(post: post) } preview: { PostLinkContextPreview(post: post, sub: sub) }
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post, secondary: secondary)
     }

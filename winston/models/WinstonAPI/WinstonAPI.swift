@@ -16,9 +16,7 @@ class WinstonAPI: ObservableObject {
   
   func getRequestHeaders(includeAuth: Bool = true) -> HTTPHeaders? {
     var headers: HTTPHeaders = []
-//    headers["Authorization"] = "Bearer \(ThemeStoreAPI.bearerToken)"
     return headers
   }
 }
-
 

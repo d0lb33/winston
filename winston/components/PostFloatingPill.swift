@@ -33,6 +33,7 @@ struct PostFloatingPill: View {
               Group {
                 HStack(spacing: -12) {
                   LightBoxButton(icon: "square.and.arrow.up.fill") {
+                    Task { await post.markInteractedAsRead() }
                     ShareUtils.shareItem(item: permalink)
                   }
                   
@@ -111,6 +112,7 @@ struct PostFloatingPill: View {
               Spacer()
               
               LightBoxButton(icon: "square.and.arrow.up.fill") {
+                Task { await post.markInteractedAsRead() }
                 ShareUtils.shareItem(item: permalink)
               }
               .padding(.vertical, -2)

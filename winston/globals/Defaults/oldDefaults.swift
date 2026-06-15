@@ -75,8 +75,6 @@ extension Defaults.Keys {
   static let _selectedThemeID = Key<String>("selectedThemeID", default: "default")
   static let _feedPostsLoadLimit = Key<Int>("feedPostsLoadLimit", default: 35)
   
-  static let _themeStoreTint = Key<Bool>("themeStoreTint", default: true)
-  
   static let _perSubredditSort = Key<Bool>("perSubredditSort", default: true)
   static let _subredditSorts = Key<Dictionary<String, SubListingSortOption>>("subredditSorts", default: [String: SubListingSortOption]())
   

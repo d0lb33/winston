@@ -44,7 +44,6 @@ func migrateOldDefaults() {
     newPostModalBlurBackground: Defaults[._newPostModalBlurBackground],
     showUsernameInTabBar: Defaults[._showUsernameInTabBar],
     disableAlphabetLettersSectionsInSubsList: Defaults[._disableAlphabetLettersSectionsInSubsList],
-    themeStoreTint: Defaults[._themeStoreTint],
     shinyTextAndButtons: Defaults[._shinyTextAndButtons]
   )
   let newBehaviorDefSettings = BehaviorDefSettings(

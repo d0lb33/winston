@@ -142,11 +142,13 @@ struct PostLinkNative: View, Equatable, Identifiable {
         // Chips row (zero height when empty → no spurious gap).
         HStack(spacing: 6) { ForEach(chips(data)) { chipView($0) } }
           .padding(.bottom, chips(data).isEmpty ? 0 : 6)
+          .postReadDimmed(post: post, theme: theme)
 
         Text(data.title)
           .font(.headline)
           .fixedSize(horizontal: false, vertical: true)
           .frame(maxWidth: .infinity, alignment: .leading)
+          .postReadDimmed(post: post, theme: theme)
 
         if !data.selftext.isEmpty && defSettings.showSelfText {
           Text(data.selftext)
@@ -156,6 +158,7 @@ struct PostLinkNative: View, Equatable, Identifiable {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 4)
+            .postReadDimmed(post: post, theme: theme)
         }
 
         mediaBlock(data, liveWidth: liveWidth)
@@ -163,12 +166,12 @@ struct PostLinkNative: View, Equatable, Identifiable {
 
         footer(data)
           .padding(.top, 10)
+          .postReadDimmed(post: post, theme: theme)
       }
       .padding(.horizontal, 16)
       .padding(.vertical, 10)
       .frame(maxWidth: .infinity, alignment: .leading)
       .contentShape(Rectangle())
-      .postReadDimmed(post: post, theme: theme)
       .contextMenu { PostLinkContext(post: post) } preview: { PostLinkContextPreview(post: post, sub: sub) }
       .swipyUI(onTap: openPost, actionsSet: defSettings.swipeActions, entity: post, secondary: secondary)
     }

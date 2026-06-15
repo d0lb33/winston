@@ -21,11 +21,9 @@ struct GlobalDestinationsProvider<C: View>: View {
         GeometryReader { geo in
           Group {
             switch data {
-            case .editingTheme(let theme): ThemeEditPanel(theme: theme)
             case .announcement(let announcement): AnnouncementSheet(announcement: announcement)
             case .tipJar: TipJar()
             case .onboarding: OnboardingGraphQL()
-            case .sharedTheme(let themeData): ThemeStoreDetailsView(themeData: themeData)
             }
           }
           .environment(\.tabBarHeight, tabBarHeight)

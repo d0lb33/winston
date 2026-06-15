@@ -831,6 +831,7 @@ extension Post {
   
   func saveToggle() async -> Bool {
     if let data = data {
+      await markInteractedAsRead()
       let prev = data.saved
       await MainActor.run {
         withAnimation {
@@ -852,6 +853,7 @@ extension Post {
   }
   
   func vote(_ action: VoteAction) async -> Bool? {
+    await markInteractedAsRead()
     let oldLikes = data?.likes
     let oldUps = data?.ups ?? 0
     var newAction = action
@@ -873,6 +875,11 @@ extension Post {
       }
     }
     return result
+  }
+
+  func markInteractedAsRead() async {
+    guard data?.winstonSeen != true else { return }
+    await toggleSeen(true, optimistic: true)
   }
   
   func hide(_ hide: Bool) async -> () {

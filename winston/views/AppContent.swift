@@ -9,7 +9,6 @@ import SwiftUI
 import Defaults
 
 struct AppContent: View {
-  @StateObject private var themeStore = ThemeStoreAPI()
   @Environment(\.scenePhase) var scenePhase
   
   @Default(.ThemesDefSettings) private var themesDefSettings
@@ -36,9 +35,9 @@ struct AppContent: View {
     .whatsNewSheet()
     .environment(\.tabBarHeight, tabBarHeight)
     .environment(\.setTabBarHeight, setTabBarHeight)
-    .environmentObject(themeStore)
     .environment(\.useTheme, selectedTheme)
     .environment(\.auroraTheme, auroraThemeID.theme)
+    .preferredColorScheme(auroraThemeID.theme.colorScheme)
     .onAppear { themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" } }
     .onChange(of: scenePhase) { newPhase in
       AppDiagnostics.shared.breadcrumb("Scene phase changed", metadata: ["phase": "\(newPhase)"])

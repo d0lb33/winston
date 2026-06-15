@@ -7,9 +7,6 @@
 
 import Foundation
 import UIKit
-import UniformTypeIdentifiers
-import SwiftUI
-import Zip
 
 func saveImage(image: UIImage) -> String? {
   guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
@@ -77,56 +74,4 @@ func loadImageURL(fileName: String) -> URL? {
   }
   
   return nil
-}
-
-
-//struct ZipDocument: FileDocument {
-//    static var readableContentTypes = [UTType.zip]
-//    var zipfile: URL
-//
-//    init(url: URL) {
-//        self.zipfile = url
-//    }
-//
-//    init(configuration: ReadConfiguration) throws {
-//        // We don't read files, so we just need to fulfill the requirements of the protocol here, no actual implementation.
-//        throw CocoaError(.fileReadCorruptFile)
-//    }
-//
-//    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-//        return try FileWrapper(url: zipfile, options: .immediate)
-//    }
-//}
-
-func createZip(images: [String], theme: WinstonTheme) throws -> URL {
-  let fileManager = FileManager.default
-  let urls = fileManager.urls(for: .documentDirectory, in: .userDomainMask)
-  
-  guard let documentDirectory: URL = urls.first else { throw NSError(domain: "Document directory not found", code: 1, userInfo: nil) }
-  
-  let imgURLs = images.filter { $0 != "winstonNoBG" }.map { documentDirectory.appendingPathComponent($0) }
-  
-  let jsonURL = documentDirectory.appendingPathComponent("theme.json")
-  let jsonData = try JSONEncoder().encode(theme)
-  try jsonData.write(to: jsonURL)
-  
-  let zipName = UUID().uuidString
-  let zipURL = documentDirectory.appendingPathComponent("\(zipName).zip")
-  
-  if fileManager.fileExists(atPath: zipURL.path()) {
-    try fileManager.removeItem(at: zipURL)
-  }
-
-  try Zip.zipFiles(paths: imgURLs + [jsonURL], zipFilePath: zipURL, password: nil, progress: nil)
-  
-  let winstonFileName = "\(theme.metadata.name)-Theme"
-  let winstonFileNameURL = documentDirectory.appendingPathComponent("\(winstonFileName).winston")
-  
-  if fileManager.fileExists(atPath: winstonFileNameURL.path()) {
-    try fileManager.removeItem(at: winstonFileNameURL)
-  }
-  
-  try fileManager.moveItem(at: zipURL, to: winstonFileNameURL)
-  
-  return winstonFileNameURL
 }

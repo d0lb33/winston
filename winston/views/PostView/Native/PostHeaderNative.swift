@@ -220,6 +220,9 @@ struct PostActionBarNative: View {
             Image(systemName: "square.and.arrow.up")
               .foregroundStyle(.secondary)
           }
+          .simultaneousGesture(TapGesture().onEnded {
+            Task { await post.markInteractedAsRead() }
+          })
           .accessibilityLabel("Share")
         }
       }

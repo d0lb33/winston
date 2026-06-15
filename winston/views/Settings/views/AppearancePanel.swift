@@ -12,6 +12,7 @@ struct AppearancePanel: View {
   @Default(.PostLinkDefSettings) var postLinkDefSettings
   @Default(.AppearanceDefSettings) var appearanceDefSettings
   @Default(.CommentLinkDefSettings) var commentLinkDefSettings
+  @Default(.auroraThemeID) private var auroraThemeID
 
   @Environment(\.useTheme) private var theme
   @State private var appIconManager = AppIconManger()
@@ -28,17 +29,7 @@ struct AppearancePanel: View {
   var body: some View {
     List {
       Group {
-        Section {
-          WListButton(showArrow: true) {
-            Nav.present(.editingTheme(theme))
-          } label: {
-            OnlineThemeItem(theme: ThemeData(theme_name: theme.metadata.name, theme_author:theme.metadata.author, theme_description: theme.metadata.description,color:theme.metadata.color, icon: theme.metadata.icon), showDownloadButton: false)
-          }
-          .disabled(theme.id == "default")
-        } header: {
-          Text("Current Theme")
-        }
-        .listRowSeparator(.hidden)
+        AuroraThemePickerSection(selection: $auroraThemeID)
 
         Section {
           WNavigationLink(value: .setting(.appIcon)) {
@@ -50,43 +41,11 @@ struct AppearancePanel: View {
         }
         .listSectionSpacing(15)
 
-        Section {
-          HStack(spacing: 12){
-            ListBigBtn(icon: "paintbrush.fill", iconColor: Color.blue, label: "My Themes") { Nav.to(.setting(.themes)) }
-            ListBigBtn(icon: "basket.fill", iconColor: Color.orange, label: "Theme Store") { Nav.to(.setting(.themeStore)) }
-          }
-        } footer: {
-          if theme.id == "default" {
-            Text("Please go into \"My Theme\" and create a new one if you want to edit it")
-              .padding(.top)
-          }
-        }
-        .frame(maxWidth: .infinity)
-        .id("bigButtons")
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-
         Section("General") {
           Toggle("Show Username in Tab Bar", isOn: $appearanceDefSettings.showUsernameInTabBar)
           Toggle("Disable subs list letter sections", isOn: $appearanceDefSettings.disableAlphabetLettersSectionsInSubsList)
         }
 
-        //      Section("Theming") {
-        //        Group {
-        //          WNavigationLink(value: SettingsPages.themes) {
-        //            Label("Themes", systemImage: "paintbrush.fill")
-        //          }
-        //          WNavigationLink(value: SettingsPages.appIcon) {
-        //            Label("App icon", systemImage: "appclip")
-        //          }
-        //          WNavigationLink(value: SettingsPages.themeStore){
-        //            Label("Theme Store (alpha)", systemImage: "giftcard.fill")
-        //          }
-        //        }
-        //        .themedListSection()
-        //      }
-//
         Section("Post Look") {
           Picker("Style", selection: postStyleBinding) {
             ForEach(PostLinkDisplayStyle.allCases) { style in
@@ -150,7 +109,6 @@ struct AppearancePanel: View {
         }
 
         Section("Accessibility"){
-          Toggle("Theme Store Tint", isOn: $appearanceDefSettings.themeStoreTint)
           Toggle("\"Shiny\" Text and Buttons", isOn: $appearanceDefSettings.shinyTextAndButtons)
         }
 
@@ -160,6 +118,84 @@ struct AppearancePanel: View {
     .themedListBG(theme.lists.bg)
     .navigationTitle("Appearance")
     .navigationBarTitleDisplayMode(.inline)
+  }
+}
+
+private struct AuroraThemePickerSection: View {
+  @Binding var selection: AuroraThemeID
+
+  var body: some View {
+    Section {
+      ForEach(AuroraThemeID.allCases) { themeID in
+        Button {
+          selection = themeID
+        } label: {
+          AuroraThemePickerRow(themeID: themeID, isSelected: selection == themeID)
+        }
+        .buttonStyle(.plain)
+      }
+    } header: {
+      Text("Theme")
+    } footer: {
+      Text("Applies to Aurora surfaces immediately.")
+    }
+  }
+}
+
+private struct AuroraThemePickerRow: View {
+  let themeID: AuroraThemeID
+  let isSelected: Bool
+
+  var body: some View {
+    HStack(spacing: 12) {
+      AuroraThemeSwatch(themeID: themeID)
+
+      VStack(alignment: .leading, spacing: 3) {
+        Label {
+          Text(themeID.displayName)
+            .font(.body.weight(.semibold))
+        } icon: {
+          Image(systemName: themeID.symbol)
+            .foregroundStyle(themeID.theme.accent)
+        }
+
+        Text(themeID.tagline)
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .fixedSize(horizontal: false, vertical: true)
+      }
+
+      Spacer(minLength: 12)
+
+      if isSelected {
+        Image(systemName: "checkmark")
+          .font(.body.weight(.semibold))
+          .foregroundStyle(themeID.theme.accent)
+      }
+    }
+    .padding(.vertical, 4)
+    .contentShape(Rectangle())
+    .accessibilityElement(children: .combine)
+    .accessibilityAddTraits(isSelected ? .isSelected : [])
+  }
+}
+
+private struct AuroraThemeSwatch: View {
+  let themeID: AuroraThemeID
+
+  private var gradientColors: [Color] {
+    let mesh = themeID.theme.meshColors
+    return [mesh[0], mesh[4], mesh[8]]
+  }
+
+  var body: some View {
+    RoundedRectangle(cornerRadius: 8, style: .continuous)
+      .fill(LinearGradient(colors: gradientColors, startPoint: .topLeading, endPoint: .bottomTrailing))
+      .overlay(
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+          .stroke(themeID.theme.hairline, lineWidth: 0.7)
+      )
+      .frame(width: 42, height: 42)
   }
 }
 //

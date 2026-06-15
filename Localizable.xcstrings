@@ -391,6 +391,7 @@
       }
     },
     "aA" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -551,6 +552,9 @@
         }
       }
     },
+    "Applies to Aurora surfaces immediately." : {
+
+    },
     "Are you sure you wanna discard?" : {
       "localizations" : {
         "de" : {
@@ -625,6 +629,7 @@
       }
     },
     "BG type" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -641,6 +646,7 @@
       }
     },
     "Blur background" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -692,6 +698,7 @@
 
     },
     "by %@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1007,6 +1014,7 @@
 
     },
     "Current Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1080,6 +1088,7 @@
       }
     },
     "default theme by tapping" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1151,6 +1160,7 @@
       }
     },
     "Description:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1300,6 +1310,7 @@
       }
     },
     "Duplicate" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1691,6 +1702,7 @@
       }
     },
     "Gotcha!" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1886,6 +1898,7 @@
 
     },
     "Icon" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1993,6 +2006,7 @@
       }
     },
     "Inline upvote toolbar" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2487,6 +2501,7 @@
 
     },
     "Metadatas" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2590,6 +2605,7 @@
       }
     },
     "Nice!" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2790,6 +2806,9 @@
     "Open feed tools" : {
 
     },
+    "Open in Safari" : {
+
+    },
     "Open it here while the feed stays in view — the quiet luxury of the big screen." : {
 
     },
@@ -2829,6 +2848,12 @@
           }
         }
       }
+    },
+    "Open Reddit link?" : {
+
+    },
+    "Open Reddit links from clipboard" : {
+
     },
     "Open Youtube Videos Externally" : {
       "localizations" : {
@@ -2912,6 +2937,7 @@
 
     },
     "Placeholder image" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2931,6 +2957,7 @@
 
     },
     "Please go into \"My Theme\" and create a new one if you want to edit it" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3000,6 +3027,7 @@
 
     },
     "Post page" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3102,6 +3130,7 @@
       }
     },
     "Posts feed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3118,6 +3147,7 @@
       }
     },
     "Posts links" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3265,6 +3295,7 @@
 
     },
     "Restart required" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3410,6 +3441,7 @@
       }
     },
     "Seen" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3474,6 +3506,7 @@
       }
     },
     "Settings in this panel requires a restart to take effect. You don't need to do it now though." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3535,6 +3568,7 @@
       }
     },
     "Show avatar" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3549,9 +3583,6 @@
           }
         }
       }
-    },
-    "Show divider" : {
-
     },
     "Show Divider at Top" : {
 
@@ -3711,9 +3742,6 @@
         }
       }
     },
-    "Start by duplicating the" : {
-
-    },
     "Start duplicating the" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3735,6 +3763,7 @@
 
     },
     "Status:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3751,6 +3780,7 @@
       }
     },
     "Sticky" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3835,6 +3865,7 @@
       }
     },
     "Success!" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3983,6 +4014,7 @@
 
     },
     "The theme was imported successfully. Enable it in \"Themes\" section in the Settings tab." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3998,7 +4030,11 @@
         }
       }
     },
+    "Theme" : {
+
+    },
     "Theme Store Tint" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4015,6 +4051,7 @@
       }
     },
     "Themes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4031,6 +4068,7 @@
       }
     },
     "Theming" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4106,6 +4144,7 @@
       }
     },
     "This theme changes a few settings that requires an app restart to take effect." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4265,6 +4304,7 @@
 
     },
     "Unseen type" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4280,7 +4320,11 @@
         }
       }
     },
+    "Unsupported Reddit link" : {
+
+    },
     "Upload Error" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4297,6 +4341,7 @@
       }
     },
     "Upload Theme" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4459,6 +4504,9 @@
         }
       }
     },
+    "Winston cannot open this link directly." : {
+
+    },
     "Winston hit " : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4561,6 +4609,7 @@
       }
     },
     "You don't have any local themes" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

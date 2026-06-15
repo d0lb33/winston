@@ -162,14 +162,14 @@ struct PostsFeedNative: View {
     let cols = max(1, Int((effectiveWidth + gutter) / (minColWidth + gutter)))
     let colWidth = (effectiveWidth - gutter * CGFloat(cols - 1)) / CGFloat(max(cols, 1))
     let cellContentWidth = max(1, colWidth - 32) // minus the row's horizontal padding
-    let columns = Array(repeating: GridItem(.flexible(), spacing: gutter), count: cols)
+    let columns = Array(repeating: GridItem(.fixed(colWidth), spacing: gutter), count: cols)
     let isSingleColumn = cols == 1
 
     ScrollView {
       VStack(spacing: 0) {
         LazyVGrid(columns: columns, alignment: .leading, spacing: isSingleColumn ? 0 : gutter) {
           ForEach(posts, id: \.id) { post in
-            cell(post, styleKey: styleKey, cellContentWidth: cellContentWidth, isSingleColumn: isSingleColumn, isFiltered: isFiltered)
+            cell(post, styleKey: styleKey, colWidth: colWidth, cellContentWidth: cellContentWidth, isSingleColumn: isSingleColumn, isFiltered: isFiltered)
           }
         }
         .scrollTargetLayout()
@@ -210,7 +210,7 @@ struct PostsFeedNative: View {
   }
 
   @ViewBuilder
-  private func cell(_ post: Post, styleKey: String, cellContentWidth: CGFloat, isSingleColumn: Bool, isFiltered: Bool) -> some View {
+  private func cell(_ post: Post, styleKey: String, colWidth: CGFloat, cellContentWidth: CGFloat, isSingleColumn: Bool, isFiltered: Bool) -> some View {
     if let sub = subreddit ?? post.winstonData?.subreddit, let winstonData = post.winstonData {
       VStack(spacing: 0) {
         PostLink(
@@ -232,6 +232,7 @@ struct PostsFeedNative: View {
           Divider().opacity(0.4)
         }
       }
+      .frame(width: colWidth, alignment: .leading)
       // Inline-video center election (autoplay) only in single column. In a multi-column
       // grid, many video rows reporting their center per frame thrashes the layout
       // (InlineVideoCenterPreferenceKey "updated multiple times per frame") and leaves

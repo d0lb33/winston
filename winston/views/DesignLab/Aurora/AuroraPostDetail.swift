@@ -172,6 +172,9 @@ struct AuroraPostDetail: View {
                 .padding(11)
                 .glassEffect(.regular.interactive(), in: .circle)
             }
+            .simultaneousGesture(TapGesture().onEnded {
+              Task { await post.markInteractedAsRead() }
+            })
           }
         }
       }

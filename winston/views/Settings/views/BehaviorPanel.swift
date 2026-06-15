@@ -28,6 +28,7 @@ struct BehaviorPanel: View {
       Group {
         Section("General") {
           Toggle("Open Youtube Videos Externally", isOn: $behaviorDefSettings.openYoutubeApp)
+          Toggle("Open Reddit links from clipboard", isOn: $behaviorDefSettings.openRedditLinksFromClipboard)
           #if !os(macOS)
             let auth_type = Biometrics().biometricType()
             Toggle("Lock Winston With \(auth_type)", isOn: $generalDefSettings.useAuth)

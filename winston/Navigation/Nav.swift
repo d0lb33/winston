@@ -46,8 +46,6 @@ class Nav: ObservableObject, Identifiable, Equatable {
     case tipJar
     case onboarding
     case announcement(Announcement)
-    case editingTheme(WinstonTheme)
-    case sharedTheme(ThemeData)
     
     var id: String {
       var newID: String = ""
@@ -55,8 +53,6 @@ class Nav: ObservableObject, Identifiable, Equatable {
       case .announcement(let ann): newID = ann.id
       case .tipJar: newID = "tipJar"
       case .onboarding: newID = "onboarding"
-      case .editingTheme(let theme): newID = theme.id
-      case .sharedTheme(let themeData): newID = themeData.id
       }
       return "\(newID)-presenting-sheet-Nav"
     }
@@ -163,8 +159,6 @@ extension Nav.PresentingSheet {
     case .tipJar: return "sheet.tipJar"
     case .onboarding: return "sheet.onboarding"
     case .announcement(let announcement): return "sheet.announcement.\(announcement.id)"
-    case .editingTheme(let theme): return "sheet.editingTheme.\(theme.id)"
-    case .sharedTheme(let theme): return "sheet.sharedTheme.\(theme.id)"
     }
   }
 }

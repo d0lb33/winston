@@ -12,6 +12,5 @@ struct AppearanceDefSettings: Equatable, Hashable, Codable, Defaults.Serializabl
   var newPostModalBlurBackground: Bool = true
   var showUsernameInTabBar: Bool = false
   var disableAlphabetLettersSectionsInSubsList: Bool = false
-  var themeStoreTint: Bool = true
   var shinyTextAndButtons: Bool = false
 }

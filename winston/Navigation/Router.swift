@@ -60,6 +60,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     }
   }
   @Published var fullPath: [NavDest] = []
+  @Published var contextualDestination: NavDest? = nil
   var path: [NavDest] {
     get { Array(self.fullPath.dropFirst()) }
     set {
@@ -92,6 +93,10 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   func navigateTo(_ dest: NavDest, _ reset: Bool = false) {
     AppDiagnostics.asyncBreadcrumb("Router.navigateTo", metadata: ["router": id, "destination": dest.diagnosticsName, "reset": "\(reset)"])
     withAnimation { self.path = reset ? [dest] : self.path + [dest] }
+  }
+  func navigateContextually(to dest: NavDest) {
+    AppDiagnostics.asyncBreadcrumb("Router.navigateContextually", metadata: ["router": id, "destination": dest.diagnosticsName])
+    contextualDestination = dest
   }
   
   enum NavDest: Hashable, Codable, Identifiable {
@@ -126,7 +131,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     }
     enum Setting: String, Hashable, Codable, Identifiable {
       var id: String { self.rawValue }
-      case behavior, appearance, accounts, diagnostics, about, commentSwipe, postSwipe, accessibility, faq, general, themes, filteredSubreddits, appIcon, themeStore, designLab
+      case behavior, appearance, accounts, diagnostics, about, commentSwipe, postSwipe, accessibility, faq, general, filteredSubreddits, appIcon, designLab
     }
   }
   
