@@ -154,7 +154,12 @@ final class AuroraFeedModel {
     inFlight = true
     loading = true
     failed = false
-    defer { inFlight = false; loading = false }
+    defer {
+      if generation == loadGeneration {
+        inFlight = false
+        loading = false
+      }
+    }
 
     let cursor = more ? after : nil
     let requestIdentity = feedIdentity

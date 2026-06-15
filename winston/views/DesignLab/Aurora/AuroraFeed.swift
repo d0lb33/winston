@@ -118,8 +118,8 @@ struct AuroraFeed: View {
       .padding(.trailing, 12)
       .padding(.bottom, 12)
     }
-    .onAppear {
-      Task { await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth) }
+    .task(id: model.feedIdentity) {
+      await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onChange(of: sort) { _, newSort in
       Task { await model.reload(sort: newSort, contentWidth: contentWidth) }

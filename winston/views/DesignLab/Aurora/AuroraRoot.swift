@@ -129,7 +129,7 @@ struct AuroraRoot: View {
         detailHighlightID = nil
         feedPath = []
         if !router.fullPath.isEmpty { router.fullPath = [] }
-        preferredColumn = .content
+        collapseSidebarToContent()
         return
       }
       let sub = resolve(newID).sub
@@ -141,7 +141,7 @@ struct AuroraRoot: View {
       feedPath = []
       if !router.fullPath.isEmpty { router.fullPath = [] }
       // Advance to the feed when a community/feed is picked from the sidebar.
-      preferredColumn = .content
+      collapseSidebarToContent()
     }
     .onChange(of: accountID) { _, _ in
       resetAccountScopedState()
@@ -189,6 +189,13 @@ struct AuroraRoot: View {
     model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
     if !router.fullPath.isEmpty { router.fullPath = [] }
     preferredColumn = .content
+  }
+
+  private func collapseSidebarToContent() {
+    withAnimation {
+      preferredColumn = .content
+      columnVisibility = .doubleColumn
+    }
   }
 
   private func consumeContextualDestinationIfNeeded() {
@@ -354,6 +361,11 @@ struct AuroraRoot: View {
   private var sidebar: some View {
     List(selection: $selectedSubID) {
       Section {
+        Color.clear
+          .frame(height: 44)
+          .listRowInsets(EdgeInsets())
+          .listRowBackground(Color.clear)
+          .accessibilityHidden(true)
         feedRow("Home", id: "home", systemImage: "house.fill")
         feedRow("Popular", id: "popular", systemImage: "chart.line.uptrend.xyaxis")
         feedRow("Saved", id: "saved", systemImage: "bookmark.fill")
@@ -392,6 +404,8 @@ struct AuroraRoot: View {
 
   private func feedRow(_ label: String, id: String, systemImage: String) -> some View {
     Label(label, systemImage: systemImage)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
       .tag(id)
       .listRowBackground(Color.clear)
   }
@@ -408,6 +422,8 @@ struct AuroraRoot: View {
     } icon: {
       Image(systemName: "folder.fill")
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
     .tag(SavedListsRoute.id(for: list.id))
     .listRowBackground(Color.clear)
   }
@@ -486,6 +502,8 @@ private struct AuroraSidebarCommunityRow: View {
         isFavorited = favorited
       }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
   }
 
   private func favoriteToggle() {
