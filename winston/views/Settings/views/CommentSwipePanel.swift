@@ -10,7 +10,6 @@ import Defaults
 
 struct CommentSwipePanel: View {
   @Default(.CommentLinkDefSettings) private var commentLinkDefSettings
-  @Environment(\.useTheme) private var theme
   var body: some View {
     List {
       
@@ -54,10 +53,10 @@ struct CommentSwipePanel: View {
         }
 //        .themedListRowLikeBG(enablePadding: true, disableBG: true)
       }
-      .themedListSection()
+      .auroraSettingsSection()
       
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .navigationTitle("Comments Swipe Settings")
     .navigationBarTitleDisplayMode(.inline)
   }

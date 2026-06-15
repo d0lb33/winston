@@ -30,7 +30,9 @@ struct AccessibilityPanel: View {
 //          Toggle("Haptics on Low Power Mode -- DOESNT WORK", isOn: $hapticFeedbackOnLPM)
 //        }
       }
-      Spacer()
+      .auroraListChrome()
+      .navigationTitle("Accessibility")
+      .navigationBarTitleDisplayMode(.inline)
     }
 }
 

@@ -10,7 +10,6 @@ import Defaults
 
 struct PostSwipePanel: View {
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
-  @Environment(\.useTheme) private var theme
     var body: some View {
       List {
         
@@ -54,10 +53,10 @@ struct PostSwipePanel: View {
           }
 //          .themedListRowLikeBG(enablePadding: true, disableBG: true)
         }
-        .themedListSection()
+        .auroraSettingsSection()
         
       }
-      .themedListBG(theme.lists.bg)
+      .auroraListChrome()
       .navigationTitle("Posts Swipe Settings")
       .navigationBarTitleDisplayMode(.inline)
     }

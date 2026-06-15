@@ -86,6 +86,8 @@ struct WNavigationLink<Content: View>: View {
   var value: Router.NavDest
   var active: Bool = false
   var label: (() -> Content)
+  @Environment(\.settingsNavigationModel) private var settingsNavigationModel
+  @Environment(\.settingsNavigationOrigin) private var settingsNavigationOrigin
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
@@ -104,6 +106,9 @@ struct WNavigationLink<Content: View>: View {
   var body: some View {
     WListButton(showArrow: true, active: active) {
       AppDiagnostics.asyncBreadcrumb("WNavigationLink tapped", metadata: ["destination": value.diagnosticsName])
+      if navigateSettingsDestination(value, model: settingsNavigationModel, origin: settingsNavigationOrigin) {
+        return
+      }
       navigateRedditDestination(value, model: redditNavigationModel, origin: redditNavigationOrigin)
     } label: {
       label()
@@ -116,6 +121,8 @@ struct WSNavigationLink: View {
   var active: Bool = false
   var icon: String? = nil
   let label: String
+  @Environment(\.settingsNavigationModel) private var settingsNavigationModel
+  @Environment(\.settingsNavigationOrigin) private var settingsNavigationOrigin
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
@@ -128,6 +135,9 @@ struct WSNavigationLink: View {
   var body: some View {
     WListButton(showArrow: true, active: active) {
       AppDiagnostics.asyncBreadcrumb("WSNavigationLink tapped", metadata: ["label": label, "destination": value.diagnosticsName])
+      if navigateSettingsDestination(value, model: settingsNavigationModel, origin: settingsNavigationOrigin) {
+        return
+      }
       navigateRedditDestination(value, model: redditNavigationModel, origin: redditNavigationOrigin)
     } label: {
       if let icon = icon {

@@ -20,7 +20,6 @@ struct BehaviorPanel: View {
   @Default(.VideoDefSettings) var videoDefSettings
   
   
-  @Environment(\.useTheme) private var theme
   @State private var imageAnalyzerSupport: Bool = true
   var body: some View {
     List {
@@ -63,7 +62,7 @@ struct BehaviorPanel: View {
           }
           .pickerStyle(DefaultPickerStyle())
           
-          WSNavigationLink(.setting(.filteredSubreddits), "Filtered Subreddits")
+          AuroraNavigationRow(.setting(.filteredSubreddits), title: "Filtered Subreddits")
         }
         
         
@@ -82,7 +81,7 @@ struct BehaviorPanel: View {
         }
         
         Section("Posts") {
-          WSNavigationLink(.setting(.postSwipe), "Posts swipe settings")
+          AuroraNavigationRow(.setting(.postSwipe), title: "Posts swipe settings")
           Toggle("Loop videos", isOn: $videoDefSettings.loop)
           Toggle("Autoplay videos (muted)", isOn: $videoDefSettings.autoPlay)
           Toggle("Start videos muted", isOn: $videoDefSettings.mute)
@@ -216,10 +215,10 @@ struct BehaviorPanel: View {
             Slider(value: $postLinkDefSettings.maxMediaHeightScreenPercentage, in: 10...110, step: 10)
           }
         }
-        .themedListSection()
+        .auroraSettingsSection()
         
         Section("Comments") {
-          WSNavigationLink(.setting(.commentSwipe), "Comments Swipe Settings")
+          AuroraNavigationRow(.setting(.commentSwipe), title: "Comments Swipe Settings")
           
           Picker("Comments Sorting", selection: $commentsSectionDefSettings.preferredSort) {
             ForEach(CommentSortOption.allCases, id: \.self) { val in
@@ -233,9 +232,9 @@ struct BehaviorPanel: View {
         }
         
       }
-      .themedListSection()
+      .auroraSettingsSection()
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .navigationTitle("Behavior")
     .navigationBarTitleDisplayMode(.inline)
   }

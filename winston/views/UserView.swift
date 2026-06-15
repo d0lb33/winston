@@ -24,15 +24,10 @@ struct UserView: View {
   @State private var loadingNextOverview = false
   @State private var reachedEndOfOverview = false
   @State private var lastItemId: String? = nil
-  @Environment(\.useTheme) private var selectedTheme
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
   @State private var dataTypeFilter: String = "" // Handles filtering for only posts or only comments.
-  @State private var loadNextData: Bool = false
-  
-  @ObservedObject var avatarCache = Caches.avatars
-  //  @Environment(\.contentWidth) private var contentWidth
 
   private var canPageOverview: Bool {
     dataTypeFilter == "posts" || dataTypeFilter == "comments"
@@ -51,7 +46,7 @@ struct UserView: View {
         }
       }
       
-      await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: data, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+      await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: data, avatarSize: AuroraPostPresentation.avatarSize)
     } else {
       await MainActor.run {
         withAnimation {
@@ -83,7 +78,7 @@ struct UserView: View {
         }
         
         if !overviewData.isEmpty {
-          await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+          await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: overviewData, avatarSize: AuroraPostPresentation.avatarSize)
         }
       } else {
         await MainActor.run {
@@ -97,173 +92,57 @@ struct UserView: View {
     }
   }
   
-  func getRepostAvatarRequest(_ post: Post?) -> ImageRequest? {
-    if let post = post, case .repost(let repost) = post.winstonData?.extractedMedia, let repostAuthorFullname = repost.data?.author_fullname {
-      return avatarCache.cache[repostAuthorFullname]?.data
-    }
-    return nil
-  }
-  
   var body: some View {
     List {
       if let data = user.data {
-        Group {
-          VStack(spacing: 16) {
-            ZStack {
-              if let bannerImgFull = data.subreddit?.banner_img, !bannerImgFull.isEmpty, let bannerImg = URL(string: String(bannerImgFull.split(separator: "?")[0])) {
-                URLImage(url: bannerImg)
-                  .scaledToFill()
-                  .frame(width: contentWidth, height: 160)
-                  .mask(RR(16, Color.black))
-              }
-              if let iconFull = data.subreddit?.icon_img, iconFull != "", let icon = URL(string: String(iconFull.split(separator: "?")[0])) {
-                
-                URLImage(url: icon)
-                  .scaledToFill()
-                  .frame(width: 125, height: 125)
-                  .mask(Circle())
-                  .offset(y: data.subreddit?.banner_img == "" || data.subreddit?.banner_img == nil ? 0 : 80)
-              }
-            }
-            .frame(maxWidth: .infinity)
-            .background(
-              GeometryReader { geo in
-                Color.clear.onAppear { contentWidth = geo.size.width }
-              }
-            )
-            .padding(.bottom, data.subreddit?.banner_img == "" || data.subreddit?.banner_img == nil ? 0 : 78)
-            
-            if let description = data.subreddit?.public_description {
-              Text((description).md())
-                .fontSize(15)
-                .multilineTextAlignment(.center)
-            }
-            
-            VStack {
-              HStack {
-                if let postKarma = data.link_karma {
-                  DataBlock(icon: "highlighter", label: "Post karma",
-                            value: "\(formatBigNumber(postKarma))") // maybe switch this to use the theme colors?
-                  .transition(.opacity)
-                  .onTapGesture {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                      if dataTypeFilter == "posts" {
-                        dataTypeFilter = ""
-                      } else {
-                        dataTypeFilter = "posts"
-                      }
-                    }
-                  }
-                  .overlay(dataTypeFilter == "posts" ?
-                           Color.accentColor.opacity(0.2)
-                    .clipShape(RoundedRectangle(cornerRadius: 20))
-                    .allowsHitTesting(false)
-                           : nil)
-                }
-                
-                if let commentKarma = data.comment_karma {
-                  DataBlock(icon: "checkmark.message.fill", label: "Comment karma", value: "\(formatBigNumber(commentKarma))")
-                    .transition(.opacity)
-                    .onTapGesture {
-                      withAnimation(.easeInOut(duration: 0.2)) {
-                        if dataTypeFilter == "comments" {
-                          dataTypeFilter = ""
-                        } else {
-                          dataTypeFilter = "comments"
-                        }
-                      }
-                    }
-                    .overlay(dataTypeFilter == "comments" ?
-                             Color.accentColor.opacity(0.2)
-                      .clipShape(RoundedRectangle(cornerRadius: 20))
-                      .allowsHitTesting(false)
-                             : nil)
-                }
-              }
-              if let created = data.created {
-                DataBlock(icon: "star.fill", label: "User since", value: "\(Date(timeIntervalSince1970: TimeInterval(created)).toFormat("MMM dd, yyyy"))")
-                  .transition(.opacity)
-              }
-            }
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 8)
-            .transition(.opacity)
-          }
-          
-          Text(dataTypeFilter.isEmpty ? "Latest activity" : "Latest " + dataTypeFilter)
-            .fontSize(20, .bold)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 16)
-          
-          if let lastActivities = lastActivities {
-            ForEach(Array(lastActivities.enumerated()), id: \.element) { i, item in
-              let isComment: Bool = {
-                switch item {
-                case .second: // is comment
-                  return true
-                default:
-                  return false
-                }
-              }()
-                
-              Group {
-                MixedContentLink(content: item, theme: selectedTheme.postLinks)
-                  .onAppear {
-                    if i >= max(lastActivities.count - 7, 0) {
-                      getNextData()
-                    }
-                  }
-                  .allowsHitTesting(!isComment)
-              }
-              .contentShape(Rectangle())
-              .onTapGesture {
-                guard isComment else {
-                  return
-                }
-                
-                switch item {
-                case .second(let comment):
-                  if let data = comment.data, let link_id = data.link_id, let subID = data.subreddit {
-                    navigateRedditDestination(.reddit(.postHighlighted(Post(id: link_id, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
-                  }
-                default:
-                  return
-                }
-              }
-              
-              if selectedTheme.postLinks.divider.style != .no && i != (lastActivities.count - 1) {
-                NiceDivider(divider: selectedTheme.postLinks.divider)
-                  .id("user-view-\(i)-divider")
-                  .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-              }
-            }
+        UserProfileHeader(data: data, contentWidth: $contentWidth)
+          .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 8, trailing: 14))
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
 
-            if lastActivities.isEmpty && !loadingOverview {
-              Text("No activity found")
-                .frame(maxWidth: .infinity, minHeight: 160)
-                .opacity(0.35)
-            }
+        UserProfileMetrics(data: data, filter: $dataTypeFilter)
+          .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 12, trailing: 14))
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+
+        UserActivityHeader(filter: dataTypeFilter)
+          .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 4, trailing: 16))
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+
+        if let lastActivities {
+          ForEach(Array(lastActivities.enumerated()), id: \.element) { i, item in
+            UserActivityRow(item: item)
+              .onAppear {
+                if i >= max(lastActivities.count - 7, 0) {
+                  getNextData()
+                }
+              }
+              .listRowInsets(EdgeInsets(top: 5, leading: 0, bottom: 5, trailing: 0))
+              .listRowSeparator(.hidden)
+              .listRowBackground(Color.clear)
           }
-          
-          if loadingOverview || loadingNextOverview {
-            ProgressView()
-              .progressViewStyle(.circular)
-              .frame(maxWidth: .infinity, minHeight: 100 )
-              .id("user-loading")
-              .id(UUID()) // spawns unique spinner, swiftui bug.
-          } else if reachedEndOfOverview && canPageOverview && lastActivities?.isEmpty == false {
-            EndOfFeedView()
+
+          if lastActivities.isEmpty && !loadingOverview {
+            UserActivityEmptyState()
+              .listRowSeparator(.hidden)
+              .listRowBackground(Color.clear)
           }
         }
-        .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .transition(.opacity)
+
+        if loadingOverview || loadingNextOverview {
+          UserActivityLoadingState()
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+        } else if reachedEndOfOverview && canPageOverview && lastActivities?.isEmpty == false {
+          EndOfFeedView()
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+        }
       }
     }
     .loader(user.data == nil)
-    .themedListBG(selectedTheme.lists.bg)
-    .listStyle(.plain)
+    .auroraListChrome()
     .refreshable {
       await refresh()
     }
@@ -289,6 +168,167 @@ struct UserView: View {
         await refresh()
       }
     }
+  }
+}
+
+private struct UserProfileHeader: View {
+  let data: UserData
+  @Binding var contentWidth: CGFloat
+  @Environment(\.auroraTheme) private var theme
+
+  private var hasBanner: Bool {
+    data.subreddit?.banner_img?.isEmpty == false
+  }
+
+  var body: some View {
+    VStack(spacing: 14) {
+      ZStack {
+        if let bannerImgFull = data.subreddit?.banner_img, !bannerImgFull.isEmpty, let bannerImg = URL(string: String(bannerImgFull.split(separator: "?")[0])) {
+          URLImage(url: bannerImg)
+            .scaledToFill()
+            .frame(width: contentWidth, height: 160)
+            .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+        } else {
+          RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+            .fill(theme.cardFill)
+            .frame(height: 92)
+        }
+
+        if let iconFull = data.subreddit?.icon_img, !iconFull.isEmpty, let icon = URL(string: String(iconFull.split(separator: "?")[0])) {
+          URLImage(url: icon)
+            .scaledToFill()
+            .frame(width: 124, height: 124)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(theme.hairline, lineWidth: 1))
+            .offset(y: hasBanner ? 80 : 0)
+        } else {
+          AuroraAvatar(name: data.name, size: 124)
+            .overlay(Circle().stroke(theme.hairline, lineWidth: 1))
+            .offset(y: hasBanner ? 80 : 0)
+        }
+      }
+      .frame(maxWidth: .infinity)
+      .background(
+        GeometryReader { geo in
+          Color.clear.onAppear { contentWidth = geo.size.width }
+        }
+      )
+      .padding(.bottom, hasBanner ? 76 : 0)
+
+      VStack(spacing: 6) {
+        Text("u/\(data.name)")
+          .font(.title3.weight(.bold))
+        if let description = data.subreddit?.public_description, !description.isEmpty {
+          Text(description.md())
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+        }
+      }
+      .frame(maxWidth: .infinity)
+      .padding(.horizontal, 8)
+    }
+  }
+}
+
+private struct UserProfileMetrics: View {
+  let data: UserData
+  @Binding var filter: String
+
+  var body: some View {
+    VStack(spacing: 10) {
+      HStack(spacing: 10) {
+        if let postKarma = data.link_karma {
+          AuroraMetricTile(
+            icon: "highlighter",
+            label: "Post karma",
+            value: formatBigNumber(postKarma),
+            active: filter == "posts"
+          ) {
+            toggle("posts")
+          }
+        }
+
+        if let commentKarma = data.comment_karma {
+          AuroraMetricTile(
+            icon: "checkmark.message.fill",
+            label: "Comment karma",
+            value: formatBigNumber(commentKarma),
+            active: filter == "comments"
+          ) {
+            toggle("comments")
+          }
+        }
+      }
+
+      if let created = data.created {
+        AuroraMetricTile(
+          icon: "star.fill",
+          label: "User since",
+          value: Date(timeIntervalSince1970: TimeInterval(created)).toFormat("MMM dd, yyyy")
+        )
+      }
+    }
+  }
+
+  private func toggle(_ value: String) {
+    withAnimation(.easeInOut(duration: 0.2)) {
+      filter = filter == value ? "" : value
+    }
+  }
+}
+
+private struct UserActivityHeader: View {
+  let filter: String
+
+  var body: some View {
+    Text(filter.isEmpty ? "Latest activity" : "Latest \(filter)")
+      .font(.headline.weight(.semibold))
+      .frame(maxWidth: .infinity, alignment: .leading)
+  }
+}
+
+private struct UserActivityRow: View {
+  let item: Either<Post, Comment>
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+
+  var body: some View {
+    switch item {
+    case .first(let post):
+      AuroraPostResultRow(post: post, availableRowWidth: nil) { post in
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      }
+    case .second(let comment):
+      AuroraCommentResultRow(comment: comment) { comment in
+        openCommentPost(comment)
+      }
+      .padding(.horizontal, 14)
+    }
+  }
+
+  private func openCommentPost(_ comment: Comment) {
+    guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
+    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: redditNavigationModel, origin: redditNavigationOrigin)
+  }
+}
+
+private struct UserActivityEmptyState: View {
+  var body: some View {
+    ContentUnavailableView("No activity found", systemImage: "tray")
+      .frame(maxWidth: .infinity, minHeight: 160)
+  }
+}
+
+private struct UserActivityLoadingState: View {
+  var body: some View {
+    HStack {
+      Spacer()
+      ProgressView()
+        .progressViewStyle(.circular)
+      Spacer()
+    }
+    .frame(maxWidth: .infinity, minHeight: 100)
   }
 }
 

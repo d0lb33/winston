@@ -11,7 +11,6 @@ struct AboutPanel: View {
   let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
   @Environment(\.openURL) private var openURL
-  @Environment(\.useTheme) private var theme
   var body: some View {
     List {
       Group {
@@ -33,13 +32,13 @@ struct AboutPanel: View {
           
           Text("Winston is developed by the lo.cafe team, a group of friends making amazing software together.")
           
-          WListButton {
+          AuroraRowButton {
             openURL(URL(string: "https://lo.cafe")!)
           } label: {
             Label("Visit lo.cafe Website", systemImage: "cup.and.saucer.fill").foregroundStyle(Color.accentColor)
           }
           
-          WListButton {
+          AuroraRowButton {
             openURL(URL(string: "https://discord.gg/Jw3Syb3nrz")!)
           } label: {
             Label {
@@ -51,7 +50,7 @@ struct AboutPanel: View {
             }
           }
           
-          WListButton {
+          AuroraRowButton {
             openURL(URL(string: "https://patreon.com/user?u=93745105")!)
           } label: {
             Label("Support our Work!", systemImage: "heart.fill").foregroundStyle(Color.accentColor)
@@ -61,16 +60,16 @@ struct AboutPanel: View {
         
         Section {
           Text("Winston is a free and open source software, therefore it isn't against Reddit's policies.")
-          WListButton {
+          AuroraRowButton {
             openURL(URL(string: "https://github.com/Kinark/winston")!)
           } label: {
             Label("Check out Winston's Source Code", systemImage: "arrow.branch")
           }
         }
       }
-      .themedListSection()
+      .auroraSettingsSection()
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .navigationTitle("About")
     .navigationBarTitleDisplayMode(.inline)
   }

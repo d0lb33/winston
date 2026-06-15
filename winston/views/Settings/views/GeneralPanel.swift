@@ -14,7 +14,6 @@ import UniformTypeIdentifiers
 struct GeneralPanel: View {
   @Default(.BehaviorDefSettings) var behaviorDefSettings
   @State private var totalCacheSize: String = ""
-  @Environment(\.useTheme) private var theme
   @State var isMoving: Bool = false
   @State var settingsFileURL: String = ""
   @State var doImport: Bool = false
@@ -27,7 +26,7 @@ struct GeneralPanel: View {
         }
         
         Section("Backup"){
-          WListButton {
+          AuroraRowButton {
             let date = Date()
             let file = exportUserDefaultsToJSON(fileName: "WinstonSettings-" + date.ISO8601Format() + ".json")
             if let file {
@@ -44,7 +43,7 @@ struct GeneralPanel: View {
             //          print(completion)
           })
           
-          WListButton {
+          AuroraRowButton {
             doImport.toggle()
           } label: {
             Label("Import Settings", systemImage: "square.and.arrow.down")
@@ -66,21 +65,21 @@ struct GeneralPanel: View {
         
         Section("Advanced") {
           
-          WListButton {
+          AuroraRowButton(role: .destructive) {
             resetPreferences()
           } label: {
             Label("Reset preferences", systemImage: "trash")
               .foregroundColor(.red)
           }
           
-          WListButton {
+          AuroraRowButton(role: .destructive) {
             showResetReadHistoryAlert = true
           } label: {
             Label("Reset read history", systemImage: "eye.slash")
               .foregroundColor(.red)
           }
           
-          WListButton {
+          AuroraRowButton(role: .destructive) {
             clearCache()
             resetCaches()
             resetCoreData()
@@ -93,10 +92,10 @@ struct GeneralPanel: View {
           }
         }
       }
-      .themedListSection()
+      .auroraSettingsSection()
       
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .navigationTitle("General")
     .navigationBarTitleDisplayMode(.inline)
     .alert("Reset read history?", isPresented: $showResetReadHistoryAlert) {

@@ -187,7 +187,7 @@ final class AuroraFeedModel {
     guard generation == loadGeneration else { return 0 }
 
     // Author avatars are fetched lazily in the background, exactly like the legacy feed.
-    let avatarSize = getEnabledTheme().postLinks.theme.badge.avatar.size
+    let avatarSize = AuroraPostPresentation.avatarSize
     Task(priority: .background) {
       await RedditWire.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: avatarSize)
     }

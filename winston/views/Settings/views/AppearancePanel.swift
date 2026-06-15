@@ -14,7 +14,6 @@ struct AppearancePanel: View {
   @Default(.CommentLinkDefSettings) var commentLinkDefSettings
   @Default(.auroraThemeID) private var auroraThemeID
 
-  @Environment(\.useTheme) private var theme
   @State private var appIconManager = AppIconManger()
 
   private var postStyleBinding: Binding<PostLinkDisplayStyle> {
@@ -32,7 +31,7 @@ struct AppearancePanel: View {
         AuroraThemePickerSection(selection: $auroraThemeID)
 
         Section {
-          WNavigationLink(value: .setting(.appIcon)) {
+          AuroraNavigationRow(value: .setting(.appIcon)) {
             HStack{
               AppIconPreview(icon: appIconManager.current, size: 32, radius: 10)
               Text("App icon")
@@ -113,9 +112,9 @@ struct AppearancePanel: View {
         }
 
       }
-      .themedListSection()
+      .auroraSettingsSection()
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .navigationTitle("Appearance")
     .navigationBarTitleDisplayMode(.inline)
   }

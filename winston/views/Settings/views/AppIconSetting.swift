@@ -10,7 +10,6 @@ import SwiftUI
 struct AppIconSetting: View {
   @State private var appIconManager = AppIconManger()
   @State private var appIcon: WinstonAppIcon = .standard
-  @Environment(\.useTheme) private var theme
   var body: some View {
     List {
       Section {
@@ -45,10 +44,10 @@ struct AppIconSetting: View {
           }
         }
       }
-      .themedListSection()
+      .auroraSettingsSection()
       
     }
-    .themedListBG(theme.lists.bg)
+    .auroraListChrome()
     .onChange(of: appIcon) { _, icon in
       appIconManager.setIcon(icon) { x in
       }

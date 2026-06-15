@@ -18,6 +18,219 @@ import Defaults
 import NukeUI
 import UIKit
 
+// MARK: - Aurora app list primitives
+
+enum AuroraPostPresentation {
+  static let winstonTheme = defaultTheme
+  static var mediaTheme: PostLinkTheme { winstonTheme.postLinks.theme }
+  static var avatarSize: Double { 32 }
+}
+
+extension Post {
+  func setupAuroraData(data: PostData? = nil, sub: Subreddit? = nil, contentWidth: Double = .screenW, fetchAvatar: Bool = true) {
+    setupWinstonData(data: data, contentWidth: contentWidth, theme: AuroraPostPresentation.winstonTheme, sub: sub, fetchAvatar: fetchAvatar)
+  }
+}
+
+struct AuroraListChrome: ViewModifier {
+  @Environment(\.auroraTheme) private var theme
+
+  func body(content: Content) -> some View {
+    content
+      .listStyle(.plain)
+      .scrollContentBackground(.hidden)
+      .tint(theme.accent)
+      .fontDesign(theme.fontDesign)
+      .background { AuroraBackdrop(theme: theme) }
+  }
+}
+
+struct AuroraSettingsSectionModifier: ViewModifier {
+  func body(content: Content) -> some View {
+    content
+      .listRowBackground(Color.clear)
+      .listRowSeparator(.hidden)
+      .listSectionSpacing(15)
+  }
+}
+
+extension View {
+  func auroraListChrome() -> some View {
+    modifier(AuroraListChrome())
+  }
+
+  func auroraSettingsSection() -> some View {
+    modifier(AuroraSettingsSectionModifier())
+  }
+}
+
+struct AuroraRowButton<Label: View>: View {
+  var showArrow = false
+  var active = false
+  var role: ButtonRole?
+  let action: () -> Void
+  @ViewBuilder let label: () -> Label
+
+  @Environment(\.auroraTheme) private var theme
+  @State private var forcedActive = false
+
+  init(showArrow: Bool = false, active: Bool = false, role: ButtonRole? = nil, _ action: @escaping () -> Void, @ViewBuilder label: @escaping () -> Label) {
+    self.showArrow = showArrow
+    self.active = active
+    self.role = role
+    self.action = action
+    self.label = label
+  }
+
+  var body: some View {
+    Button(role: role) {
+      forcedActive = true
+      action()
+      doThisAfter(0.45) {
+        forcedActive = false
+      }
+    } label: {
+      HStack(spacing: 12) {
+        label()
+          .frame(maxWidth: .infinity, alignment: .leading)
+
+        if showArrow {
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.tertiary)
+        }
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 10)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(RoundedRectangle(cornerRadius: min(theme.cornerRadius, 14), style: .continuous))
+    }
+    .buttonStyle(.plain)
+    .background(rowFill, in: RoundedRectangle(cornerRadius: min(theme.cornerRadius, 14), style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: min(theme.cornerRadius, 14), style: .continuous)
+        .stroke(rowStroke, lineWidth: 0.7)
+    )
+    .onAppear { forcedActive = false }
+  }
+
+  private var rowFill: Color {
+    if forcedActive || active {
+      return theme.accent.opacity(0.18)
+    }
+    return theme.cardFill
+  }
+
+  private var rowStroke: Color {
+    active ? theme.accent.opacity(0.75) : theme.hairline
+  }
+}
+
+struct AuroraActionRow: View {
+  let title: LocalizedStringKey
+  var systemImage: String?
+  var active = false
+  var role: ButtonRole?
+  let action: () -> Void
+
+  var body: some View {
+    AuroraRowButton(active: active, role: role, action) {
+      if let systemImage {
+        Label(title, systemImage: systemImage)
+      } else {
+        Text(title)
+      }
+    }
+  }
+}
+
+struct AuroraNavigationRow<Label: View>: View {
+  let value: Router.NavDest
+  var active = false
+  @ViewBuilder let label: () -> Label
+
+  @Environment(\.settingsNavigationModel) private var settingsNavigationModel
+  @Environment(\.settingsNavigationOrigin) private var settingsNavigationOrigin
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+
+  init(_ value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+    self.value = value
+    self.active = active
+    self.label = label
+  }
+
+  init(value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+    self.value = value
+    self.active = active
+    self.label = label
+  }
+
+  var body: some View {
+    AuroraRowButton(showArrow: true, active: active) {
+      AppDiagnostics.asyncBreadcrumb("AuroraNavigationRow tapped", metadata: ["destination": value.diagnosticsName])
+      if navigateSettingsDestination(value, model: settingsNavigationModel, origin: settingsNavigationOrigin) {
+        return
+      }
+      navigateRedditDestination(value, model: redditNavigationModel, origin: redditNavigationOrigin)
+    } label: {
+      label()
+    }
+  }
+}
+
+extension AuroraNavigationRow where Label == AnyView {
+  init(_ value: Router.NavDest, active: Bool = false, title: LocalizedStringKey, systemImage: String? = nil) {
+    self.value = value
+    self.active = active
+    self.label = {
+      if let systemImage {
+        AnyView(SwiftUI.Label(title, systemImage: systemImage))
+      } else {
+        AnyView(Text(title))
+      }
+    }
+  }
+}
+
+struct AuroraMetricTile: View {
+  let icon: String
+  let label: String
+  let value: String
+  var active = false
+  var action: (() -> Void)?
+
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    let content = VStack(spacing: 5) {
+      Image(systemName: icon)
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(active ? theme.accent : theme.accent.opacity(0.85))
+      Text(label)
+        .font(.caption)
+        .foregroundStyle(.secondary)
+      Text(value)
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(.primary)
+    }
+    .padding(10)
+    .frame(maxWidth: .infinity, minHeight: 86)
+    .background(active ? theme.accent.opacity(0.16) : theme.cardFill, in: RoundedRectangle(cornerRadius: min(theme.cornerRadius, 16), style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: min(theme.cornerRadius, 16), style: .continuous)
+        .stroke(active ? theme.accent.opacity(0.7) : theme.hairline, lineWidth: 0.7)
+    )
+
+    if let action {
+      Button(action: action) { content }
+        .buttonStyle(.plain)
+    } else {
+      content
+    }
+  }
+}
+
 // MARK: - Offline palette (stable per-seed colors; no network, cheap under scroll)
 
 enum AuroraPalette {
@@ -47,29 +260,8 @@ struct AuroraBackdrop: View {
   @State private var drift: CGFloat = 0
 
   var body: some View {
-    let dx = Float(sin(Double(drift))) * 0.06
-    let dy = Float(cos(Double(drift) * 0.8)) * 0.06
-    let dx2 = Float(cos(Double(drift) * 0.6)) * 0.05
-
-    MeshGradient(
-      width: 3, height: 3,
-      points: [
-        .init(0, 0), .init(0.5, 0), .init(1, 0),
-        .init(0, 0.5), .init(0.5 + dx, 0.5 + dy), .init(1, 0.5),
-        .init(0, 1), .init(0.5 + dx2, 1), .init(1, 1),
-      ],
-      colors: theme.meshColors
-    )
-    .overlay(
-      RadialGradient(colors: [.clear, theme.vignette.opacity(theme.vignetteStrength)],
-                     center: .center, startRadius: 280, endRadius: 900)
-    )
-    .ignoresSafeArea()
-    .onAppear {
-      withAnimation(.easeInOut(duration: 16).repeatForever(autoreverses: true)) {
-        drift = .pi
-      }
-    }
+    Color(uiColor: .systemBackground)
+      .ignoresSafeArea()
   }
 }
 
@@ -120,15 +312,26 @@ extension Subreddit {
   }
 }
 
-/// Offline monogram avatar (no network) — keeps scrolling cheap.
 struct AuroraAvatar: View {
   let name: String
+  var avatarRequest: ImageRequest? = nil
   var size: CGFloat = 22
   private var letter: String { String((name.first { $0.isLetter || $0.isNumber } ?? "u")).uppercased() }
   var body: some View {
+    Group {
+      if let avatarRequest {
+        ThumbReqImage(imgRequest: avatarRequest, size: CGSize(width: size, height: size))
+      } else {
+        monogram
+      }
+    }
+    .frame(width: size, height: size)
+    .clipShape(Circle())
+  }
+
+  private var monogram: some View {
     Circle()
       .fill(LinearGradient(colors: AuroraPalette.gradient(for: name), startPoint: .top, endPoint: .bottom))
-      .frame(width: size, height: size)
       .overlay(
         Text(letter)
           .font(.system(size: size * 0.48, weight: .bold))
@@ -382,7 +585,6 @@ private struct AuroraPostCardSurface: View {
   let presentation: AuroraPostCardPresentation
   let onCompactNavigate: ((Router.NavDest) -> Void)?
   @Environment(\.auroraTheme) private var theme
-  @Environment(\.useTheme) private var selectedTheme
   @Environment(\.horizontalSizeClass) private var hSize
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
@@ -418,7 +620,7 @@ private struct AuroraPostCardSurface: View {
         HStack(spacing: 8) {
           Button { openSubreddit(data.subreddit) } label: {
             HStack(spacing: 8) {
-              AuroraSubIcon(name: data.subreddit, size: 24)
+              AuroraSubIcon(name: data.subreddit, iconKit: winstonData.subreddit?.data?.subredditIconKit, size: 24)
               Text("r/\(data.subreddit)").font(.caption.weight(.semibold)).foregroundStyle(.primary)
             }
           }
@@ -453,7 +655,7 @@ private struct AuroraPostCardSurface: View {
         HStack(spacing: 12) {
           Button { openAuthor(data.author) } label: {
             HStack(spacing: 6) {
-              AuroraAvatar(name: data.author, size: 20)
+              AuroraAvatar(name: data.author, avatarRequest: winstonData.avatarImageRequest, size: 20)
               Text("u/\(data.author)").font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
             }
           }
@@ -574,7 +776,7 @@ private struct AuroraPostCardSurface: View {
           cornerRadius: theme.mediaRadius,
           marksSeenOnPreview: defSettings.lightboxReadsPost,
           markAsSeen: markAsRead,
-          dimsTheme: selectedTheme.postLinks.theme,
+          dimsTheme: AuroraPostPresentation.mediaTheme,
           feedItemKey: inlineVideoFeedKey,
           resetVideo: nil
         )

@@ -12,7 +12,7 @@ import Nuke
 
 struct AccountsPanel: View {
   @ObservedObject private var wire = RedditWire.shared
-  @Environment(\.useTheme) private var theme
+  @Environment(\.auroraTheme) private var theme
 
   var body: some View {
     Group {
@@ -23,6 +23,7 @@ struct AccountsPanel: View {
       }
     }
     .navigationTitle("Accounts")
+    .background { AuroraBackdrop(theme: theme) }
     .toolbar {
       ToolbarItem {
         Button {
@@ -52,8 +53,9 @@ struct AccountsList: View {
           Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
         }
       }
-      .themedListSection()
+      .auroraSettingsSection()
     }
+    .auroraListChrome()
     .navigationBarTitleDisplayMode(.large)
   }
 }
@@ -64,7 +66,7 @@ struct AccountItem: View {
   @State private var logoutAlertOpened = false
 
   var body: some View {
-    WListButton(showArrow: false) {
+    AuroraRowButton {
       guard !inUse else { return }
       Task { await RedditWire.shared.selectAccount(account.id) }
     } label: {

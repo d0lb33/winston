@@ -37,7 +37,6 @@ struct AuroraPostDetail: View {
   private let swipeAnywhere: Bool
 
   @Default(.CommentLinkDefSettings) private var commentDefSettings
-  @Environment(\.useTheme) private var selectedTheme
   @Environment(\.auroraTheme) private var theme
 
   init(post: Post, subreddit: Subreddit, highlightID: String? = nil) {
@@ -254,7 +253,7 @@ struct AuroraPostDetail: View {
 
   private func ensureWinston() {
     if let data = post.data, post.winstonData == nil || post.winstonData?.titleAttr == nil {
-      post.setupWinstonData(data: data, theme: selectedTheme, sub: subreddit)
+      post.setupAuroraData(data: data, sub: subreddit)
     }
   }
 

@@ -11,7 +11,6 @@ struct FilteredSubredditsSettings: View {
   @Default(.filteredSubreddits) private var filteredSubreddits
   @State private var newSubreddit = ""
   @State private var addSubredditAlert = false
-  @Environment(\.useTheme) private var theme
 
   private func removeSubreddit(at index: Int) {
     var tempSubreddits = filteredSubreddits
@@ -38,9 +37,9 @@ struct FilteredSubredditsSettings: View {
               }
           }
         }
-        .themedListSection()
+        .auroraSettingsSection()
       }
-      .themedListBG(theme.lists.bg)
+      .auroraListChrome()
       .navigationTitle("Filtered Subreddits")
       .navigationBarItems(trailing:
         HStack {

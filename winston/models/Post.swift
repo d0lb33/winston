@@ -149,11 +149,25 @@ extension Post {
       
       self.winstonData?.titleAttr = createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())
       
+      let hydratedSubredditData = SubredditMetadataRegistry.shared.data(forName: data.subreddit, id: data.subreddit_id)
       if let sub {
-        self.winstonData?.subreddit = sub
+        if let hydratedSubredditData, shouldUseHydratedSubredditData(hydratedSubredditData, insteadOf: sub, for: data) {
+          var mergedSubredditData = hydratedSubredditData
+          if let existingSubredditData = sub.data {
+            mergedSubredditData.preserveDisplayMetadata(from: existingSubredditData)
+          }
+          self.winstonData?._weakSubreddit = nil
+          self.winstonData?._strongSubreddit = Subreddit(data: mergedSubredditData)
+        } else {
+          self.winstonData?.subreddit = sub
+        }
       } else {
         self.winstonData?._weakSubreddit = nil
-        self.winstonData?._strongSubreddit = Subreddit(id: data.subreddit)
+        if let subredditData = hydratedSubredditData {
+          self.winstonData?._strongSubreddit = Subreddit(data: subredditData)
+        } else {
+          self.winstonData?._strongSubreddit = Subreddit(id: data.subreddit)
+        }
       }
       
       if fetchAvatar {
@@ -162,6 +176,22 @@ extension Post {
         }
       }
     }
+  }
+
+  private func shouldUseHydratedSubredditData(_ data: SubredditData, insteadOf sub: Subreddit, for postData: PostData) -> Bool {
+    let aggregateFeeds: Set<String> = ["home", "popular", "all", "saved"]
+    let feedID = sub.id.lowercased()
+    let feedName = sub.feedName.lowercased()
+    if aggregateFeeds.contains(feedID) || aggregateFeeds.contains(feedName) {
+      return true
+    }
+
+    let postSubreddit = postData.subreddit.lowercased()
+    let subDisplayName = sub.data?.display_name?.lowercased()
+    let isSameSubreddit = feedID == postSubreddit || feedName == postSubreddit || subDisplayName == postSubreddit
+    let currentIconURL = sub.data?.subredditIconKit.url
+    let hydratedIconURL = data.subredditIconKit.url
+    return isSameSubreddit && currentIconURL?.isEmpty != false && hydratedIconURL?.isEmpty == false
   }
   
   static func extractFlairData(data: PostData, checkDefaultsForColor: Bool = false) -> FilterData? {

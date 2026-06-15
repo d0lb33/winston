@@ -507,7 +507,6 @@
       }
     },
     "Announcements" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1271,6 +1270,9 @@
         }
       }
     },
+    "Donate monthly" : {
+
+    },
     "Done" : {
 
     },
@@ -1467,7 +1469,6 @@
       }
     },
     "FAQ" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1738,6 +1739,9 @@
           }
         }
       }
+    },
+    "GraphQL (experimental)" : {
+
     },
     "Hello, World!" : {
       "localizations" : {
@@ -2205,6 +2209,12 @@
         }
       }
     },
+    "Latest %@" : {
+
+    },
+    "Latest activity" : {
+
+    },
     "Left" : {
       "localizations" : {
         "de" : {
@@ -2394,6 +2404,9 @@
           }
         }
       }
+    },
+    "Mark Read" : {
+
     },
     "Max Posts Image Height" : {
       "localizations" : {
@@ -3199,6 +3212,9 @@
         }
       }
     },
+    "Posts swipe settings" : {
+
+    },
     "Posts Swipe Settings" : {
       "localizations" : {
         "de" : {
@@ -3236,6 +3252,9 @@
           }
         }
       }
+    },
+    "Read" : {
+
     },
     "Read on preview media" : {
       "localizations" : {
@@ -4521,7 +4540,6 @@
       }
     },
     "Whats New" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

@@ -37,6 +37,70 @@ final class AvatarRegistry: @unchecked Sendable {
   }
 }
 
+final class SubredditMetadataRegistry: @unchecked Sendable {
+  static let shared = SubredditMetadataRegistry()
+  private let lock = NSLock()
+  private var dataByKey: [String: SubredditData] = [:]
+
+  func register(_ data: SubredditData?) {
+    guard let data else { return }
+    let keys = Self.keys(for: data)
+    guard !keys.isEmpty else { return }
+
+    lock.lock()
+    defer { lock.unlock() }
+
+    for key in keys {
+      if let existing = dataByKey[key] {
+        var merged = data
+        merged.preserveDisplayMetadata(from: existing)
+        dataByKey[key] = merged
+      } else {
+        dataByKey[key] = data
+      }
+    }
+  }
+
+  func data(forName name: String?, id: String?) -> SubredditData? {
+    let lookupKeys = Self.lookupKeys(name) + Self.lookupKeys(id)
+    guard !lookupKeys.isEmpty else { return nil }
+
+    lock.lock()
+    defer { lock.unlock() }
+
+    for key in lookupKeys {
+      if let data = dataByKey[key] { return data }
+    }
+    return nil
+  }
+
+  private static func keys(for data: SubredditData) -> [String] {
+    [
+      data.display_name,
+      data.display_name_prefixed,
+      data.name,
+      data.id
+    ]
+    .flatMap(lookupKeys)
+    .deduped { $0 }
+  }
+
+  private static func lookupKeys(_ raw: String?) -> [String] {
+    guard let raw else { return [] }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return [] }
+
+    var keys = [trimmed.lowercased()]
+    if trimmed.lowercased().hasPrefix("r/") {
+      keys.append(String(trimmed.dropFirst(2)).lowercased())
+    }
+    if trimmed.lowercased().hasPrefix("t5_") {
+      keys.append(String(trimmed.dropFirst(3)).lowercased())
+    }
+    return keys.deduped { $0 }
+  }
+}
+
 func getNamesFromComments(_ comments: [Comment]) -> [String] {
   var namesArr: [String] = []
   comments.forEach { comment in

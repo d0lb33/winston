@@ -94,6 +94,9 @@ extension PostData {
       fullname: p.authorInfo?.id,
       url: redditLoadableAvatarURL(p.authorInfo?.iconSmall?.url ?? p.authorInfo?.snoovatarIcon?.url)
     )
+    if let subreddit = p.subreddit {
+      SubredditMetadataRegistry.shared.register(SubredditData(graphQL: subreddit))
+    }
   }
 
   private mutating func applyGraphQLMedia(from p: SubredditPost) {
