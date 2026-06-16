@@ -73,7 +73,7 @@ struct AuroraFeed: View {
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
 
-      TabSelectableScrollRoot(
+      TabScrollRoot(
         topID: Self.topID,
         tab: tabInteractionTab,
         tabInteractions: tabInteractions,

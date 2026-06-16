@@ -235,11 +235,12 @@ final class TabInteractionCenter: ObservableObject {
   }
 }
 
-struct TabScrollRoot<Content: View>: View {
+struct TabScrollRoot<Selection: Hashable, Content: View>: View {
   private let topID: String
   private let tab: Nav.TabIdentifier?
   private let tabInteractions: TabInteractionCenter?
   private let request: TabInteractionRequest?
+  private let selection: Binding<Selection?>?
   private let onResetToRoot: (() -> Void)?
   private let onOffsetChange: (CGFloat) -> Void
   private let content: () -> Content
@@ -249,6 +250,7 @@ struct TabScrollRoot<Content: View>: View {
     tab: Nav.TabIdentifier?,
     tabInteractions: TabInteractionCenter?,
     request: TabInteractionRequest?,
+    selection: Binding<Selection?>,
     onResetToRoot: (() -> Void)? = nil,
     onOffsetChange: @escaping (CGFloat) -> Void = { _ in },
     @ViewBuilder content: @escaping () -> Content
@@ -257,6 +259,7 @@ struct TabScrollRoot<Content: View>: View {
     self.tab = tab
     self.tabInteractions = tabInteractions
     self.request = request
+    self.selection = selection
     self.onResetToRoot = onResetToRoot
     self.onOffsetChange = onOffsetChange
     self.content = content
@@ -264,7 +267,7 @@ struct TabScrollRoot<Content: View>: View {
 
   var body: some View {
     ScrollViewReader { proxy in
-      List {
+      TabScrollList(selection: selection) {
         Color.clear
           .frame(height: 0)
           .id(topID)
@@ -307,22 +310,12 @@ struct TabScrollRoot<Content: View>: View {
   }
 }
 
-struct TabSelectableScrollRoot<Selection: Hashable, Content: View>: View {
-  private let topID: String
-  private let tab: Nav.TabIdentifier?
-  private let tabInteractions: TabInteractionCenter?
-  private let request: TabInteractionRequest?
-  private let onResetToRoot: (() -> Void)?
-  private let onOffsetChange: (CGFloat) -> Void
-  @Binding private var selection: Selection?
-  private let content: () -> Content
-
+extension TabScrollRoot where Selection == Never {
   init(
     topID: String,
     tab: Nav.TabIdentifier?,
     tabInteractions: TabInteractionCenter?,
     request: TabInteractionRequest?,
-    selection: Binding<Selection?>,
     onResetToRoot: (() -> Void)? = nil,
     onOffsetChange: @escaping (CGFloat) -> Void = { _ in },
     @ViewBuilder content: @escaping () -> Content
@@ -331,52 +324,31 @@ struct TabSelectableScrollRoot<Selection: Hashable, Content: View>: View {
     self.tab = tab
     self.tabInteractions = tabInteractions
     self.request = request
-    self._selection = selection
+    self.selection = nil
     self.onResetToRoot = onResetToRoot
     self.onOffsetChange = onOffsetChange
     self.content = content
   }
+}
 
+private struct TabScrollList<Selection: Hashable, Rows: View>: View {
+  let selection: Binding<Selection?>?
+  let rows: () -> Rows
+
+  init(selection: Binding<Selection?>?, @ViewBuilder rows: @escaping () -> Rows) {
+    self.selection = selection
+    self.rows = rows
+  }
+
+  @ViewBuilder
   var body: some View {
-    ScrollViewReader { proxy in
-      List(selection: $selection) {
-        Color.clear
-          .frame(height: 0)
-          .id(topID)
-          .listRowSeparator(.hidden)
-          .listRowBackground(Color.clear)
-          .listRowInsets(EdgeInsets())
-
-        content()
+    if let selection {
+      List(selection: selection) {
+        rows()
       }
-      // Without this, SwiftUI's ~44pt default minimum row height inflates the
-      // zero-height top anchor row into a large gap under the nav bar.
-      .environment(\.defaultMinListRowHeight, 1)
-      .onScrollGeometryChange(for: CGFloat.self) { geometry in
-        geometry.contentOffset.y
-      } action: { _, newOffsetY in
-        if let tab, let tabInteractions {
-          tabInteractions.setIsAtTop(tab, newOffsetY <= 4)
-        }
-        onOffsetChange(newOffsetY)
-      }
-      .onAppear {
-        if let tab, let tabInteractions {
-          tabInteractions.setIsAtTop(tab, true)
-        }
-      }
-      .onChange(of: request) { _, request in
-        guard let request else { return }
-        if request.kind == .resetToRoot {
-          onResetToRoot?()
-        }
-        guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-        withAnimation(.snappy) {
-          proxy.scrollTo(topID, anchor: .top)
-        }
-        if let tab, let tabInteractions {
-          tabInteractions.setIsAtTop(tab, true)
-        }
+    } else {
+      List {
+        rows()
       }
     }
   }
