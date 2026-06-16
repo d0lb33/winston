@@ -68,6 +68,13 @@ extension User {
     return bundle.extras
   }
 
+  /// The signed-in user's history feeds (saved / upvoted / downvoted / hidden),
+  /// posts-only, mapped into the shared activity feed type.
+  func refetchHistory(_ kind: RedditWire.ProfileHistoryKind, _ after: String? = nil) async -> [Either<Post, Comment>]? {
+    guard let posts = await RedditWire.shared.userHistoryPosts(kind, after: after) else { return nil }
+    return posts.map { .first(Post(data: $0)) }
+  }
+
   func fetchItself() {
     Task(priority: .background) {
       if let data = await RedditWire.shared.userProfile(id) {
@@ -227,6 +234,8 @@ struct UserProfileExtras: Hashable {
   var isAcceptingFollowers: Bool? = nil
   var isEmployee: Bool? = nil
   var isFriend: Bool? = nil
+  var isFollowing: Bool? = nil
+  var isBlocked: Bool? = nil
 
   /// True when there's nothing extra to show beyond the basic header/karma.
   var isEmpty: Bool {

@@ -471,6 +471,9 @@
     "Add favorite" : {
 
     },
+    "Add link" : {
+
+    },
     "Add Manual Marker" : {
 
     },
@@ -649,6 +652,18 @@
           }
         }
       }
+    },
+    "Bio" : {
+
+    },
+    "Block" : {
+
+    },
+    "Block account" : {
+
+    },
+    "Block u/%@?" : {
+
     },
     "Blur background" : {
       "extractionState" : "stale",
@@ -993,6 +1008,9 @@
         }
       }
     },
+    "Couldn't complete that" : {
+
+    },
     "Couldn't load — tap to retry" : {
 
     },
@@ -1237,6 +1255,9 @@
     "Disconnect" : {
 
     },
+    "Display name" : {
+
+    },
     "Do you wanna reset this property?" : {
       "localizations" : {
         "de" : {
@@ -1356,6 +1377,9 @@
       }
     },
     "Edit filter" : {
+
+    },
+    "Edit Profile" : {
 
     },
     "Enter a subreddit" : {
@@ -1571,6 +1595,12 @@
           }
         }
       }
+    },
+    "Follow" : {
+
+    },
+    "Following" : {
+
     },
     "For that, just click the button below, scroll down the page and click \"Accept\"." : {
       "extractionState" : "stale",
@@ -1858,6 +1888,9 @@
           }
         }
       }
+    },
+    "https://…" : {
+
     },
     "I mean, hello!" : {
       "extractionState" : "stale",
@@ -2185,6 +2218,9 @@
         }
       }
     },
+    "Label" : {
+
+    },
     "Large" : {
       "localizations" : {
         "de" : {
@@ -2409,6 +2445,9 @@
       }
     },
     "Mark Read" : {
+
+    },
+    "Mature (18+) profile" : {
 
     },
     "Max Posts Image Height" : {
@@ -3813,6 +3852,9 @@
         }
       }
     },
+    "Social links" : {
+
+    },
     "Something went wrong, you probably didn't enter the correct information in the previous steps." : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4388,6 +4430,9 @@
         }
       }
     },
+    "Unblock account" : {
+
+    },
     "Unfavorite" : {
 
     },
@@ -4717,6 +4762,9 @@
           }
         }
       }
+    },
+    "You won't see their posts or comments, and they won't be able to message you." : {
+
     },
     "Your iPhone does not support Live Text :(" : {
       "localizations" : {

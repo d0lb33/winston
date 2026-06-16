@@ -483,6 +483,9 @@ extension UserProfileExtras {
     self.isAcceptingChats = details?.isAcceptingChats
     self.isAcceptingFollowers = details?.isAcceptingFollowers
     self.isEmployee = details?.isEmployee
+    self.isBlocked = details?.isBlocked
+    // "Following" a redditor is modeled as being subscribed to their profile.
+    self.isFollowing = details?.profileInfo?.isSubscribed
   }
 }
 

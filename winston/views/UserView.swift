@@ -19,34 +19,42 @@ struct UserViewContextPreview: View {
 // MARK: - Profile tabs
 
 enum ProfileTab: String, CaseIterable, Identifiable {
-  case overview, posts, comments, about
+  case overview, posts, comments, saved, upvoted, downvoted, hidden, about
 
   var id: String { rawValue }
 
-  /// Public tabs shown for any user's profile.
+  /// Tabs shown for any user's profile.
   static let publicTabs: [ProfileTab] = [.overview, .posts, .comments, .about]
+
+  /// Additional history tabs shown only on the signed-in user's own profile.
+  static let ownProfileTabs: [ProfileTab] = [.overview, .posts, .comments, .saved, .upvoted, .downvoted, .hidden, .about]
 
   var title: String {
     switch self {
     case .overview: return "Overview"
     case .posts: return "Posts"
     case .comments: return "Comments"
+    case .saved: return "Saved"
+    case .upvoted: return "Upvoted"
+    case .downvoted: return "Downvoted"
+    case .hidden: return "Hidden"
     case .about: return "About"
     }
   }
 
-  /// The `userOverviewData` filter string for feed-backed tabs, or `nil` for
-  /// non-feed tabs (About).
-  var feedFilter: String? {
+  /// Every tab except About is a paginated activity feed.
+  var isFeed: Bool { self != .about }
+
+  /// The signed-in-user history feed this tab maps to, if any.
+  var historyKind: RedditWire.ProfileHistoryKind? {
     switch self {
-    case .overview: return ""
-    case .posts: return "posts"
-    case .comments: return "comments"
-    case .about: return nil
+    case .saved: return .saved
+    case .upvoted: return .upvoted
+    case .downvoted: return .downvoted
+    case .hidden: return .hidden
+    default: return nil
     }
   }
-
-  var isFeed: Bool { feedFilter != nil }
 }
 
 /// Per-tab feed/pagination state so each feed tab loads and pages independently.
@@ -65,6 +73,11 @@ struct UserView: View {
   @State private var selectedTab: ProfileTab = .overview
   @State private var feeds: [ProfileTab: ProfileFeedState] = [:]
   @State private var contentWidth: CGFloat = 0
+  @State private var isFollowing: Bool?
+  @State private var isBlocked: Bool?
+  @State private var showBlockConfirm = false
+  @State private var showEditProfile = false
+  @State private var actionError: String?
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
@@ -82,7 +95,17 @@ struct UserView: View {
   }
 #endif
 
-  private var availableTabs: [ProfileTab] { ProfileTab.publicTabs }
+  /// True when this profile belongs to the signed-in account; unlocks the
+  /// Saved / Upvoted / Downvoted / Hidden history tabs.
+  private var isCurrentUser: Bool {
+    guard let me = RedditWire.currentUserName, !me.isEmpty else { return false }
+    let name = user.data?.name ?? user.id
+    return name.lowercased() == me.lowercased()
+  }
+
+  private var availableTabs: [ProfileTab] {
+    isCurrentUser ? ProfileTab.ownProfileTabs : ProfileTab.publicTabs
+  }
 
   /// The profile's own brand color (from styles), used to tint the header and
   /// active tab; `nil` falls back to the app theme accent.
@@ -92,23 +115,87 @@ struct UserView: View {
 
   private func feed(_ tab: ProfileTab) -> ProfileFeedState { feeds[tab] ?? ProfileFeedState() }
 
-  /// Only submitted/comment feeds support cursor paging; the mixed overview is
-  /// a single non-paged batch (matches `RedditWire.userOverviewData`).
-  private func canPage(_ tab: ProfileTab) -> Bool { tab == .posts || tab == .comments }
+  /// The mixed overview is a single non-paged batch; every other feed paginates
+  /// by cursor.
+  private func canPage(_ tab: ProfileTab) -> Bool {
+    switch tab {
+    case .overview, .about: return false
+    default: return true
+    }
+  }
+
+  /// Fetch one page for any feed tab, routing to the overview/submitted feeds or
+  /// the signed-in-user history feeds as appropriate.
+  private func fetchPage(_ tab: ProfileTab, after: String?) async -> [Either<Post, Comment>]? {
+    if let kind = tab.historyKind {
+      return await user.refetchHistory(kind, after)
+    }
+    switch tab {
+    case .overview: return await user.refetchOverview("", after)
+    case .posts: return await user.refetchOverview("posts", after)
+    case .comments: return await user.refetchOverview("comments", after)
+    default: return nil
+    }
+  }
 
   func refreshProfile() async {
     let newExtras = await user.refetchUserBundle()
     await MainActor.run {
       withAnimation {
         self.extras = newExtras
+        self.isFollowing = newExtras?.isFollowing
+        self.isBlocked = newExtras?.isBlocked
         self.feeds = [:]
       }
     }
     await loadFeed(selectedTab, reset: true)
   }
 
+  /// `t2_…` fullname for the viewed redditor, needed by the follow/block
+  /// mutations. Nil until the profile has loaded.
+  private var accountFullname: String? {
+    guard let bareID = user.data?.id, !bareID.isEmpty else { return nil }
+    return bareID.hasPrefix("t2_") ? bareID : "t2_\(bareID)"
+  }
+
+  private func toggleFollow() {
+    guard let fullname = accountFullname else { return }
+    let target = !(isFollowing ?? false)
+    withAnimation { isFollowing = target }
+    Task {
+      if let error = await RedditWire.shared.setFollowState(accountFullname: fullname, following: target) {
+        await MainActor.run {
+          withAnimation { isFollowing = !target }
+          actionError = error
+        }
+      }
+    }
+  }
+
+  /// Unblock immediately; route blocking through a confirmation dialog.
+  private func requestToggleBlock() {
+    if isBlocked == true {
+      performBlock(false)
+    } else {
+      showBlockConfirm = true
+    }
+  }
+
+  private func performBlock(_ target: Bool) {
+    guard let fullname = accountFullname else { return }
+    withAnimation { isBlocked = target }
+    Task {
+      if let error = await RedditWire.shared.setBlockState(redditorFullname: fullname, blocked: target) {
+        await MainActor.run {
+          withAnimation { isBlocked = !target }
+          actionError = error
+        }
+      }
+    }
+  }
+
   func loadFeed(_ tab: ProfileTab, reset: Bool = false) async {
-    guard let filter = tab.feedFilter else { return }
+    guard tab.isFeed else { return }
     if !reset, feed(tab).loadedOnce { return }
 
     await MainActor.run {
@@ -117,7 +204,7 @@ struct UserView: View {
       feeds[tab] = state
     }
 
-    if let result = await user.refetchOverview(filter, nil) {
+    if let result = await fetchPage(tab, after: nil) {
       await MainActor.run {
         withAnimation {
           var state = feed(tab)
@@ -144,13 +231,13 @@ struct UserView: View {
   }
 
   func loadNextFeed(_ tab: ProfileTab) {
-    guard canPage(tab), let filter = tab.feedFilter else { return }
+    guard canPage(tab) else { return }
     let state = feed(tab)
     guard !state.loading, !state.loadingNext, !state.reachedEnd, let lastId = state.lastItemId else { return }
 
     feeds[tab]?.loadingNext = true
     Task {
-      if let result = await user.refetchOverview(filter, lastId) {
+      if let result = await fetchPage(tab, after: lastId) {
         await MainActor.run {
           withAnimation {
             var state = feed(tab)
@@ -186,7 +273,18 @@ struct UserView: View {
     List {
       if let data = user.data {
         Section {
-          UserHeaderNative(data: data, extras: extras, accent: profileAccent, contentWidth: $contentWidth)
+          UserHeaderNative(
+            data: data,
+            extras: extras,
+            accent: profileAccent,
+            isCurrentUser: isCurrentUser,
+            isFollowing: isFollowing,
+            isBlocked: isBlocked,
+            onToggleFollow: toggleFollow,
+            onToggleBlock: requestToggleBlock,
+            onEditProfile: { showEditProfile = true },
+            contentWidth: $contentWidth
+          )
             .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 8, trailing: 14))
             .listRowSeparator(.hidden)
             .listRowBackground(Color.clear)
@@ -225,6 +323,37 @@ struct UserView: View {
     .onChange(of: selectedTab) {
       if selectedTab.isFeed, !feed(selectedTab).loadedOnce {
         Task { await loadFeed(selectedTab) }
+      }
+    }
+    .confirmationDialog(
+      "Block u/\(user.data?.name ?? "")?",
+      isPresented: $showBlockConfirm,
+      titleVisibility: .visible
+    ) {
+      Button("Block", role: .destructive) { performBlock(true) }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("You won't see their posts or comments, and they won't be able to message you.")
+    }
+    .alert(
+      "Couldn't complete that",
+      isPresented: Binding(get: { actionError != nil }, set: { if !$0 { actionError = nil } })
+    ) {
+      Button("OK", role: .cancel) {}
+    } message: {
+      Text(actionError ?? "")
+    }
+    .sheet(isPresented: $showEditProfile) {
+      if let data = user.data, let subredditID = data.subreddit?.name, !subredditID.isEmpty {
+        EditProfileSheet(
+          subredditID: subredditID,
+          initialTitle: data.subreddit?.title ?? "",
+          initialBio: data.subreddit?.public_description ?? "",
+          initialNSFW: data.subreddit?.over_18 ?? false,
+          initialLinks: extras?.socialLinks ?? []
+        ) {
+          Task { await refreshProfile() }
+        }
       }
     }
   }
@@ -282,6 +411,12 @@ private struct UserHeaderNative: View {
   let data: UserData
   let extras: UserProfileExtras?
   var accent: Color?
+  var isCurrentUser: Bool = false
+  var isFollowing: Bool?
+  var isBlocked: Bool?
+  var onToggleFollow: () -> Void = {}
+  var onToggleBlock: () -> Void = {}
+  var onEditProfile: () -> Void = {}
   @Binding var contentWidth: CGFloat
   @Environment(\.auroraTheme) private var theme
 
@@ -291,6 +426,15 @@ private struct UserHeaderNative: View {
 
   private var isAdmin: Bool { extras?.isEmployee == true || data.is_employee == true }
   private var isPremium: Bool { data.is_gold == true }
+
+  /// The user's chosen display name (profile title), shown above the handle when
+  /// it's set and differs from the username.
+  private var displayName: String? {
+    guard let title = data.subreddit?.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !title.isEmpty,
+          title.lowercased() != data.name.lowercased() else { return nil }
+    return title
+  }
 
   var body: some View {
     VStack(spacing: 14) {
@@ -335,8 +479,17 @@ private struct UserHeaderNative: View {
       .padding(.bottom, hasBanner ? 76 : 0)
 
       VStack(spacing: 6) {
-        Text("u/\(data.name)")
-          .font(.title3.weight(.bold))
+        if let displayName {
+          Text(displayName)
+            .font(.title3.weight(.bold))
+            .multilineTextAlignment(.center)
+          Text("u/\(data.name)")
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        } else {
+          Text("u/\(data.name)")
+            .font(.title3.weight(.bold))
+        }
 
         if isAdmin || isPremium {
           HStack(spacing: 6) {
@@ -354,7 +507,61 @@ private struct UserHeaderNative: View {
       }
       .frame(maxWidth: .infinity)
       .padding(.horizontal, 8)
+
+      if isCurrentUser {
+        ownProfileActions
+      } else {
+        profileActions
+      }
     }
+  }
+
+  @ViewBuilder
+  private var ownProfileActions: some View {
+    Button(action: onEditProfile) {
+      Label("Edit Profile", systemImage: "pencil")
+        .font(.subheadline.weight(.semibold))
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(theme.cardFill, in: Capsule())
+        .foregroundStyle(.primary)
+        .overlay(Capsule().stroke(theme.hairline, lineWidth: 0.7))
+    }
+    .buttonStyle(.plain)
+    .padding(.horizontal, 8)
+  }
+
+  @ViewBuilder
+  private var profileActions: some View {
+    let accentColor = accent ?? theme.accent
+    HStack(spacing: 10) {
+      Button(action: onToggleFollow) {
+        Label(isFollowing == true ? "Following" : "Follow",
+              systemImage: isFollowing == true ? "checkmark" : "plus")
+          .font(.subheadline.weight(.semibold))
+          .frame(maxWidth: .infinity)
+          .padding(.vertical, 9)
+          .background(isFollowing == true ? theme.cardFill : accentColor, in: Capsule())
+          .foregroundStyle(isFollowing == true ? Color.primary : .white)
+          .overlay(Capsule().stroke(isFollowing == true ? theme.hairline : .clear, lineWidth: 0.7))
+      }
+      .buttonStyle(.plain)
+
+      Menu {
+        Button(role: isBlocked == true ? nil : .destructive, action: onToggleBlock) {
+          Label(isBlocked == true ? "Unblock account" : "Block account",
+                systemImage: isBlocked == true ? "hand.raised.slash" : "hand.raised")
+        }
+      } label: {
+        Image(systemName: "ellipsis")
+          .font(.subheadline.weight(.semibold))
+          .frame(width: 44, height: 38)
+          .background(theme.cardFill, in: Capsule())
+          .overlay(Capsule().stroke(theme.hairline, lineWidth: 0.7))
+          .foregroundStyle(.primary)
+      }
+    }
+    .padding(.horizontal, 8)
   }
 }
 
@@ -777,6 +984,141 @@ private struct UserActivityLoadingState: View {
   }
 }
 
+// MARK: - Edit profile
+
+private struct EditableSocialLink: Identifiable {
+  let id = UUID()
+  var title: String = ""
+  var url: String = ""
+  var type: String? = nil
+}
+
+private struct EditProfileSheet: View {
+  let subredditID: String
+  let initialTitle: String
+  let initialBio: String
+  let initialNSFW: Bool
+  let initialLinks: [ProfileSocialLink]
+  var onSaved: () -> Void
+
+  @Environment(\.dismiss) private var dismiss
+  @State private var title: String
+  @State private var bio: String
+  @State private var nsfw: Bool
+  @State private var links: [EditableSocialLink]
+  @State private var saving = false
+  @State private var errorText: String?
+
+  init(subredditID: String, initialTitle: String, initialBio: String, initialNSFW: Bool, initialLinks: [ProfileSocialLink], onSaved: @escaping () -> Void) {
+    self.subredditID = subredditID
+    self.initialTitle = initialTitle
+    self.initialBio = initialBio
+    self.initialNSFW = initialNSFW
+    self.initialLinks = initialLinks
+    self.onSaved = onSaved
+    _title = State(initialValue: initialTitle)
+    _bio = State(initialValue: initialBio)
+    _nsfw = State(initialValue: initialNSFW)
+    _links = State(initialValue: initialLinks.map { EditableSocialLink(title: $0.title ?? "", url: $0.url ?? "", type: $0.type) })
+  }
+
+  var body: some View {
+    NavigationStack {
+      Form {
+        Section("Display name") {
+          TextField("Display name", text: $title)
+        }
+        Section("Bio") {
+          TextField("Bio", text: $bio, axis: .vertical)
+            .lineLimit(3...8)
+        }
+        Section {
+          Toggle("Mature (18+) profile", isOn: $nsfw)
+        }
+        Section("Social links") {
+          ForEach($links) { $link in
+            VStack(alignment: .leading, spacing: 6) {
+              TextField("Label", text: $link.title)
+                .font(.subheadline.weight(.semibold))
+              TextField("https://…", text: $link.url)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            }
+            .padding(.vertical, 2)
+          }
+          .onDelete { links.remove(atOffsets: $0) }
+          Button {
+            links.append(EditableSocialLink())
+          } label: {
+            Label("Add link", systemImage: "plus.circle")
+          }
+        }
+        if let errorText {
+          Section {
+            Text(errorText).foregroundStyle(.red).font(.footnote)
+          }
+        }
+      }
+      .navigationTitle("Edit Profile")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+          if saving {
+            ProgressView()
+          } else {
+            Button("Save") { save() }
+          }
+        }
+      }
+      .interactiveDismissDisabled(saving)
+    }
+  }
+
+  private func save() {
+    saving = true
+    errorText = nil
+    let trimmed = links.map {
+      EditableSocialLink(
+        title: $0.title.trimmingCharacters(in: .whitespacesAndNewlines),
+        url: $0.url.trimmingCharacters(in: .whitespacesAndNewlines),
+        type: $0.type
+      )
+    }
+    .filter { !$0.url.isEmpty }
+    let linksChanged = trimmed.map { "\($0.title)|\($0.url)" } != initialLinks.map { "\($0.title ?? "")|\($0.url ?? "")" }
+
+    Task {
+      let okSettings = await RedditWire.shared.updateProfileSettings(
+        subredditID: subredditID,
+        title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+        publicDescription: bio,
+        isNsfw: nsfw
+      )
+      var okLinks = true
+      if linksChanged {
+        let profileLinks = trimmed.map {
+          ProfileSocialLink(id: $0.id.uuidString, title: $0.title.isEmpty ? nil : $0.title, url: $0.url, type: $0.type, handle: nil)
+        }
+        okLinks = await RedditWire.shared.setSocialLinks(profileLinks)
+      }
+      await MainActor.run {
+        saving = false
+        if okSettings && okLinks {
+          onSaved()
+          dismiss()
+        } else {
+          errorText = "Couldn't save changes. Please try again."
+        }
+      }
+    }
+  }
+}
+
 #if DEBUG
 private func previewProfileUser() -> User {
   let dict: [String: Any] = [
@@ -791,6 +1133,7 @@ private func previewProfileUser() -> User {
     "subreddit": [
       "display_name": "winston_dev",
       "display_name_prefixed": "u/winston_dev",
+      "title": "Winston Dev",
       "public_description": "Building a fast, native Reddit client for iOS. Tap a tab to explore.",
       "banner_img": "",
       "primary_color": "#3AA8FF",

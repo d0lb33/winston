@@ -1186,6 +1186,154 @@ final class RedditWire: ObservableObject {
     }
   }
 
+  // MARK: - Own-profile history feeds (Saved / Upvoted / Downvoted / Hidden)
+
+  /// The signed-in user's history feeds. These are posts-only GraphQL
+  /// connections (`edges[].node`); Saved is the SDUI `savedV3` feed whose nodes
+  /// carry the post fullname in `groupId`. All paginate via `pageInfo.endCursor`.
+  enum ProfileHistoryKind: String, Sendable {
+    case saved, upvoted, downvoted, hidden
+
+    /// (parentKey, connectionKey) path into the `data` object the POC exposes
+    /// as `rawData`.
+    var path: (parent: String, connection: String) {
+      switch self {
+      case .saved: return ("savedV3", "elements")
+      case .upvoted: return ("identity", "upvotedPosts")
+      case .downvoted: return ("identity", "downvotedPosts")
+      case .hidden: return ("identity", "hiddenPosts")
+      }
+    }
+  }
+
+  func userHistoryPosts(_ kind: ProfileHistoryKind, after: String? = nil) async -> [PostData]? {
+    let username = Self.currentUserName ?? "me"
+    let (parent, connection) = kind.path
+    do {
+      let cursor = after.flatMap { profileCursorByAfterKey[profileCursorKey(username: username, filter: kind.rawValue, after: $0)] }
+      if after != nil, cursor == nil { return [] }
+
+      let raw: JSONValue?
+      switch kind {
+      case .saved: raw = try await client.savedPostsFeedSduiResponse(after: cursor).data?.rawData
+      case .upvoted: raw = try await client.upvotedPostsResponse(pageSize: 25, after: cursor).data?.rawData
+      case .downvoted: raw = try await client.downvotedPostsResponse(pageSize: 25, after: cursor).data?.rawData
+      case .hidden: raw = try await client.hiddenPostsResponse(pageSize: 25, after: cursor).data?.rawData
+      }
+
+      let connectionObj = raw?.objectValue?[parent]?.objectValue?[connection]?.objectValue
+      let edges = connectionObj?["edges"]?.arrayValue ?? []
+      var ids: [String] = []
+      var seen = Set<String>()
+      for edge in edges {
+        guard let fullname = Self.postFullname(fromEdgeNode: edge.objectValue?["node"]), !seen.contains(fullname) else { continue }
+        seen.insert(fullname)
+        ids.append(fullname)
+      }
+
+      let posts = await postData(forIDs: ids)
+      let endCursor = connectionObj?["pageInfo"]?.objectValue?["endCursor"]?.stringValue
+      rememberProfileCursor(endCursor, username: username, filter: kind.rawValue, items: posts.map { "t3_\($0.id)" })
+      status = "\(kind.rawValue) \(username) → \(posts.count)"
+      return posts
+    } catch {
+      status = "\(kind.rawValue) failed: \(describe(error))"
+      return nil
+    }
+  }
+
+  // MARK: - Profile actions (follow / block)
+
+  /// Follow or unfollow a redditor. `accountFullname` is the `t2_…` id.
+  /// Returns `nil` on success, or a human-readable error message on failure.
+  func setFollowState(accountFullname: String, following: Bool) async -> String? {
+    do {
+      _ = try await client.updateProfileFollowStateResponse(accountID: accountFullname, state: following ? .followed : .none, allowSideEffects: true)
+      status = "follow \(accountFullname) → \(following)"
+      return nil
+    } catch {
+      let message = describe(error)
+      status = "follow failed: \(message)"
+      AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "Follow mutation failed", metadata: ["account": accountFullname, "following": "\(following)", "error": message])
+      return Self.friendlyMutationMessage(message)
+    }
+  }
+
+  /// Block or unblock a redditor. `redditorFullname` is the `t2_…` id.
+  /// Returns `nil` on success, or a human-readable error message on failure.
+  func setBlockState(redditorFullname: String, blocked: Bool) async -> String? {
+    do {
+      _ = try await client.updateRedditorBlockStateResponse(redditorID: redditorFullname, state: blocked ? .blocked : .none, allowSideEffects: true)
+      status = "block \(redditorFullname) → \(blocked)"
+      return nil
+    } catch {
+      let message = describe(error)
+      status = "block failed: \(message)"
+      AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "Block mutation failed", metadata: ["redditor": redditorFullname, "blocked": "\(blocked)", "error": message])
+      return Self.friendlyMutationMessage(message)
+    }
+  }
+
+  /// Map a raw POC error string to a short, user-facing message. The raw error
+  /// is still recorded in diagnostics for debugging.
+  static func friendlyMutationMessage(_ raw: String) -> String {
+    if raw.contains("RATE_LIMITED") || raw.range(of: "too many requests", options: .caseInsensitive) != nil {
+      return "Reddit is rate-limiting this action. Please wait a minute and try again."
+    }
+    if raw.range(of: "unauthorized", options: .caseInsensitive) != nil {
+      return "You don't have permission to do that."
+    }
+    return "Something went wrong. Please try again."
+  }
+
+  // MARK: - Edit profile
+
+  /// Update the signed-in user's profile text settings. `subredditID` is the
+  /// profile subreddit's `t5_…` id (the builder normalizes the prefix).
+  func updateProfileSettings(subredditID: String, title: String?, publicDescription: String?, isNsfw: Bool?) async -> Bool {
+    do {
+      _ = try await client.updateSubredditSettingsResponse(
+        subredditID: subredditID,
+        title: title,
+        publicDescription: publicDescription,
+        isNsfw: isNsfw,
+        allowSideEffects: true
+      )
+      status = "profile settings saved"
+      return true
+    } catch {
+      status = "profile settings failed: \(describe(error))"
+      return false
+    }
+  }
+
+  /// Replace the signed-in user's profile social links with `links` (links
+  /// without a URL are dropped; missing labels fall back to the URL).
+  func setSocialLinks(_ links: [ProfileSocialLink]) async -> Bool {
+    let redditLinks = links.compactMap { link -> RedditSocialLink? in
+      guard let url = link.url?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
+      let label = (link.title?.isEmpty == false) ? link.title! : url
+      return RedditSocialLink(type: link.type ?? "CUSTOM", title: label, outboundURL: url)
+    }
+    do {
+      _ = try await client.setSocialLinksResponse(redditLinks, allowSideEffects: true)
+      status = "social links saved (\(redditLinks.count))"
+      return true
+    } catch {
+      status = "social links failed: \(describe(error))"
+      return false
+    }
+  }
+
+  /// Pull a post fullname (`t3_…`) out of a connection node. Standard post
+  /// connections expose it as `id`; the Saved SDUI feed uses `groupId`.
+  private static func postFullname(fromEdgeNode node: JSONValue?) -> String? {
+    guard let node = node?.objectValue else { return nil }
+    if let id = node["id"]?.stringValue, id.hasPrefix("t3_") { return id }
+    if let groupID = node["groupId"]?.stringValue, groupID.hasPrefix("t3_") { return groupID }
+    return nil
+  }
+
   private func rememberProfileCursor(_ cursor: String?, username: String, filter: String, items: [String]) {
     guard let cursor, !cursor.isEmpty, let last = items.last else { return }
     profileCursorByAfterKey[profileCursorKey(username: username, filter: filter, after: last)] = cursor
