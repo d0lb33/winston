@@ -372,8 +372,9 @@ struct VideoPlayerPost: View, Equatable {
     }
     guard !fullscreen, autoPlayVideos else { return }
     if shouldPlayInline {
+      startInlinePlaybackIfNeeded(sharedVideo, reason: "player-ready-active")
       if showInlinePoster {
-        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "player-ready-active", playAfterHide: true)
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "player-ready-active", playAfterHide: false)
       } else {
         startInlinePlaybackIfNeeded(sharedVideo, reason: "player-ready-poster-hidden")
       }
@@ -487,11 +488,9 @@ struct VideoPlayerPost: View, Equatable {
     // isn't ready. The active video's play() buffers itself.
     sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
     if shouldPlayInline {
-      if inlineVideoIsRenderable(sharedVideo) {
-        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "prepare-active-renderable", playAfterHide: true)
-      } else {
-        sharedVideo.player.pause()
-        recordVideoEvent(.debug, message: "Inline autoplay waiting for displayable frame", sharedVideo: sharedVideo)
+      startInlinePlaybackIfNeeded(sharedVideo, reason: "prepare-active")
+      if inlineVideoIsRenderable(sharedVideo), showInlinePoster {
+        scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "prepare-active-renderable", playAfterHide: false)
       }
     } else {
       sharedVideo.player.pause()
@@ -516,15 +515,11 @@ struct VideoPlayerPost: View, Equatable {
     if shouldPlayInline {
       sharedVideo.player.isMuted = muteVideos
       sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
+      startInlinePlaybackIfNeeded(sharedVideo, reason: "play-state-active")
       if inlineVideoIsRenderable(sharedVideo) {
         if showInlinePoster {
-          scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "play-state-active-renderable", playAfterHide: true)
-        } else {
-          startInlinePlaybackIfNeeded(sharedVideo, reason: "play-state-active-poster-hidden")
+          scheduleInlinePosterHide(sharedVideo: sharedVideo, reason: "play-state-active-renderable", playAfterHide: false)
         }
-      } else {
-        sharedVideo.player.pause()
-        recordVideoEvent(.debug, message: "Inline playback deferred until frame is displayable", sharedVideo: sharedVideo)
       }
     } else {
       sharedVideo.player.isMuted = muteVideos
@@ -567,7 +562,8 @@ struct VideoPlayerPost: View, Equatable {
     let generation = UUID()
     posterHideGeneration = generation
     recordVideoEvent(.debug, message: "Scheduling inline poster hide", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["generation": generation.uuidString, "cacheKeyHash": "\(cacheKey.hashValue)", "attempt": "\(attempt)", "reason": reason, "playAfterHide": "\(playAfterHide)"])
-    doThisAfter(attempt == 0 ? 0.6 : 0.25) {
+    let delay = attempt == 0 && shouldPlayInline ? 0.04 : (attempt == 0 ? 0.6 : 0.25)
+    doThisAfter(delay) {
       guard posterHideGeneration == generation else {
         recordVideoEvent(.debug, message: "Inline poster hide skipped", sharedVideo: sharedVideo, category: "ui.videoPoster", extra: ["reason": reason, "skip": "generation-mismatch", "generation": generation.uuidString])
         return
