@@ -234,7 +234,7 @@ struct CommentRowView: View {
       loadingMore = true
       Task {
         await comment.loadChildren(parent: parent, postFullname: postFullname, avatarSize: 28, post: post)
-        model.rebuild()
+        model.rebuild(invalidateCollapseMetrics: true)
         loadingMore = false
       }
     } label: {

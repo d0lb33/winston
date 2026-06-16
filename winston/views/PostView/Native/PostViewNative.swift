@@ -115,7 +115,7 @@ struct PostViewNative: View {
       // A reply/edit posted through the global modal mutates the comment tree;
       // rebuild when it dismisses so the new comment shows without a refetch.
       .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
-        if showing == .none { withAnimation { model.rebuild() } }
+        if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
       }
     }
   }
@@ -208,7 +208,7 @@ struct PostViewNative: View {
     model.rootArray.data.append(comment)
     withAnimation {
       loadingComments = false
-      model.rebuild(force: true)
+      model.rebuild(force: true, invalidateCollapseMetrics: true)
     }
   }
 }

@@ -184,7 +184,7 @@ struct AuroraPostDetail: View {
           }
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
-          if showing == .none { withAnimation { model.rebuild() } }
+          if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
         }
       }
     }

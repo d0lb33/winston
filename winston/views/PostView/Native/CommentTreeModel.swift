@@ -76,6 +76,9 @@ final class CommentTreeModel {
   @ObservationIgnored private var didSeedCollapse = false
   @ObservationIgnored private var treeCancellable: AnyCancellable?
   @ObservationIgnored private let rebuildContext = "commentTreeRebuild-\(UUID().uuidString)"
+  @ObservationIgnored private let collapsePersistContext = "commentCollapsePersist-\(UUID().uuidString)"
+  @ObservationIgnored private let collapseWarmContext = "commentCollapseWarm-\(UUID().uuidString)"
+  @ObservationIgnored private var descendantCountCache: [String: Int] = [:]
   /// Relative-time strings are expensive to produce (RelativeDateTimeFormatter goes through
   /// ICU). Cache per comment id so a flatten — which runs on EVERY collapse/expand — reuses
   /// the string instead of reformatting the whole tree each time (that was a main-thread hang
@@ -97,9 +100,11 @@ final class CommentTreeModel {
     comments.forEach { $0.parentWinston = rootArray }
     rootArray.data = comments
     relativeTimeCache.removeAll(keepingCapacity: true)
+    descendantCountCache.removeAll(keepingCapacity: true)
     seedInitialCollapseIfNeeded()
     observeTree()
     rebuild(force: true)
+    scheduleWarmCollapseMetrics()
   }
 
   func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
@@ -110,26 +115,24 @@ final class CommentTreeModel {
     } else {
       collapsed.insert(id)
     }
-    persistCollapse()
     let out = computeRows()
-    // Animating a huge insert/remove (collapsing/expanding a deep subtree is hundreds of
-    // rows) blocks the main thread long enough to hang. Animate only modest changes; snap
-    // large ones — which also looks better than a mass of simultaneous row transitions.
-    let delta = abs(out.count - rows.count)
-    if delta <= 30 {
-      withAnimation(.snappy(duration: 0.28)) { rows = out }
-    } else {
-      rows = out
-    }
+    withAnimation(.snappy(duration: 0.24)) { rows = out }
+    schedulePersistCollapse()
   }
 
   /// Recompute the flattened visible rows. With `force == false`, the result is
   /// only published when the layout signature changed (cheap no-op on content
   /// changes such as votes).
-  func rebuild(force: Bool = false) {
+  func rebuild(force: Bool = false, invalidateCollapseMetrics: Bool = false) {
+    if invalidateCollapseMetrics {
+      descendantCountCache.removeAll(keepingCapacity: true)
+    }
     let out = computeRows()
     if force || !Self.layoutEqual(out, rows) {
       rows = out
+    }
+    if invalidateCollapseMetrics {
+      scheduleWarmCollapseMetrics()
     }
   }
 
@@ -187,10 +190,32 @@ final class CommentTreeModel {
     walk(rootArray.data)
   }
 
-  private func persistCollapse() {
+  private func schedulePersistCollapse() {
+    let snapshot = collapsed
+    let postIDSnapshot = postID
+    DispatchQueue.main.debounce(delay: 0.25, context: collapsePersistContext) {
+      Task { @MainActor in
+        Self.persistCollapse(snapshot, postID: postIDSnapshot)
+      }
+    }
+  }
+
+  private static func persistCollapse(_ collapsed: Set<String>, postID: String) {
     var saved = Defaults[.collapsedCommentsByPost]
     saved[postID] = collapsed.sorted()
     Defaults[.collapsedCommentsByPost] = saved
+  }
+
+  private func scheduleWarmCollapseMetrics() {
+    DispatchQueue.main.debounce(delay: 0.05, context: collapseWarmContext) { [weak self] in
+      self?.warmCollapseMetrics()
+    }
+  }
+
+  private func warmCollapseMetrics() {
+    for node in rootArray.data where node.kind != "more" {
+      _ = descendantCount(for: node)
+    }
   }
 
   // MARK: - Flatten
@@ -230,8 +255,19 @@ final class CommentTreeModel {
   private func descendantCount(_ nodes: [Comment]) -> Int {
     var total = 0
     for node in nodes where node.kind != "more" {
-      total += 1 + descendantCount(node.childrenWinston.data)
+      total += 1 + descendantCount(for: node)
     }
+    return total
+  }
+
+  private func descendantCount(for node: Comment) -> Int {
+    if let cached = descendantCountCache[node.id] { return cached }
+
+    var total = 0
+    for child in node.childrenWinston.data where child.kind != "more" {
+      total += 1 + descendantCount(for: child)
+    }
+    descendantCountCache[node.id] = total
     return total
   }
 
