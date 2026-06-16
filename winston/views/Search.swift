@@ -477,8 +477,7 @@ private final class SearchViewModel: ObservableObject {
   }
 
   private func resetHiddenPosts() {
-    guard !hiddenPostIDs.isEmpty || posts.contains(where: { $0.data?.winstonHidden == true }) else { return }
-    posts.forEach { $0.data?.winstonHidden = false }
+    guard !hiddenPostIDs.isEmpty else { return }
     hiddenPostIDs.removeAll(keepingCapacity: true)
     refreshVisiblePosts()
   }
@@ -490,7 +489,6 @@ private final class SearchViewModel: ObservableObject {
 
     withAnimation {
       readPosts.forEach { post in
-        post.data?.winstonHidden = true
         hiddenPostIDs.insert(post.id)
       }
       refreshVisiblePosts()
@@ -597,7 +595,7 @@ private final class SearchViewModel: ObservableObject {
   }
 
   private func refreshVisiblePosts() {
-    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
+    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) }
   }
 
   private func uniqueSubreddits(from newSubreddits: [Subreddit]) -> [Subreddit] {

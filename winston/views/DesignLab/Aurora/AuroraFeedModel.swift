@@ -104,8 +104,7 @@ final class AuroraFeedModel {
   }
 
   private func resetHiddenPosts() {
-    guard !hiddenPostIDs.isEmpty || posts.contains(where: { $0.data?.winstonHidden == true }) else { return }
-    posts.forEach { $0.data?.winstonHidden = false }
+    guard !hiddenPostIDs.isEmpty else { return }
     hiddenPostIDs.removeAll(keepingCapacity: true)
     refreshVisiblePosts()
   }
@@ -117,7 +116,6 @@ final class AuroraFeedModel {
 
     withAnimation {
       readPosts.forEach { post in
-        post.data?.winstonHidden = true
         hiddenPostIDs.insert(post.id)
       }
       refreshVisiblePosts()
@@ -234,7 +232,7 @@ final class AuroraFeedModel {
   }
 
   private func refreshVisiblePosts() {
-    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
+    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) }
   }
 
   private func feedIdentity(for sub: Subreddit) -> String {
