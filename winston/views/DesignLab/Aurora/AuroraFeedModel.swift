@@ -205,7 +205,9 @@ final class AuroraFeedModel {
     }
 
     let fresh = more ? newPosts.filter { !loadedIDs.contains($0.id) } : newPosts.deduped { $0.id }
-    withAnimation {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
       if more {
         posts.append(contentsOf: fresh)
       } else {

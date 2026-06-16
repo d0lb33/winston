@@ -44,7 +44,7 @@ final class SharedVideo: Equatable {
     let cacheKey =  SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
     
     if resetCache {
-      Caches.videos.cache.removeValue(forKey: cacheKey)
+      Caches.videos.removeValue(forKey: cacheKey)
       AppDiagnostics.asyncRecord(
         .warning,
         category: "ui.video.cache",
@@ -135,10 +135,10 @@ struct VideoPlayerPost: View, Equatable {
   @State private var activeInlineVideoKey: String?
   @State private var posterHideGeneration = UUID()
   /// Cached mirror of `shouldMountPlayer`, written only by `syncInlineState` (driven by the
-  /// `InlineVideoCoordinatorObserver` child). The body reads THIS instead of the computed
-  /// `shouldMountPlayer`, so the heavy body no longer subscribes to the coordinator's
-  /// `@Observable` state and re-evaluates only when this cell's own mount state flips.
+  /// `InlineVideoCoordinatorObserver` child). The body reads THIS instead of global
+  /// coordinator state, so it re-evaluates only when this cell's own mount state flips.
   @State private var mountPlayer = false
+  @State private var playInline = false
   /// True once the live AVPlayerLayer has composited a real frame. The grey "no frame yet"
   /// backdrop and the poster both stay until this flips, so the poster→video handoff never
   /// reveals an empty/grey gap. Reset when the row is reused for a different video.
@@ -159,8 +159,8 @@ struct VideoPlayerPost: View, Equatable {
   /// unchanged: autoplay setting alone decides.
   private var shouldPlayInline: Bool {
     guard autoPlayVideos, !fullscreen else { return false }
-    guard let feedItemKey else { return true }
-    return InlineVideoCoordinator.shared.isActive(feedItemKey)
+    guard feedItemKey != nil else { return true }
+    return playInline
   }
 
   /// Whether to mount the live AVPlayer layer at all. Off-center feed videos render only
@@ -168,7 +168,11 @@ struct VideoPlayerPost: View, Equatable {
   /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
   /// video, the fullscreen one, and non-feed usages mount as before.
   private var shouldMountPlayer: Bool {
-    fullscreen || feedItemKey == nil || InlineVideoCoordinator.shared.isActive(feedItemKey) || InlineVideoCoordinator.shared.isWarm(feedItemKey) || hasRenderedInlineFrame
+    fullscreen || feedItemKey == nil || mountPlayer || hasRenderedInlineFrame
+  }
+
+  private var inlinePlaybackState: InlineVideoPlaybackState? {
+    feedItemKey.map { InlineVideoCoordinator.shared.state(for: $0) }
   }
 
   /// Once a warmed/active inline player has replaced its poster with a real frame, keep
@@ -239,14 +243,16 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
-        .background(InlineVideoCoordinatorObserver { syncInlineState(sharedVideo) })
+        .background(InlineVideoCoordinatorObserver(state: inlinePlaybackState) { state in
+          syncInlineState(sharedVideo, state: state)
+        })
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "controller"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { _, val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
-          syncInlineState(sharedVideo)
+          syncInlineState(sharedVideo, state: inlinePlaybackState)
         }
       } else {
         ZStack {
@@ -277,14 +283,16 @@ struct VideoPlayerPost: View, Equatable {
             prepareForInlineDisplay(sharedVideo)
           }
         }
-        .background(InlineVideoCoordinatorObserver { syncInlineState(sharedVideo) })
+        .background(InlineVideoCoordinatorObserver(state: inlinePlaybackState) { state in
+          syncInlineState(sharedVideo, state: state)
+        })
         .onDisappear() {
           recordVideoEvent(.debug, message: "VideoPlayerPost disappeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer"])
           handleInlineDisappear(sharedVideo)
         }
         .onChange(of: fullscreen) { _, val in
           handleFullscreenChange(val, sharedVideo: sharedVideo)
-          syncInlineState(sharedVideo)
+          syncInlineState(sharedVideo, state: inlinePlaybackState)
         }
       }
     }
@@ -295,9 +303,11 @@ struct VideoPlayerPost: View, Equatable {
   /// the four per-property `onChange` handlers that each re-ran the body) and on fullscreen
   /// changes. Assigning `mountPlayer` is a no-op when unchanged, so the heavy body only
   /// re-evaluates on a real mount transition.
-  private func syncInlineState(_ sharedVideo: SharedVideo) {
-    let desiredMount = shouldMountPlayer
+  private func syncInlineState(_ sharedVideo: SharedVideo, state: InlineVideoPlaybackState?) {
+    let desiredMount = feedItemKey == nil ? true : (state?.shouldMountPlayer ?? false)
+    let desiredPlay = feedItemKey == nil ? autoPlayVideos : (state?.shouldPlay ?? false)
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
+    if playInline != desiredPlay { playInline = desiredPlay }
     applyInlinePlaybackState(sharedVideo)
   }
 
@@ -356,6 +366,9 @@ struct VideoPlayerPost: View, Equatable {
     guard self.sharedVideo == sharedVideo else { return }
     if !playerReadyForDisplay {
       withAnimation(.easeOut(duration: 0.2)) { playerReadyForDisplay = true }
+    }
+    if let feedItemKey {
+      InlineVideoCoordinator.shared.recordFirstFrameReady(key: feedItemKey, sharedVideo: sharedVideo)
     }
     guard !fullscreen, autoPlayVideos else { return }
     if shouldPlayInline {
@@ -974,21 +987,21 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 }
 
-/// Tiny `Color.clear` view whose only job is to subscribe to the `InlineVideoCoordinator`'s
-/// `@Observable` state. Because Observation tracking is per-view-body, keeping these
-/// `onChange` handlers HERE (rather than on the heavy `VideoPlayerPost` body) means a global
-/// coordinator tick (e.g. `warmVideoKeys` updating as scroll settles) re-evaluates
-/// only this trivial view across every visible video cell — the expensive video body stays
-/// put unless its own derived mount state actually changes.
+/// Tiny `Color.clear` view whose only job is to subscribe to this row's playback state.
+/// Because Observation tracking is per-view-body, keeping these `onChange` handlers here
+/// means coordinator updates only wake this trivial view; the expensive video body stays
+/// put unless its own derived mount/play state actually changes.
 private struct InlineVideoCoordinatorObserver: View {
-  let onCoordinatorChange: () -> Void
+  let state: InlineVideoPlaybackState?
+  let onCoordinatorChange: (InlineVideoPlaybackState?) -> Void
 
   var body: some View {
-    let coordinator = InlineVideoCoordinator.shared
     Color.clear
       .allowsHitTesting(false)
-      .onChange(of: coordinator.activeVideoKey) { _, _ in onCoordinatorChange() }
-      .onChange(of: coordinator.warmVideoKeys) { _, _ in onCoordinatorChange() }
+      .onAppear { onCoordinatorChange(state) }
+      .onChange(of: state?.shouldPlay) { _, _ in onCoordinatorChange(state) }
+      .onChange(of: state?.shouldMountPlayer) { _, _ in onCoordinatorChange(state) }
+      .onChange(of: state?.isPrefetchTarget) { _, _ in onCoordinatorChange(state) }
   }
 }
 

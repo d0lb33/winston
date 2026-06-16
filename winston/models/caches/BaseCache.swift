@@ -104,3 +104,51 @@ class BaseObservableCache<T: ObservableObject>: ObservableObject {
   }
   
 }
+
+final class ObjectCache<T: Any> {
+  private var cache: [String: CacheItem<T>] = [:]
+  private let lock = NSLock()
+  let cacheLimit: Int
+
+  init(cacheLimit: Int = 50, cache: [String: CacheItem<T>] = [:]) {
+    self.cacheLimit = cacheLimit
+    self.cache = cache
+  }
+
+  func get(key: String) -> T? {
+    lock.lock()
+    defer { lock.unlock() }
+    if let cacheItem = cache[key], cacheItem.expires == nil || Date() < cacheItem.expires! {
+      return cacheItem.data
+    }
+    return nil
+  }
+
+  func addKeyValue(key: String, data: () -> T, expires: Date? = nil) {
+    lock.lock()
+    defer { lock.unlock() }
+    if cache[key] != nil { return }
+    let item = CacheItem(data: data(), createdAt: Date(), expires: expires)
+    cache[key] = item
+
+    while cache.count > cacheLimit {
+      let allowedToRemoveCacheList = cache.filter { !$0.value.eternal }
+      guard let oldestKey = allowedToRemoveCacheList.min(by: { a, b in
+        a.value.createdAt < b.value.createdAt
+      })?.key else { return }
+      cache.removeValue(forKey: oldestKey)
+    }
+  }
+
+  func removeValue(forKey key: String) {
+    lock.lock()
+    defer { lock.unlock() }
+    cache.removeValue(forKey: key)
+  }
+
+  func removeAll() {
+    lock.lock()
+    defer { lock.unlock() }
+    cache.removeAll(keepingCapacity: true)
+  }
+}

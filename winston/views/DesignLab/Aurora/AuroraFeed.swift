@@ -136,7 +136,7 @@ struct AuroraFeed: View {
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
-      .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
+      .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed", posts: visiblePosts)
       .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
         latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
       }

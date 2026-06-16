@@ -31,7 +31,7 @@ func resetCaches() {
   Caches.postsAttrStr.cache.removeAll()
   Caches.postsPreviewModels.cache.removeAll()
   Caches.avatars.cache.removeAll()
-  Caches.videos.cache.removeAll()
+  Caches.videos.removeAll()
 }
 
 func resetReadHistory() {
