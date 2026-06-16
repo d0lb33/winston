@@ -45,6 +45,8 @@ struct NativeVoteControl: View {
         .font(scoreFont)
         .foregroundStyle(prominent ? (likes == nil ? .primary : scoreColor) : scoreColor)
         .contentTransition(.numericText())
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
         .accessibilityLabel(scoreHidden ? "Score hidden" : "Score: \(score)")
 
       Button {

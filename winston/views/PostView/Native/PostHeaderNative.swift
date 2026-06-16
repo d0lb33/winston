@@ -22,33 +22,21 @@ struct PostHeaderNative: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.contentWidth) private var contentWidth
+  @State private var bodyCollapsed = false
 
   var body: some View {
     let data = post.data ?? emptyPostData
     let over18 = data.over_18 ?? false
     let maxMediaHeightPct = Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage
     VStack(alignment: .leading, spacing: 12) {
+      PostHeaderSubredditRow(data: data, sub: sub)
+
       Text(data.title)
         .font(.title3.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
 
-      HStack(spacing: 6) {
-        Text("u/\(data.author)")
-          .foregroundStyle(.secondary)
-        Text("·").foregroundStyle(.tertiary)
-        Text(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
-          .foregroundStyle(.secondary)
-        if let flair = data.link_flair_text, !flair.isEmpty {
-          Text(flair)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 6).padding(.vertical, 1)
-            .background(.quaternary, in: Capsule())
-        }
-        Spacer(minLength: 0)
-      }
-      .font(.footnote)
+      PostHeaderPostFlair(flair: data.link_flair_text)
 
       if let extractedMedia = winstonData.extractedMediaForcedNormal {
         // A crosspost's own media is `.repost` (which MediaPresenter renders as
@@ -82,15 +70,156 @@ struct PostHeaderNative: View {
         }
       }
 
-      if !data.selftext.isEmpty {
+      if !data.selftext.isEmpty, !bodyCollapsed {
         Markdown(MarkdownUtil.formatForMarkdown(data.selftext))
           .markdownTheme(.winstonMarkdown(fontSize: 16, lineSpacing: 2))
           .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
+          .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
       }
+
+      PostHeaderAuthorRow(data: data, avatarRequest: winstonData.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 8)
     .onAppear { Task { await post.toggleSeen(true) } }
+  }
+}
+
+// MARK: - Shared header rows
+//
+// Standalone so both the normal header (PostHeaderNative) and the crossposted
+// header (AuroraPostHeader in AuroraPostDetail) render identical, tappable
+// subreddit/author rows without duplicating the navigation logic.
+
+/// Tappable subreddit pill (icon + r/sub) + relative time + status badges.
+/// `sub` is observed so the icon appears once metadata is backfilled, and the row
+/// backfills it on appear (the post listing usually omits the community icon) — the
+/// same pattern the Aurora feed/search headers use.
+struct PostHeaderSubredditRow: View {
+  let data: PostData
+  @ObservedObject var sub: Subreddit
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+
+  var body: some View {
+    HStack(spacing: 6) {
+      HStack(spacing: 6) {
+        AuroraSubIcon(name: data.subreddit, iconKit: sub.data?.subredditIconKit, size: 20)
+        Text("r/\(data.subreddit)")
+          .font(.footnote.weight(.semibold))
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+      }
+      .contentShape(Rectangle())
+      .onTapGesture {
+        navigateRedditDestination(.reddit(.subFeed(sub)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      }
+      Text("·").foregroundStyle(.tertiary)
+      Text(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+      Spacer(minLength: 6)
+      badges
+    }
+    .onAppear {
+      Task { if sub.needsAuroraMetadataRefresh { await sub.refreshSubreddit() } }
+    }
+  }
+
+  @ViewBuilder private var badges: some View {
+    HStack(spacing: 8) {
+      if data.stickied == true {
+        Image(systemName: "pin.fill").foregroundStyle(.green)
+      }
+      if data.locked == true {
+        Image(systemName: "lock.fill").foregroundStyle(.yellow)
+      }
+      if data.over_18 == true {
+        Text("NSFW")
+          .font(.caption2.weight(.bold))
+          .foregroundStyle(.red)
+          .padding(.horizontal, 5).padding(.vertical, 1)
+          .background(Color.red.opacity(0.15), in: Capsule())
+      }
+    }
+    .font(.caption)
+  }
+}
+
+/// Post flair capsule, rendered only when present.
+struct PostHeaderPostFlair: View {
+  let flair: String?
+  var body: some View {
+    if let flair, !flair.isEmpty {
+      Text(flair)
+        .font(.caption.weight(.medium))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .padding(.horizontal, 8).padding(.vertical, 2)
+        .background(.quaternary, in: Capsule())
+    }
+  }
+}
+
+/// Tappable author row (avatar + u/author + flair) with the body-collapse chevron.
+struct PostHeaderAuthorRow: View {
+  let data: PostData
+  var avatarRequest: ImageRequest?
+  let hasBody: Bool
+  @Binding var bodyCollapsed: Bool
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+
+  var body: some View {
+    HStack(spacing: 6) {
+      HStack(spacing: 6) {
+        AuroraAvatar(name: data.author, avatarRequest: avatarRequest, size: 22)
+        Text("u/\(data.author)")
+          .font(.footnote.weight(.medium))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .truncationMode(.tail)
+      }
+      .contentShape(Rectangle())
+      .onTapGesture {
+        let author = data.author
+        if !author.isEmpty, author != "[deleted]" {
+          navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
+        }
+      }
+      if let flair = data.author_flair_text, !flair.isEmpty {
+        Text(flair)
+          .font(.caption2)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+          .padding(.horizontal, 5).padding(.vertical, 1)
+          .background(.quaternary, in: Capsule())
+      }
+      Spacer(minLength: 6)
+      if data.upvote_ratio > 0 {
+        Text("\(Int((data.upvote_ratio * 100).rounded()))% upvoted")
+          .font(.caption)
+          .foregroundStyle(.tertiary)
+          .lineLimit(1)
+          .fixedSize(horizontal: true, vertical: false)
+      }
+      if hasBody {
+        Button {
+          withAnimation(.snappy) { bodyCollapsed.toggle() }
+        } label: {
+          Image(systemName: bodyCollapsed ? "chevron.down" : "chevron.up")
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.leading, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(bodyCollapsed ? "Expand post text" : "Collapse post text")
+      }
+    }
   }
 }
 

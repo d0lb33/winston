@@ -121,19 +121,28 @@ struct CommentRowView: View {
   private func header(_ data: CommentData) -> some View {
     let isOP = (data.is_submitter ?? false) || (opAuthor != nil && data.author == opAuthor)
     return HStack(spacing: 6) {
-      Text(displayAuthor)
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(isOP ? Color.accentColor : (row.isCollapsed ? Color.secondary : Color.primary))
-        .onTapGesture {
-          // Collapsed: behave like the rest of the header (expand). Expanded: open profile.
-          if row.isCollapsed {
-            toggleCollapse()
-          } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
-            navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
-          }
+      // Avatar + author share a single tap target (open profile / expand-when-collapsed). The avatar
+      // always renders — AuroraAvatar falls back to a monogram when the request is nil — so the header
+      // stays structurally data-independent (no per-comment generic specialization → no scroll hitch).
+      HStack(spacing: 6) {
+        AuroraAvatar(name: displayAuthor, avatarRequest: comment.winstonData?.avatarImageRequest, size: 22)
+        Text(displayAuthor)
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(isOP ? Color.accentColor : (row.isCollapsed ? Color.secondary : Color.primary))
+          .lineLimit(1)
+          .truncationMode(.tail)
+      }
+      .contentShape(Rectangle())
+      .onTapGesture {
+        // Collapsed: behave like the rest of the header (expand). Expanded: open profile.
+        if row.isCollapsed {
+          toggleCollapse()
+        } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
+          navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
         }
-        .accessibilityAddTraits(.isButton)
-        .accessibilityHint(row.isCollapsed ? "" : "Opens profile")
+      }
+      .accessibilityAddTraits(.isButton)
+      .accessibilityHint(row.isCollapsed ? "" : "Opens profile")
 
       ForEach(headerChips(data, isOP: isOP)) { chip in
         chipView(chip)
@@ -142,6 +151,8 @@ struct CommentRowView: View {
       Spacer(minLength: 6)
 
       trailingAccessory(data)
+        .fixedSize(horizontal: true, vertical: false)
+        .layoutPriority(1)
     }
   }
 

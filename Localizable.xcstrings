@@ -345,6 +345,9 @@
         }
       }
     },
+    "%lld%% upvoted" : {
+
+    },
     "%lld+" : {
       "localizations" : {
         "de" : {
@@ -869,6 +872,9 @@
           }
         }
       }
+    },
+    "Collapse post text" : {
+
     },
     "Collapse thread" : {
 
@@ -1478,6 +1484,9 @@
           }
         }
       }
+    },
+    "Expand post text" : {
+
     },
     "Expand thread" : {
 

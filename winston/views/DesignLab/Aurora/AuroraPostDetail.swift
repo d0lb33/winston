@@ -106,6 +106,7 @@ struct AuroraPostDetail: View {
                 AuroraPostHeader(
                   post: post,
                   repost: repost,
+                  subreddit: subreddit,
                   contentWidth: max(1, contentWidth - 32)
                 )
               } else {
@@ -333,6 +334,10 @@ struct AuroraPostDetail: View {
     let commentID = effectiveCommentID
     switch await post.refreshPostResult(commentID: commentID, sort: sort, after: nil, subreddit: subreddit.data?.display_name ?? subreddit.id, full: full) {
     case .loaded(let newComments, _):
+      // The Aurora fetch path (performRefreshPostResult) doesn't apply avatars, so do it
+      // here — fills comment.winstonData.avatarImageRequest from author_fullname so the
+      // inline comment-row avatars resolve to real images instead of monograms.
+      RedditWire.shared.applyAvatars(toComments: newComments, avatarSize: 24)
       withAnimation {
         model.setRoots(newComments)
         loadingComments = false
@@ -357,32 +362,21 @@ struct AuroraPostDetail: View {
 private struct AuroraPostHeader: View {
   @ObservedObject var post: Post
   @ObservedObject var repost: Post
+  var subreddit: Subreddit
   let contentWidth: CGFloat
+  @State private var bodyCollapsed = false
 
   var body: some View {
     let data = post.data ?? emptyPostData
     VStack(alignment: .leading, spacing: 12) {
+      PostHeaderSubredditRow(data: data, sub: subreddit)
+
       Text(data.title)
         .font(.title3.weight(.semibold))
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
 
-      HStack(spacing: 6) {
-        Text("u/\(data.author)")
-          .foregroundStyle(.secondary)
-        Text("·").foregroundStyle(.tertiary)
-        Text(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))
-          .foregroundStyle(.secondary)
-        if let flair = data.link_flair_text, !flair.isEmpty {
-          Text(flair)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .padding(.horizontal, 6).padding(.vertical, 1)
-            .background(.quaternary, in: Capsule())
-        }
-        Spacer(minLength: 0)
-      }
-      .font(.footnote)
+      PostHeaderPostFlair(flair: data.link_flair_text)
 
       AuroraCrosspostCard(
         repost: repost,
@@ -390,11 +384,15 @@ private struct AuroraPostHeader: View {
         contentWidth: contentWidth
       )
 
-      if !data.selftext.isEmpty {
+      if !data.selftext.isEmpty, !bodyCollapsed {
         Markdown(MarkdownUtil.formatForMarkdown(data.selftext))
           .markdownTheme(.winstonMarkdown(fontSize: 16, lineSpacing: 2))
           .frame(maxWidth: .infinity, alignment: .leading)
+          .contentShape(Rectangle())
+          .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
       }
+
+      PostHeaderAuthorRow(data: data, avatarRequest: post.winstonData?.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 8)
