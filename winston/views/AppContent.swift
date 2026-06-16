@@ -11,6 +11,7 @@ import Defaults
 struct AppContent: View {
   @Environment(\.scenePhase) var scenePhase
   @ObservedObject private var nav = Nav.shared
+  @ObservedObject private var renderingReports = RenderingReportStore.shared
   
   @Default(.ThemesDefSettings) private var themesDefSettings
   @Default(.GeneralDefSettings) private var generalDefSettings
@@ -129,6 +130,26 @@ struct AppContent: View {
     .blur(radius: lockBlur)
     .overlay {
       DiagnosticsHUD()
+    }
+    .overlay(alignment: .top) {
+      RenderingReportCaptureStatus(message: renderingReports.lastCaptureMessage)
+        .padding(.top, 14)
+    }
+  }
+}
+
+private struct RenderingReportCaptureStatus: View {
+  let message: String?
+
+  var body: some View {
+    if let message {
+      Label(message, systemImage: "checkmark.circle.fill")
+        .font(.footnote.weight(.semibold))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+        .shadow(color: .black.opacity(0.18), radius: 10, y: 5)
+        .transition(.move(edge: .top).combined(with: .opacity))
     }
   }
 }

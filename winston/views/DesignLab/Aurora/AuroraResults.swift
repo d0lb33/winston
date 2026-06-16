@@ -127,6 +127,13 @@ struct AuroraCommentResultRow: View {
         )
       }
       .buttonStyle(.plain)
+      .contextMenu {
+        Button {
+          RenderingReportStore.shared.captureCommentIssue(comment: comment, surface: "aurora-comment-result-row")
+        } label: {
+          Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+        }
+      }
     }
   }
 }

@@ -17,11 +17,11 @@ class Nav: ObservableObject, Identifiable, Equatable {
   
   /* <Util static functions for ease of use> */
   static func back() { Nav.shared.activeRouter.goBack() }
-  static func to(_ dest: Router.NavDest, _ reset: Bool = false) {
+  static func to(_ dest: NavDest, _ reset: Bool = false) {
     AppDiagnostics.asyncBreadcrumb("Nav.to", metadata: ["destination": dest.diagnosticsName, "reset": "\(reset)"])
     Nav.shared.activeRouter.navigateTo(dest, reset)
   }
-  static func fullTo(_ tab: TabIdentifier, _ dest: Router.NavDest, _ reset: Bool = false) {
+  static func fullTo(_ tab: TabIdentifier, _ dest: NavDest, _ reset: Bool = false) {
     AppDiagnostics.asyncBreadcrumb("Nav.fullTo", metadata: ["tab": tab.rawValue, "destination": dest.diagnosticsName, "reset": "\(reset)"])
     Nav.shared.navigateTo(tab, dest, reset)
   }
@@ -95,7 +95,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
     }
   }
   
-  func navigateTo(_ tab: TabIdentifier, _ dest: Router.NavDest, _ reset: Bool = true) {
+  func navigateTo(_ tab: TabIdentifier, _ dest: NavDest, _ reset: Bool = true) {
     AppDiagnostics.asyncBreadcrumb("Nav.navigateTo tab", metadata: ["tab": tab.rawValue, "destination": dest.diagnosticsName, "reset": "\(reset)"])
     routers[tab]?.navigateTo(dest, reset)
     if tab != activeTab {	activeTab = tab }

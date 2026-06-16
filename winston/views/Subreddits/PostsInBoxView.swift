@@ -10,7 +10,7 @@ import Defaults
 import Combine
 
 struct PostsInBoxView: View {
-  @Binding var initialSelected: Router.NavDest?
+  @Binding var initialSelected: NavDest?
   @Default(.postsInBox) private var postsInBox
   
   var body: some View {

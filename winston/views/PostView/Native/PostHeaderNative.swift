@@ -82,6 +82,23 @@ struct PostHeaderNative: View {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .padding(.vertical, 8)
+    .contextMenu {
+      Button {
+        let layout = RenderingReportLayoutContext(
+          surface: "native-post-detail-header",
+          renderer: "native-post-detail",
+          rowSize: "\(contentWidth)xauto",
+          bodySize: nil,
+          postDimensions: String(describing: winstonData.postDimensions),
+          forcedPostDimensions: String(describing: winstonData.postDimensionsForcedNormal),
+          collapsed: nil,
+          depth: nil
+        )
+        RenderingReportStore.shared.capturePostIssue(post: post, surface: "native-post-detail-header", layout: layout)
+      } label: {
+        Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+      }
+    }
     .onAppear { Task { await post.toggleSeen(true) } }
   }
 }

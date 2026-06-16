@@ -85,7 +85,7 @@ struct AuroraSubFeedScreen: View {
     }
   }
 
-  private func navigateFromSubFeed(_ destination: Router.NavDest) {
+  private func navigateFromSubFeed(_ destination: NavDest) {
     AppDiagnostics.asyncBreadcrumb(
       "AuroraSubFeedScreen navigate",
       metadata: [

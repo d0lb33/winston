@@ -112,5 +112,22 @@ struct PostContent: View, Equatable {
     }
     .frame(maxWidth: .infinity, alignment: .leading)
     .multilineTextAlignment(.leading)
+    .contextMenu {
+      Button {
+        let layout = RenderingReportLayoutContext(
+          surface: "legacy-post-detail",
+          renderer: "legacy-post-detail",
+          rowSize: "\(availableContentWidth)xauto",
+          bodySize: "\(contentWidth)xauto",
+          postDimensions: String(describing: winstonData.postDimensions),
+          forcedPostDimensions: String(describing: winstonData.postDimensionsForcedNormal),
+          collapsed: isCollapsed,
+          depth: nil
+        )
+        RenderingReportStore.shared.capturePostIssue(post: post, surface: "legacy-post-detail", layout: layout)
+      } label: {
+        Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+      }
+    }
   }
 }

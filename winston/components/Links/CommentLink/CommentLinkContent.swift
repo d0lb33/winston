@@ -462,7 +462,10 @@ struct CommentLinkContent: View {
                 guard !selectable, !swipeActionsPresented else { return }
                 withAnimation(spring) { comment.toggleCollapsed(optimistic: true) }
               }
-              .background(forcedBodySize != nil ? nil : GeometryReader { geo in Color.clear.onAppear { sizer.size = geo.size } } )
+              .background(forcedBodySize != nil ? nil : GeometryReader { geo in Color.clear.onAppear {
+                sizer.size = geo.size
+                bodySize = geo.size
+              } } )
             } else {
               Spacer()
             }
@@ -524,6 +527,30 @@ struct CommentLinkContent: View {
           
           if let permalink = data.permalink, let permaURL = URL(string: "https://reddit.com\(permalink.escape.urlEncoded)") {
             ShareLink(item: permaURL) { Label("Share", systemImage: "square.and.arrow.up") }
+          }
+
+          Divider()
+          Button {
+            let layout = RenderingReportLayoutContext(
+              surface: "comment-context-menu",
+              renderer: "legacy-comment",
+              rowSize: sizer.size == .zero ? nil : "\(sizer.size.width)x\(sizer.size.height)",
+              bodySize: bodySize == .zero ? nil : "\(bodySize.width)x\(bodySize.height)",
+              postDimensions: nil,
+              forcedPostDimensions: nil,
+              collapsed: data.collapsed,
+              depth: data.depth
+            )
+            RenderingReportStore.shared.captureCommentIssue(
+              comment: comment,
+              surface: "comment-context-menu",
+              treeContext: [
+                "treePosition": data.parent_id?.hasPrefix("t1_") == true ? "nested" : "top-level"
+              ],
+              layout: layout
+            )
+          } label: {
+            Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
           }
           
         }

@@ -3,7 +3,7 @@
 //  winston
 //
 //  Native, selection-driven navigation model. Replaces the dual-source-of-truth
-//  system (`Router.fullPath` + `RedditSplitNavigationModel` choreography) with thin
+//  system (`Router.fullPath` + the legacy split-navigation choreography) with thin
 //  per-surface state that lets `NavigationSplitView` own all compact↔regular column
 //  collapse/expand — so navigation survives foldables, Stage Manager, Split View,
 //  rotation, and arbitrary window resizing.
@@ -12,7 +12,7 @@
 //  exist and remain wired until each surface is migrated. See
 //  docs/navigation-rebuild-plan.md.
 //
-//  Vocabulary note: these models keep using `Router.NavDest` as the routing vocabulary
+//  Vocabulary note: these models keep using `NavDest` as the routing vocabulary
 //  so the existing `Nav.to(...)` / link-tap call sites keep working through the
 //  migration. `NavDest` is lifted to a top-level type only when `Router` is deleted.
 //
@@ -122,11 +122,11 @@ final class PostsNav: RedditNavigator {
 
   /// Pushes that stay in the content column (a sub/user opened from a card while the
   /// feed remains visible).
-  var contentPath: [Router.NavDest] = []
+  var contentPath: [NavDest] = []
 
   /// The open post's detail navigation stack (comment-author profile, crosspost, etc.).
   /// Owned here — this is what replaces the external `Router.fullPath`.
-  var detailPath: [Router.NavDest] = []
+  var detailPath: [NavDest] = []
 
   /// Which column the collapsed (compact) layout shows. Derived from state, never from a
   /// history stack.
@@ -139,7 +139,7 @@ final class PostsNav: RedditNavigator {
 
   // MARK: RedditNavigator
 
-  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
+  func navigate(_ destination: NavDest, from origin: RedditNavigationOrigin) {
     switch origin {
     case .content:
       if let detail = Self.postDetail(from: destination) {
@@ -225,7 +225,7 @@ final class PostsNav: RedditNavigator {
     preferredColumn = .sidebar
   }
 
-  static func postDetail(from destination: Router.NavDest) -> (post: Post, highlightID: String?)? {
+  static func postDetail(from destination: NavDest) -> (post: Post, highlightID: String?)? {
     guard case .reddit(let reddit) = destination else { return nil }
     switch reddit {
     case .post(let post): return (post, nil)
@@ -249,13 +249,13 @@ final class ColumnNav: RedditNavigator {
   var detailPost: Post?
   var detailHighlightID: String?
   /// Pushes that stay in the leading (source) column.
-  var contentPath: [Router.NavDest] = []
+  var contentPath: [NavDest] = []
   /// The open post's detail navigation stack.
-  var detailPath: [Router.NavDest] = []
+  var detailPath: [NavDest] = []
   /// Which column the collapsed layout shows. Leading source = `.sidebar`; post = `.detail`.
   var preferredColumn: NavigationSplitViewColumn = .sidebar
 
-  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
+  func navigate(_ destination: NavDest, from origin: RedditNavigationOrigin) {
     switch origin {
     case .content:
       if let detail = PostsNav.postDetail(from: destination) {
@@ -321,15 +321,15 @@ final class ColumnNav: RedditNavigator {
 @Observable
 @MainActor
 final class StackNav: RedditNavigator {
-  var path: [Router.NavDest] = []
+  var path: [NavDest] = []
 
   /// Single stack: every destination (whatever its origin) pushes onto `path`.
-  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
+  func navigate(_ destination: NavDest, from origin: RedditNavigationOrigin) {
     path.append(destination)
   }
 
   /// Deep links delivered on the legacy Router push onto the stack in order.
-  func consumeDeepLink(path destinations: [Router.NavDest]) {
+  func consumeDeepLink(path destinations: [NavDest]) {
     path.append(contentsOf: destinations)
   }
 
@@ -353,32 +353,32 @@ final class StackNav: RedditNavigator {
 @MainActor
 final class SettingsNav: RedditNavigator {
   /// Selected settings panel (the sidebar root). Drives the detail column's root.
-  var selection: Router.NavDest.Setting? = .general
+  var selection: NavDest.Setting? = .general
   /// Unused for settings (the sidebar is selection-based, not a push stack); always empty.
-  var contentPath: [Router.NavDest] = []
+  var contentPath: [NavDest] = []
   /// Pushes deeper into the detail column (a sub-panel / reddit link opened from a panel).
-  var detailPath: [Router.NavDest] = []
+  var detailPath: [NavDest] = []
   var preferredColumn: NavigationSplitViewColumn = .sidebar
 
   // MARK: Settings navigation
 
   /// Select a panel from the sidebar. Collapses sub-panels to their split root (e.g. Post
   /// Swipe → Behavior) and seeds the detail stack with the specific panel.
-  func select(_ setting: Router.NavDest.Setting) {
+  func select(_ setting: NavDest.Setting) {
     selection = setting.splitRoot
     detailPath = setting == setting.splitRoot ? [] : [.setting(setting)]
     preferredColumn = .detail
   }
 
   /// Push a destination deeper into the detail stack (a link tapped inside a panel).
-  func pushDetail(_ destination: Router.NavDest) {
+  func pushDetail(_ destination: NavDest) {
     detailPath.append(destination)
     preferredColumn = .detail
   }
 
   // MARK: RedditNavigator (reddit destinations opened from a settings panel)
 
-  func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
+  func navigate(_ destination: NavDest, from origin: RedditNavigationOrigin) {
     pushDetail(destination)
   }
 

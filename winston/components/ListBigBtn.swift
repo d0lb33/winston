@@ -12,7 +12,7 @@ import Defaults
 /// A button with an icon, label, and optional shiny gradient, used in a list.
 struct ListBigBtn: View {
   /// The binding for the selected subreddit.
-  @Binding var selectedSub: Router.NavDest?
+  @Binding var selectedSub: NavDest?
   /// The icon name.
   var icon: String
   /// The color of the icon.
@@ -37,7 +37,7 @@ struct ListBigBtn: View {
   ///   - label: The label text.
   ///   - icon: The icon name.
   ///   - shiny: The shiny gradient applied to the button (default is `nil`).
-  init(selectedSub: Binding<Router.NavDest?>? = nil, value: (any Hashable)? = nil, destination: Subreddit? = nil, icon: String, iconColor: Color, label: String, shiny: Gradient? = nil, action: @escaping () -> ()) {
+  init(selectedSub: Binding<NavDest?>? = nil, value: (any Hashable)? = nil, destination: Subreddit? = nil, icon: String, iconColor: Color, label: String, shiny: Gradient? = nil, action: @escaping () -> ()) {
     self._selectedSub = selectedSub ?? .constant(nil)
     self.label = label
     self.iconColor = iconColor

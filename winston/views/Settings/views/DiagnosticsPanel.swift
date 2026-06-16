@@ -12,6 +12,7 @@ import PulseUI
 
 struct DiagnosticsPanel: View {
   @ObservedObject private var diagnostics = AppDiagnostics.shared
+  @ObservedObject private var renderingReports = RenderingReportStore.shared
   @ObservedObject private var wire = RedditWire.shared
 
   @State private var exportURL: URL?
@@ -19,6 +20,7 @@ struct DiagnosticsPanel: View {
   @State private var isExporting = false
   @State private var snapshotText = ""
   @State private var showClearAlert = false
+  @State private var showClearRenderingReportsAlert = false
   @State private var showResetGraphQLAlert = false
   @AppStorage(RenderDiagnostics.defaultsKey) private var printRenderChanges = false
 
@@ -30,6 +32,7 @@ struct DiagnosticsPanel: View {
         DiagnosticRow(label: "Connected", value: wire.connected ? "yes" : "no")
         DiagnosticRow(label: "Account", value: wire.account.map { "u/\($0.username)" } ?? "none")
         DiagnosticRow(label: "Accounts", value: "\(wire.accounts.count)")
+        DiagnosticRow(label: "Rendering Reports", value: "\(renderingReports.reportCount)")
         Toggle("Debug HUD", isOn: $diagnostics.overlayEnabled)
         #if DEBUG
         Toggle("Log SwiftUI Render Causes", isOn: $printRenderChanges)
@@ -66,6 +69,14 @@ struct DiagnosticsPanel: View {
         } label: {
           Label("Copy Snapshot", systemImage: "doc.on.doc")
         }
+
+        NativeSettingsActionRow(role: .destructive) {
+          showClearRenderingReportsAlert = true
+        } label: {
+          Label("Clear Rendering Reports", systemImage: "trash")
+            .foregroundStyle(.red)
+        }
+        .disabled(renderingReports.reportCount == 0)
       }
 
       Section("Breadcrumbs") {
@@ -77,7 +88,7 @@ struct DiagnosticsPanel: View {
 
         NativeSettingsActionRow {
           diagnostics.breadcrumb("Settings route smoke start")
-          for route in Router.NavDest.Setting.allDiagnosticsRoutes {
+          for route in NavDest.Setting.allDiagnosticsRoutes {
             diagnostics.breadcrumb("Settings route available", metadata: ["route": route.rawValue])
           }
           diagnostics.breadcrumb("Settings route smoke end")
@@ -129,6 +140,7 @@ struct DiagnosticsPanel: View {
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
       diagnostics.breadcrumb("Opened Diagnostics panel")
+      renderingReports.refreshReportCount()
       Task { snapshotText = await diagnostics.snapshotText() }
     }
     .sheet(isPresented: $isSharingExport) {
@@ -143,6 +155,14 @@ struct DiagnosticsPanel: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("This clears recent events, persisted diagnostic logs, and the Network Console.")
+    }
+    .alert("Clear rendering reports?", isPresented: $showClearRenderingReportsAlert) {
+      Button("Clear Reports", role: .destructive) {
+        renderingReports.clearReports()
+      }
+      Button("Cancel", role: .cancel) {}
+    } message: {
+      Text("This clears locally queued post and comment rendering reports, including report screenshots.")
     }
     .alert("Reset GraphQL account state?", isPresented: $showResetGraphQLAlert) {
       Button("Reset", role: .destructive) {
@@ -228,8 +248,8 @@ struct DiagnosticsHUD: View {
   }
 }
 
-private extension Router.NavDest.Setting {
-  static var allDiagnosticsRoutes: [Router.NavDest.Setting] {
+private extension NavDest.Setting {
+  static var allDiagnosticsRoutes: [NavDest.Setting] {
     [
       .general,
       .behavior,

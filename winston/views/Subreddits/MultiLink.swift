@@ -9,7 +9,7 @@ import SwiftUI
 import Popovers
 
 struct MultiLink: View {
-  @Binding var initialSelected: Router.NavDest?
+  @Binding var initialSelected: NavDest?
   @StateObject var multi: Multi
   @StateObject private var subs = NonObservableArray<Subreddit>()
   

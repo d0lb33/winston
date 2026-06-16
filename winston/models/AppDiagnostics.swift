@@ -271,6 +271,12 @@ final class AppDiagnostics: ObservableObject {
         }
       }
 
+      do {
+        files.append(contentsOf: try RenderingReportStore.shared.exportReports(to: exportDirectory))
+      } catch {
+        record(.warning, category: "diagnostics.export", message: "Rendering report export failed: \(error.localizedDescription)")
+      }
+
       try Zip.zipFiles(paths: files, zipFilePath: zipURL, password: nil, progress: nil)
       record(.info, category: "diagnostics", message: "Exported diagnostics bundle", metadata: ["file": zipURL.lastPathComponent])
       return zipURL
@@ -301,6 +307,7 @@ final class AppDiagnostics: ObservableObject {
         "currentLogExists": FileManager.default.fileExists(atPath: currentLogURL.path),
         "previousLogExists": FileManager.default.fileExists(atPath: previousLogURL.path),
         "entryCountInMemory": entries.count,
+        "renderingReportCount": RenderingReportStore.shared.reportCount,
         "overlayEnabled": overlayEnabled
       ],
       "recentEvents": entries.suffix(50).map { entry in

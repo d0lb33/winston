@@ -376,10 +376,20 @@ private struct SavedListItemRow: View {
       Button("Save...", systemImage: "bookmark") {
         SaveChooserInstance.shared.enable(.post(post))
       }
+      Button {
+        RenderingReportStore.shared.capturePostIssue(post: post, surface: "aurora-saved-list-row")
+      } label: {
+        Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+      }
     }
     if let comment {
       Button("Save...", systemImage: "bookmark") {
         SaveChooserInstance.shared.enable(.comment(comment))
+      }
+      Button {
+        RenderingReportStore.shared.captureCommentIssue(comment: comment, surface: "aurora-saved-list-row")
+      } label: {
+        Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
       }
     }
   }

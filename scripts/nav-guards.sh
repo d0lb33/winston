@@ -20,7 +20,9 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT/winston"
-PHASE="${NAV_GUARD_PHASE:-0}"
+# The navigation rebuild is complete, so all rules enforce by default. Override with
+# NAV_GUARD_PHASE=<n> only when intentionally working below the final state.
+PHASE="${NAV_GUARD_PHASE:-5}"
 status=0
 
 # check <min_phase> <description> <regex> [allowed-path-substr...]

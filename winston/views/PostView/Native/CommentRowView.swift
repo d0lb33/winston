@@ -301,5 +301,28 @@ struct CommentRowView: View {
     if let permalink = comment.data?.permalink, let url = URL(string: "https://reddit.com\(permalink.escape.urlEncoded)") {
       ShareLink(item: url) { Label("Share", systemImage: "square.and.arrow.up") }
     }
+    Divider()
+    Button {
+      let layout = RenderingReportLayoutContext(
+        surface: "native-comment-row",
+        renderer: "native-comment",
+        rowSize: "\(contentWidth)xauto",
+        bodySize: "\(bodyWidth)xauto",
+        postDimensions: nil,
+        forcedPostDimensions: nil,
+        collapsed: row.isCollapsed,
+        depth: row.depth
+      )
+      RenderingReportStore.shared.captureCommentIssue(
+        comment: comment,
+        surface: "native-comment-row",
+        treeContext: [
+          "treePosition": row.parent == nil ? "top-level" : "nested"
+        ],
+        layout: layout
+      )
+    } label: {
+      Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+    }
   }
 }

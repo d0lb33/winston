@@ -36,7 +36,7 @@ struct AuroraFeed: View {
   let tabInteractionTab: Nav.TabIdentifier?
   let tabInteractions: TabInteractionCenter?
   let tabInteractionRequest: TabInteractionRequest?
-  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
@@ -54,7 +54,7 @@ struct AuroraFeed: View {
     tabInteractionTab: Nav.TabIdentifier? = nil,
     tabInteractions: TabInteractionCenter? = nil,
     tabInteractionRequest: TabInteractionRequest? = nil,
-    onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+    onCompactNavigate: ((NavDest) -> Void)? = nil
   ) {
     self.model = model
     self.title = title

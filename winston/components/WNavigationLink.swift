@@ -83,7 +83,7 @@ struct WSListButton: View {
 }
 
 struct WNavigationLink<Content: View>: View {
-  var value: Router.NavDest
+  var value: NavDest
   var active: Bool = false
   var label: (() -> Content)
   @Environment(\.settingsNavigationModel) private var settingsNavigationModel
@@ -91,13 +91,13 @@ struct WNavigationLink<Content: View>: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
-  init(_ value: Router.NavDest, active: Bool = false, _ label: @escaping () -> Content) {
+  init(_ value: NavDest, active: Bool = false, _ label: @escaping () -> Content) {
     self.value = value
     self.active = active
     self.label = label
   }
   
-  init(value: Router.NavDest, active: Bool = false, _ label: @escaping () -> Content) {
+  init(value: NavDest, active: Bool = false, _ label: @escaping () -> Content) {
     self.value = value
     self.active = active
     self.label = label
@@ -117,7 +117,7 @@ struct WNavigationLink<Content: View>: View {
 }
 
 struct WSNavigationLink: View {
-  var value: Router.NavDest
+  var value: NavDest
   var active: Bool = false
   var icon: String? = nil
   let label: String
@@ -126,7 +126,7 @@ struct WSNavigationLink: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   
-  init(_ value: Router.NavDest, active: Bool = false, _ label: String, icon: String? = nil) {
+  init(_ value: NavDest, active: Bool = false, _ label: String, icon: String? = nil) {
     self.value = value
     self.active = active
     self.label = label

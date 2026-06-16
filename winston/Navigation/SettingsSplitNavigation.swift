@@ -45,7 +45,7 @@ extension View {
 
 @MainActor
 func navigateSettingsDestination(
-  _ destination: Router.NavDest,
+  _ destination: NavDest,
   model: SettingsNav?,
   origin: SettingsNavigationOrigin
 ) -> Bool {
@@ -59,9 +59,9 @@ func navigateSettingsDestination(
   return true
 }
 
-extension Router.NavDest.Setting {
+extension NavDest.Setting {
   /// The sidebar root a (possibly nested) settings panel belongs to.
-  var splitRoot: Router.NavDest.Setting {
+  var splitRoot: NavDest.Setting {
     switch self {
     case .postSwipe, .commentSwipe, .filteredSubreddits:
       return .behavior

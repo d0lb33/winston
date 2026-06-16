@@ -29,7 +29,7 @@ extension View {
   /// re-applying the owning navigator + origin so pushed screens route their own
   /// link taps into the correct column. Use on Posts / Me / Search / Inbox stacks.
   func redditDestinations(_ navigator: any RedditNavigator, origin: RedditNavigationOrigin) -> some View {
-    navigationDestination(for: Router.NavDest.self) { destination in
+    navigationDestination(for: NavDest.self) { destination in
       RouterDestinationView(destination: destination)
         .redditNavigation(navigator, origin: origin)
     }
@@ -39,7 +39,7 @@ extension View {
   /// detail origin, and must carry BOTH the reddit nav seam (reddit links inside a
   /// panel) and the settings nav seam (nested settings links).
   func settingsDestinations(_ nav: SettingsNav) -> some View {
-    navigationDestination(for: Router.NavDest.self) { destination in
+    navigationDestination(for: NavDest.self) { destination in
       RouterDestinationView(destination: destination)
         .redditNavigation(nav, origin: .detail)
         .settingsNavigation(nav, origin: .detail)
@@ -50,7 +50,7 @@ extension View {
 // MARK: - Destination factory
 
 struct RouterDestinationView: View {
-  let destination: Router.NavDest
+  let destination: NavDest
 
   var body: some View {
     switch destination {
@@ -176,7 +176,7 @@ protocol RedditDeepLinkConsuming: RedditNavigator {
 extension RedditDeepLinkConsuming {
   func setDeepLinkFeed(_ token: String) -> Bool { false }
 
-  func consumeDeepLink(path: [Router.NavDest]) {
+  func consumeDeepLink(path: [NavDest]) {
     for (index, destination) in path.enumerated() {
       if let detail = PostsNav.postDetail(from: destination) {
         openDeepLinkPostRoot(detail.post, highlightID: detail.highlightID)
@@ -211,7 +211,7 @@ extension ColumnNav: RedditDeepLinkConsuming {
 
 extension SettingsNav {
   /// Settings deep links select sidebar panels (or push reddit links into the detail).
-  func consumeDeepLink(path: [Router.NavDest]) {
+  func consumeDeepLink(path: [NavDest]) {
     for destination in path {
       if case .setting(let setting) = destination {
         select(setting)
@@ -228,7 +228,7 @@ extension SettingsNav {
 /// consume/onChange copies that lived in each surface.
 private struct RouterDeepLinkInboxModifier: ViewModifier {
   @ObservedObject var router: Router
-  let consume: ([Router.NavDest]) -> Void
+  let consume: ([NavDest]) -> Void
   let onRootReset: () -> Void
 
   func body(content: Content) -> some View {
@@ -248,7 +248,7 @@ private struct RouterDeepLinkInboxModifier: ViewModifier {
     consume([destination])
   }
 
-  private func consumePath(_ path: [Router.NavDest]) {
+  private func consumePath(_ path: [NavDest]) {
     guard !path.isEmpty else { return }
     consume(path)
     router.resetNavPath()
@@ -258,7 +258,7 @@ private struct RouterDeepLinkInboxModifier: ViewModifier {
 extension View {
   func routerDeepLinkInbox(
     router: Router,
-    consume: @escaping ([Router.NavDest]) -> Void,
+    consume: @escaping ([NavDest]) -> Void,
     onRootReset: @escaping () -> Void
   ) -> some View {
     modifier(RouterDeepLinkInboxModifier(router: router, consume: consume, onRootReset: onRootReset))

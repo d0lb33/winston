@@ -36,5 +36,12 @@ struct PostLinkContext: View {
         }
       }
     }
+
+    Divider()
+    Button {
+      RenderingReportStore.shared.capturePostIssue(post: post, surface: "post-context-menu")
+    } label: {
+      Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+    }
   }
 }

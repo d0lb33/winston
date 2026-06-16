@@ -31,7 +31,7 @@ func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
 }
 
 @MainActor
-private func openRedditDestination(_ destination: Router.NavDest) {
+private func openRedditDestination(_ destination: NavDest) {
   if Nav.shared.activeTab != .posts {
     Nav.shared.activeTab = .posts
   }

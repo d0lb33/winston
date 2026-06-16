@@ -100,13 +100,15 @@ extension PostData {
   }
 
   private mutating func applyGraphQLMedia(from p: SubredditPost) {
-    if let still = p.media?.still {
+    let didApplyAnimatedMedia = applyAnimatedGraphQLMedia(from: p)
+
+    if !didApplyAnimatedMedia, let still = p.media?.still {
       applyPreview(still: still)
       thumbnail = thumbnail ?? still.source?.absoluteURLString
       post_hint = post_hint ?? "image"
     }
 
-    if let video = p.media?.video {
+    if !didApplyAnimatedMedia, let video = p.media?.video {
       is_video = true
       post_hint = "hosted:video"
       media = Media(
@@ -173,6 +175,61 @@ extension PostData {
         ) as MediaMetadataItem?
       )
     })
+  }
+
+  private mutating func applyAnimatedGraphQLMedia(from p: SubredditPost) -> Bool {
+    guard
+      let animated = p.media?.animated,
+      let mp4URL = animated.mp4?.absoluteURLString
+    else { return false }
+
+    let width = animated.mp4?.dimensions?.width ?? animated.source?.dimensions?.width ?? animated.gif?.dimensions?.width
+    let height = animated.mp4?.dimensions?.height ?? animated.source?.dimensions?.height ?? animated.gif?.dimensions?.height
+    let previewVideo = RedditVideoPreview(
+      bitrate_kbps: nil,
+      fallback_url: mp4URL,
+      height: height.map(Double.init),
+      width: width.map(Double.init),
+      scrubber_media_url: nil,
+      dash_url: nil,
+      duration: nil,
+      hls_url: nil,
+      is_gif: true,
+      transcoding_status: nil
+    )
+
+    is_video = true
+    post_hint = "hosted:video"
+    thumbnail = thumbnail ?? p.media?.still?.source?.absoluteURLString ?? animated.gif?.absoluteURLString
+    media = Media(
+      type: nil,
+      oembed: nil,
+      reddit_video: RedditVideo(
+        bitrate_kbps: nil,
+        fallback_url: mp4URL,
+        has_audio: false,
+        height: height,
+        width: width,
+        scrubber_media_url: nil,
+        dash_url: nil,
+        duration: nil,
+        hls_url: nil,
+        is_gif: true,
+        transcoding_status: nil
+      )
+    )
+
+    if let still = p.media?.still {
+      applyPreview(still: still)
+    }
+    let existing = preview
+    preview = Preview(
+      images: existing?.images,
+      reddit_video_preview: previewVideo,
+      enabled: existing?.enabled ?? true
+    )
+
+    return true
   }
 
   private mutating func applyPreview(still: StillMedia, video: RedditHostedVideo? = nil) {

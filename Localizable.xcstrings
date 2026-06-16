@@ -848,6 +848,15 @@
     "Clear recent search" : {
 
     },
+    "Clear Rendering Reports" : {
+
+    },
+    "Clear rendering reports?" : {
+
+    },
+    "Clear Reports" : {
+
+    },
     "Close Design Lab preview" : {
 
     },
@@ -3419,6 +3428,9 @@
     "Reply" : {
 
     },
+    "Report Rendering Issue" : {
+
+    },
     "Requests Only" : {
 
     },
@@ -4279,6 +4291,9 @@
       }
     },
     "This clears GraphQL account records and stored sessions. It does not reset themes or general preferences." : {
+
+    },
+    "This clears locally queued post and comment rendering reports, including report screenshots." : {
 
     },
     "This clears recent events, persisted diagnostic logs, and the Network Console." : {

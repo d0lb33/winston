@@ -114,7 +114,7 @@ struct Settings: View {
 private struct SettingsSidebarList: View {
   private static let topID = "settings-top"
 
-  let selectedSetting: Router.NavDest.Setting?
+  let selectedSetting: NavDest.Setting?
   let isTabInteractionOwner: Bool
   let showWhatsNew: () -> Void
   let showAnnouncements: () -> Void
@@ -146,7 +146,7 @@ private struct SettingsSidebarList: View {
 }
 
 private struct SettingsMainSection: View {
-  let selectedSetting: Router.NavDest.Setting?
+  let selectedSetting: NavDest.Setting?
 
   var body: some View {
     Section("App") {
@@ -160,7 +160,7 @@ private struct SettingsMainSection: View {
 }
 
 private struct SettingsInfoSection: View {
-  let selectedSetting: Router.NavDest.Setting?
+  let selectedSetting: NavDest.Setting?
   let showWhatsNew: () -> Void
   let showAnnouncements: () -> Void
 
@@ -182,7 +182,7 @@ private struct SettingsInfoSection: View {
 }
 
 private struct SettingsDeveloperSection: View {
-  let selectedSetting: Router.NavDest.Setting?
+  let selectedSetting: NavDest.Setting?
   let showGraphQLDebug: () -> Void
 
   var body: some View {
@@ -220,7 +220,7 @@ private struct SettingsSupportSection: View {
 }
 
 private struct SettingsDetailColumnContent: View {
-  let setting: Router.NavDest.Setting?
+  let setting: NavDest.Setting?
 
   var body: some View {
     switch setting {
@@ -276,7 +276,7 @@ private struct SettingsDetailColumnContent: View {
 //  }
 //}
 
-private extension Router.NavDest.Setting {
+private extension NavDest.Setting {
   var usesSettingsPanelScrollRoot: Bool {
     switch self {
     case .general, .behavior, .appearance, .accounts, .diagnostics, .about, .commentSwipe, .postSwipe, .accessibility, .filteredSubreddits, .faq, .appIcon:

@@ -15,6 +15,7 @@ struct Tabber: View, Equatable {
   @ObservedObject private var nav = Nav.shared
   @ObservedObject private var wire = RedditWire.shared
   @StateObject private var tabInteractions = TabInteractionCenter()
+  @EnvironmentObject private var accountSwitcher: AccountSwitcherTransmitter
   
   @State private var tabReselectDetectionEnabled = false
   
@@ -44,6 +45,7 @@ struct Tabber: View, Equatable {
   
   var body: some View {
     let accountScopeKey = wire.accountScopeID?.uuidString ?? "none"
+    let meTabTitle = appearanceDefSettings.showUsernameInTabBar ? (wire.me?.data?.name ?? "Me") : "Me"
     let tabSelection = Binding<Nav.TabIdentifier>(
       get: { nav.activeTab },
       set: { tab in
@@ -58,46 +60,43 @@ struct Tabber: View, Equatable {
     )
 
     TabView(selection: tabSelection) {
-      
-      WithAccountOnly {
-        SubredditsStack(router: nav[.posts])
+      Tab("Posts", systemImage: "doc.text.image", value: Nav.TabIdentifier.posts) {
+        WithAccountOnly { SubredditsStack(router: nav[.posts]) }
+          .id("posts-\(accountScopeKey)")
+          .measureTabBar(tabBarMetrics)
       }
-      .id("posts-\(accountScopeKey)")
-      .measureTabBar(tabBarMetrics)
-      .tag(Nav.TabIdentifier.posts)
-      .tabItem { Label("Posts", systemImage: "doc.text.image") }
-      
-      WithAccountOnly {
-        Inbox(router: nav[.inbox])
+
+      Tab("Inbox", systemImage: "bell.fill", value: Nav.TabIdentifier.inbox) {
+        WithAccountOnly { Inbox(router: nav[.inbox]) }
+          .id("inbox-\(accountScopeKey)")
+          .measureTabBar(tabBarMetrics)
       }
-      .id("inbox-\(accountScopeKey)")
-      .measureTabBar(tabBarMetrics)
-      .tag(Nav.TabIdentifier.inbox)
-      .tabItem { Label("Inbox", systemImage: "bell.fill") }
-      
-      WithAccountOnly {
-        Me(router: nav[.me])
+
+      Tab(meTabTitle, systemImage: "person.fill", value: Nav.TabIdentifier.me) {
+        WithAccountOnly { Me(router: nav[.me]) }
+          .id("me-\(accountScopeKey)")
+          .measureTabBar(tabBarMetrics)
       }
-      .id("me-\(accountScopeKey)")
-      .measureTabBar(tabBarMetrics)
-      .tag(Nav.TabIdentifier.me)
-      .tabItem { Label(appearanceDefSettings.showUsernameInTabBar ? wire.me?.data?.name ?? "Me" : "Me", systemImage: "person.fill") }
-//      
-      WithAccountOnly {
-        Search(router: nav[.search])
+
+      Tab("Search", systemImage: "magnifyingglass", value: Nav.TabIdentifier.search, role: .search) {
+        WithAccountOnly { Search(router: nav[.search]) }
+          .id("search-\(accountScopeKey)")
+          .measureTabBar(tabBarMetrics)
       }
-      .id("search-\(accountScopeKey)")
-      .measureTabBar(tabBarMetrics)
-      .tag(Nav.TabIdentifier.search)
-      .tabItem { Label("Search", systemImage: "magnifyingglass") }
-      
-      Settings(router: nav[.settings])
-        .measureTabBar(tabBarMetrics)
-        .tag(Nav.TabIdentifier.settings)
-        .tabItem { Label("Settings", systemImage: "gearshape.fill") }
-      
+
+      Tab("Settings", systemImage: "gearshape.fill", value: Nav.TabIdentifier.settings) {
+        Settings(router: nav[.settings])
+          .measureTabBar(tabBarMetrics)
+      }
     }
-    .background(TabBarReselectAccessor(tabInteractions: tabInteractions).allowsHitTesting(false))
+    .tabViewStyle(.sidebarAdaptable)
+    .tabBarMinimizeBehavior(.onScrollDown)
+    .overlay {
+      TabBarOverlay {
+        handleMeTabTap()
+      }
+    }
+    .background(TabBarReselectAccessor(tabInteractions: tabInteractions, accountSwitcher: accountSwitcher, meTabTitle: meTabTitle).allowsHitTesting(false))
     .environmentObject(tabInteractions)
     .onAppear {
       tabInteractions.selectedTabChanged(to: nav.activeTab)
@@ -121,20 +120,35 @@ struct Tabber: View, Equatable {
     }
     .accentColor(currentTheme.general.accentColor())
   }
+
+  private func handleMeTabTap() {
+    if nav.activeTab == .me {
+      AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": Nav.TabIdentifier.me.rawValue, "source": "meTabOverlay"])
+      tabInteractions.selectedTabTappedAgain(.me)
+    } else {
+      nav.activeTab = .me
+    }
+  }
 }
 
 private struct TabBarReselectAccessor: UIViewRepresentable {
   @ObservedObject var tabInteractions: TabInteractionCenter
+  let accountSwitcher: AccountSwitcherTransmitter
+  let meTabTitle: String
 
   func makeUIView(context: Context) -> AccessorView {
     let view = AccessorView()
     view.coordinator = context.coordinator
     context.coordinator.tabInteractions = tabInteractions
+    context.coordinator.transmitter = accountSwitcher
+    context.coordinator.meTabTitle = meTabTitle
     return view
   }
 
   func updateUIView(_ uiView: AccessorView, context: Context) {
     context.coordinator.tabInteractions = tabInteractions
+    context.coordinator.transmitter = accountSwitcher
+    context.coordinator.meTabTitle = meTabTitle
     context.coordinator.attachIfPossible(from: uiView)
   }
 
@@ -160,10 +174,15 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
   @MainActor
   final class Coordinator: NSObject {
     weak var tabInteractions: TabInteractionCenter?
+    var transmitter: AccountSwitcherTransmitter?
+    var meTabTitle = "Me"
     private weak var sourceView: UIView?
     private weak var attachedTabBar: UITabBar?
     private weak var pendingSelectedControl: UIControl?
     private var attachedControls: [UIControl] = []
+    private weak var meLongPressControl: UIControl?
+    private var meLongPress: UILongPressGestureRecognizer?
+    private let haptics = UIImpactFeedbackGenerator(style: .soft)
     private var attachAttempts = 0
     private let maxAttachAttempts = 8
 
@@ -194,6 +213,7 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
         control.removeTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchCancel)
         control.removeTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchDragExit)
       }
+      detachMeLongPress()
       attachedControls = []
       attachedTabBar = nil
       pendingSelectedControl = nil
@@ -216,10 +236,91 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
         }
         attachedControls = controls
         attachedTabBar = tabBar
+        attachMeLongPress(controls: controls)
         AppDiagnostics.asyncBreadcrumb("Tab bar reselect control accessor attached", metadata: ["controls": "\(controls.count)"])
       }
 
       attachAttempts = 0
+    }
+
+    // MARK: Account switcher — long-press the Me tab control
+
+    private func attachMeLongPress(controls: [UIControl]) {
+      detachMeLongPress()
+      guard let control = meTabControl(in: controls) else { return }
+      let recognizer = UILongPressGestureRecognizer(target: self, action: #selector(handleMeLongPress(_:)))
+      recognizer.minimumPressDuration = 0.18
+      control.addGestureRecognizer(recognizer)
+      meLongPress = recognizer
+      meLongPressControl = control
+    }
+
+    private func detachMeLongPress() {
+      if let meLongPress, let meLongPressControl {
+        meLongPressControl.removeGestureRecognizer(meLongPress)
+      }
+      meLongPress = nil
+      meLongPressControl = nil
+    }
+
+    @objc private func handleMeLongPress(_ sender: UILongPressGestureRecognizer) {
+      guard let transmitter else { return }
+      let targetView = sender.view?.window?.rootViewController?.view
+      let location = sender.location(in: targetView)
+      switch sender.state {
+      case .began:
+        pendingSelectedControl = nil
+        haptics.prepare()
+        haptics.impactOccurred()
+        if let view = targetView {
+          let renderer = UIGraphicsImageRenderer(size: view.bounds.size)
+          transmitter.screenshot = renderer.image { _ in
+            view.drawHierarchy(in: view.bounds, afterScreenUpdates: true)
+          }
+        }
+        transmitter.positionInfo = .init(location)
+        transmitter.showing = true
+      case .changed:
+        transmitter.positionInfo?.location = location
+      case .ended, .cancelled, .failed:
+        if transmitter.showing { transmitter.showing = false }
+      default:
+        break
+      }
+    }
+
+    private func meTabControl(in controls: [UIControl]) -> UIControl? {
+      if let match = controls.first(where: { controlContainsText($0, meTabTitle) || controlContainsText($0, "Me") }) {
+        return match
+      }
+      guard let meIndex = Nav.TabIdentifier.allCases.firstIndex(of: .me),
+            controls.indices.contains(meIndex) else { return nil }
+      return controls[meIndex]
+    }
+
+    private func controlContainsText(_ control: UIControl, _ text: String) -> Bool {
+      let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmed.isEmpty else { return false }
+      return accessibilityText(in: control).contains { value in
+        value.localizedCaseInsensitiveContains(trimmed)
+      }
+    }
+
+    private func accessibilityText(in view: UIView) -> [String] {
+      var values: [String] = []
+      if let label = view.accessibilityLabel, !label.isEmpty {
+        values.append(label)
+      }
+      if let identifier = view.accessibilityIdentifier, !identifier.isEmpty {
+        values.append(identifier)
+      }
+      if let label = view as? UILabel, let text = label.text, !text.isEmpty {
+        values.append(text)
+      }
+      for subview in view.subviews {
+        values.append(contentsOf: accessibilityText(in: subview))
+      }
+      return values
     }
 
     private func scheduleRetry() {

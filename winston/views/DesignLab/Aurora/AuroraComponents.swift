@@ -145,7 +145,7 @@ struct AuroraActionRow: View {
 }
 
 struct AuroraNavigationRow<Label: View>: View {
-  let value: Router.NavDest
+  let value: NavDest
   var active = false
   @ViewBuilder let label: () -> Label
 
@@ -154,13 +154,13 @@ struct AuroraNavigationRow<Label: View>: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
-  init(_ value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+  init(_ value: NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
     self.value = value
     self.active = active
     self.label = label
   }
 
-  init(value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+  init(value: NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
     self.value = value
     self.active = active
     self.label = label
@@ -180,7 +180,7 @@ struct AuroraNavigationRow<Label: View>: View {
 }
 
 extension AuroraNavigationRow where Label == AnyView {
-  init(_ value: Router.NavDest, active: Bool = false, title: LocalizedStringKey, systemImage: String? = nil) {
+  init(_ value: NavDest, active: Bool = false, title: LocalizedStringKey, systemImage: String? = nil) {
     self.value = value
     self.active = active
     self.label = {
@@ -465,7 +465,7 @@ struct AuroraPostCardRow: View {
   @ObservedObject var post: Post
   var availableRowWidth: CGFloat? = nil
   var isSelected: Bool = false
-  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  var onCompactNavigate: ((NavDest) -> Void)? = nil
   var onSelect: (() -> Void)? = nil
 
   @State private var measuredCardWidth: CGFloat = 0
@@ -537,7 +537,7 @@ struct AuroraCard: View {
   @ObservedObject var post: Post
   let cardWidth: CGFloat
   var isSelected: Bool = false
-  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  var onCompactNavigate: ((NavDest) -> Void)? = nil
 
   var body: some View {
     let _ = ScrollPerfProbe.shared.bump("auroraCardBody")
@@ -582,7 +582,7 @@ private struct AuroraPostCardSurface: View {
   @ObservedObject var winstonData: PostWinstonData
   let cardWidth: CGFloat
   let presentation: AuroraPostCardPresentation
-  let onCompactNavigate: ((Router.NavDest) -> Void)?
+  let onCompactNavigate: ((NavDest) -> Void)?
   @Environment(\.auroraTheme) private var theme
   @Environment(\.horizontalSizeClass) private var hSize
   @Environment(\.redditNavigationModel) private var redditNavigationModel
@@ -705,7 +705,7 @@ private struct AuroraPostCardSurface: View {
     navigate(.reddit(.subFeed(Subreddit(id: name))))
   }
 
-  private func navigate(_ destination: Router.NavDest) {
+  private func navigate(_ destination: NavDest) {
     if hSize == .compact, let onCompactNavigate {
       onCompactNavigate(destination)
     } else {
@@ -740,6 +740,22 @@ private struct AuroraPostCardSurface: View {
         Task { await post.markInteractedAsRead() }
         UIPasteboard.general.url = url
       } label: { Label("Copy Link", systemImage: "link") }
+    }
+    Divider()
+    Button {
+      let layout = RenderingReportLayoutContext(
+        surface: "aurora-post-context-menu",
+        renderer: "aurora-card",
+        rowSize: "\(cardWidth)xauto",
+        bodySize: "\(contentWidth)xauto",
+        postDimensions: String(describing: winstonData.postDimensions),
+        forcedPostDimensions: String(describing: winstonData.postDimensionsForcedNormal),
+        collapsed: nil,
+        depth: nil
+      )
+      RenderingReportStore.shared.capturePostIssue(post: post, surface: "aurora-post-context-menu", layout: layout)
+    } label: {
+      Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
     }
   }
 
@@ -809,7 +825,7 @@ struct AuroraCrosspostCard: View {
   @ObservedObject var repost: Post
   let outerPostID: String
   let contentWidth: CGFloat
-  var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.horizontalSizeClass) private var hSize
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin

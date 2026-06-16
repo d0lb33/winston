@@ -10,7 +10,7 @@ import NukeUI
 import Defaults
 
 struct PostInBoxLink: View {
-  @Binding var initialSelected: Router.NavDest?
+  @Binding var initialSelected: NavDest?
   @Default(.postsInBox) private var postsInBox
   @Environment(\.contentWidth) private var contentWidth
   

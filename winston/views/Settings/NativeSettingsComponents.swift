@@ -178,7 +178,7 @@ extension NativeSettingsActionRow where Label == AnyView {
 }
 
 struct NativeSettingsNavigationRow<Label: View>: View {
-  let value: Router.NavDest
+  let value: NavDest
   var active = false
   @ViewBuilder let label: () -> Label
 
@@ -188,13 +188,13 @@ struct NativeSettingsNavigationRow<Label: View>: View {
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
-  init(_ value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+  init(_ value: NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
     self.value = value
     self.active = active
     self.label = label
   }
 
-  init(value: Router.NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
+  init(value: NavDest, active: Bool = false, @ViewBuilder label: @escaping () -> Label) {
     self.value = value
     self.active = active
     self.label = label
@@ -230,7 +230,7 @@ struct NativeSettingsNavigationRow<Label: View>: View {
 
 extension NativeSettingsNavigationRow where Label == AnyView {
   init(
-    _ value: Router.NavDest,
+    _ value: NavDest,
     active: Bool = false,
     title: LocalizedStringKey,
     systemImage: String? = nil,
