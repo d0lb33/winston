@@ -141,6 +141,9 @@ struct AuroraPostDetail: View {
           .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
+        // Collapse the zero-height top anchor row (SwiftUI's ~44pt default minimum
+        // row height would otherwise leave a large gap under the nav bar).
+        .environment(\.defaultMinListRowHeight, 1)
         .scrollContentBackground(.hidden)
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)

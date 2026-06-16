@@ -274,6 +274,9 @@ struct TabScrollRoot<Content: View>: View {
 
         content()
       }
+      // Without this, SwiftUI's ~44pt default minimum row height inflates the
+      // zero-height top anchor row into a large gap under the nav bar.
+      .environment(\.defaultMinListRowHeight, 1)
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentOffset.y
       } action: { _, newOffsetY in
@@ -346,6 +349,9 @@ struct TabSelectableScrollRoot<Selection: Hashable, Content: View>: View {
 
         content()
       }
+      // Without this, SwiftUI's ~44pt default minimum row height inflates the
+      // zero-height top anchor row into a large gap under the nav bar.
+      .environment(\.defaultMinListRowHeight, 1)
       .onScrollGeometryChange(for: CGFloat.self) { geometry in
         geometry.contentOffset.y
       } action: { _, newOffsetY in
