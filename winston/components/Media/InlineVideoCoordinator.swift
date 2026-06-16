@@ -505,8 +505,11 @@ final class InlineVideoCoordinator {
     pauseActiveIfNeeded()
 
     if isScrolling {
-      guard !isFastScrolling else { return latestVisibilities }
-      electCenteredVideo(updateWarmSet: false)
+      // Keep the currently active player alive until it falls below the pause threshold,
+      // but do not elect a new active row while the list is moving. Even "slow" scroll
+      // geometry can flip to fast in the same one-second window; electing here was still
+      // creating AVPlayerLayers during scroll (`playerLayerMake` in perf.scrollactivity).
+      // The scroll driver schedules election as soon as the phase returns to idle.
       return latestVisibilities
     }
 

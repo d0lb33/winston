@@ -49,7 +49,7 @@ final class AppDiagnostics: ObservableObject {
   nonisolated private static func shouldRecord(_ level: DiagnosticLevel, category: String) -> Bool {
     guard level == .debug else { return true }
     switch category {
-    case "ui.image", "ui.media.extract", "ui.media.setup", "ui.video", "ui.video.cache", "ui.video.playerView", "ui.videoPoster":
+    case "ui.image", "ui.media.extract", "ui.media.setup", "ui.media.prefetch", "ui.video", "ui.video.cache", "ui.video.playerView", "ui.videoPoster":
       return false
     default:
       return true
