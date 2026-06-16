@@ -14,6 +14,7 @@ struct Tabber: View, Equatable {
   
   @ObservedObject private var nav = Nav.shared
   @ObservedObject private var wire = RedditWire.shared
+  @StateObject private var tabInteractions = TabInteractionCenter()
   
   @State private var tabBarHeight: Double? = nil
   
@@ -21,14 +22,6 @@ struct Tabber: View, Equatable {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.setTabBarHeight) private var setTabBarHeight
   @Default(.AppearanceDefSettings) private var appearanceDefSettings
-  
-  func meTabTap() {
-    if nav.activeTab == .me {
-      nav[.me].requestRootReset()
-    } else {
-      nav.activeTab = .me
-    }
-  }
   
   init(theme: WinstonTheme) {
     Tabber.updateTabAndNavBar(tabTheme: theme.general.tabBarBG, navTheme: theme.general.navPanelBG)
@@ -92,7 +85,14 @@ struct Tabber: View, Equatable {
         .tabItem { Label("Settings", systemImage: "gearshape.fill") }
       
     }
-    .overlay(TabBarOverlay(meTabTap: meTabTap), alignment: .bottom)
+    .background(TabBarTapAccessor(tabInteractions: tabInteractions).allowsHitTesting(false))
+    .environmentObject(tabInteractions)
+    .onAppear {
+      tabInteractions.selectedTabChanged(to: nav.activeTab)
+    }
+    .onChange(of: nav.activeTab) { _, tab in
+      tabInteractions.selectedTabChanged(to: tab)
+    }
     .openFromWebListener()
     .clipboardRedditLinkListener()
     .globalLoaderProvider()
@@ -106,5 +106,57 @@ struct Tabber: View, Equatable {
       }
     }
     .accentColor(currentTheme.general.accentColor())
+  }
+}
+
+private struct TabBarTapAccessor: UIViewControllerRepresentable {
+  @ObservedObject var tabInteractions: TabInteractionCenter
+
+  func makeUIViewController(context: Context) -> UIViewController {
+    let controller = Controller()
+    controller.tabInteractions = tabInteractions
+    return controller
+  }
+
+  func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+    guard let controller = uiViewController as? Controller else { return }
+    controller.tabInteractions = tabInteractions
+    controller.attachIfPossible()
+  }
+
+  @MainActor
+  private final class Controller: UIViewController, UITabBarControllerDelegate {
+    weak var tabInteractions: TabInteractionCenter?
+    weak var previousDelegate: (any UITabBarControllerDelegate)?
+
+    override func viewWillAppear(_ animated: Bool) {
+      super.viewWillAppear(animated)
+      attachIfPossible()
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      attachIfPossible()
+    }
+
+    func attachIfPossible() {
+      guard let tabBarController else { return }
+      if tabBarController.delegate !== self {
+        previousDelegate = tabBarController.delegate
+        tabBarController.delegate = self
+      }
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+      if viewController === tabBarController.selectedViewController {
+        let tab = Nav.shared.activeTab
+        tabInteractions?.selectedTabTappedAgain(tab)
+      }
+      return previousDelegate?.tabBarController?(tabBarController, shouldSelect: viewController) ?? true
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+      previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+    }
   }
 }

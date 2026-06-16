@@ -57,7 +57,6 @@ struct BehaviorPanel: View {
           Picker("Default Launch Feed", selection: $behaviorDefSettings.preferenceDefaultFeed) {
             Text("Home").tag("home")
             Text("Popular").tag("popular")
-            Text("All").tag("all")
             Text("Subscription List").tag("subList")
           }
           .pickerStyle(DefaultPickerStyle())

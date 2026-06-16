@@ -10,13 +10,14 @@ import SwiftUI
 struct Me: View {
   @ObservedObject var router: Router
   @ObservedObject var wire = RedditWire.shared
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   @State private var loading = true
   var body: some View {
-    RedditTwoColumnShell(router: router) { _ in
+    RedditTwoColumnShell(router: router, tab: .me) { _ in
       Group {
         if let user = wire.me {
-          UserView(user: user)
+          UserView(user: user, tabInteractionTab: .me, tabInteractions: tabInteractions)
             .id("me-user-view-\(user.id)")
           
         } else {

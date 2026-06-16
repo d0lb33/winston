@@ -775,13 +775,16 @@ struct Search: View {
   @State private var searchViewLoaded: Bool = false
   @State private var listWidth: CGFloat = 0
   @State private var splitNavigation: ColumnNav?
+  @State private var isSearchPresented = false
+  @State private var suppressEmptyQueryReload = false
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.isSearching) private var isSearching
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   var body: some View {
-    RedditTwoColumnShell(router: router) { navigation in
+    RedditTwoColumnShell(router: router, tab: .search) { navigation in
       searchRoot
         .onAppear {
           splitNavigation = navigation
@@ -791,7 +794,13 @@ struct Search: View {
   }
 
   private var searchRoot: some View {
-    List {
+    TabScrollRoot(
+      topID: "search-top",
+      tab: .search,
+      tabInteractions: tabInteractions,
+      request: tabInteractions.requests[.search],
+      onResetToRoot: resetSearchHome
+    ) {
       SearchListContent(
         model: model,
         searchScope: $searchScope,
@@ -804,9 +813,9 @@ struct Search: View {
         searchAll: searchAll,
         loadMore: { model.loadMore(contentWidth: contentWidth) }
       )
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
+      .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
     }
     .onGeometryChange(for: CGFloat.self) { geometry in
       geometry.size.width
@@ -823,7 +832,7 @@ struct Search: View {
     .listStyle(.plain)
       .loader(model.loadingInitial, model.showEmpty)
       .scrollDismissesKeyboard(.automatic)
-      .searchable(text: $searchQuery.text, placement: .toolbar)
+      .searchable(text: $searchQuery.text, isPresented: $isSearchPresented, placement: .toolbar)
       .autocorrectionDisabled(true)
       .textInputAutocapitalization(.none)
       .onChange(of: isSearching) { _, active in
@@ -873,6 +882,7 @@ struct Search: View {
       }
       .onChange(of: searchQuery.text) { _, val in
         if val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          guard !suppressEmptyQueryReload else { return }
           searchScope = .all
           model.loadNullState()
         }
@@ -888,6 +898,10 @@ struct Search: View {
         )
 
         guard !trimmed.isEmpty else {
+          if suppressEmptyQueryReload {
+            suppressEmptyQueryReload = false
+            return
+          }
           searchScope = .all
           model.loadNullState()
           return
@@ -900,6 +914,7 @@ struct Search: View {
         }
       }
       .onAppear() {
+        isSearchPresented = false
         if !searchViewLoaded {
           model.loadNullState()
           searchViewLoaded = true
@@ -911,12 +926,14 @@ struct Search: View {
   }
 
   private func searchAll() {
+    dismissSearchField()
     searchScope = .all
     model.recordRecentSearch(searchQuery.text)
     model.refreshFullSearch(query: searchQuery.text, scope: .all, contentWidth: contentWidth)
   }
 
   private func activateSuggestion(_ suggestion: SearchSuggestion) {
+    dismissSearchField()
     searchQuery.text = suggestion.query
     searchScope = .all
     model.recordRecentSearch(suggestion.query)
@@ -924,20 +941,39 @@ struct Search: View {
   }
 
   private func selectPost(_ post: Post) {
+    dismissSearchField()
     navigateRedditDestination(.reddit(.post(post)), model: splitNavigation, origin: .content)
   }
 
   private func selectComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
+    dismissSearchField()
     navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: splitNavigation, origin: .content)
   }
 
   private func selectSubreddit(_ subreddit: Subreddit) {
+    dismissSearchField()
     navigateRedditDestination(.reddit(.subFeed(subreddit)), model: splitNavigation, origin: .content)
   }
 
   private func selectUser(_ user: User) {
+    dismissSearchField()
     navigateRedditDestination(.reddit(.user(user)), model: splitNavigation, origin: .content)
+  }
+
+  private func dismissSearchField() {
+    isSearchPresented = false
+  }
+
+  private func resetSearchHome() {
+    dismissSearchField()
+    searchScope = .all
+    if !searchQuery.text.isEmpty {
+      suppressEmptyQueryReload = true
+      searchQuery.text = ""
+    }
+    model.loadNullState(force: true)
+    tabInteractions.setIsAtTop(.search, true)
   }
 
 }

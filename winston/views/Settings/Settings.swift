@@ -17,6 +17,7 @@ struct Settings: View {
   @State private var presentingWhatsNew: Bool = false
   @State private var presentingAnnouncement: Bool = false
   @State private var presentingGQLDebug: Bool = false
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
   var body: some View {
     @Bindable var nav = nav
@@ -59,9 +60,13 @@ struct Settings: View {
       RedditGQLDebugView()
     }
     .onAppear {
+      tabInteractions.setIsAtTop(.settings, true)
       consumeContextualDestinationIfNeeded()
       consumeRouterPathIfNeeded(router.fullPath)
       AppDiagnostics.shared.breadcrumb("Opened Settings root")
+    }
+    .onChange(of: tabInteractions.requests[.settings]) { _, request in
+      handleTabInteractionRequest(request)
     }
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
@@ -74,6 +79,18 @@ struct Settings: View {
     }
     .onChange(of: nav.forwardSnapshot) { old, new in
       nav.recordForwardTransition(from: old, to: new)
+    }
+  }
+
+  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
+    guard let request else { return }
+    switch request.kind {
+    case .scrollToTop:
+      break
+    case .goBack:
+      _ = nav.goBackOneStep()
+    case .resetToRoot:
+      nav.reset()
     }
   }
 
@@ -113,15 +130,23 @@ struct Settings: View {
 }
 
 private struct SettingsSidebarList: View {
+  private static let topID = "settings-top"
+
   let selectedSetting: Router.NavDest.Setting?
   let showWhatsNew: () -> Void
   let showAnnouncements: () -> Void
   let showGraphQLDebug: () -> Void
   let donateMonthly: () -> Void
   let openTipJar: () -> Void
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
   var body: some View {
-    List {
+    TabScrollRoot(
+      topID: Self.topID,
+      tab: .settings,
+      tabInteractions: tabInteractions,
+      request: tabInteractions.requests[.settings]
+    ) {
       SettingsMainSection(selectedSetting: selectedSetting)
       SettingsInfoSection(
         selectedSetting: selectedSetting,

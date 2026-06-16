@@ -8,6 +8,8 @@
 import SwiftUI
 import NukeUI
 import Defaults
+import PhotosUI
+import UIKit
 
 struct UserViewContextPreview: View {
   var author: String
@@ -68,7 +70,11 @@ private struct ProfileFeedState {
 }
 
 struct UserView: View {
+  private static let topID = "user-view-top"
+
   @StateObject var user: User
+  let tabInteractionTab: Nav.TabIdentifier?
+  let tabInteractions: TabInteractionCenter?
   @State private var extras: UserProfileExtras?
   @State private var selectedTab: ProfileTab = .overview
   @State private var feeds: [ProfileTab: ProfileFeedState] = [:]
@@ -78,11 +84,16 @@ struct UserView: View {
   @State private var showBlockConfirm = false
   @State private var showEditProfile = false
   @State private var actionError: String?
+  // Just-uploaded images, shown immediately while Reddit processes them server-side.
+  @State private var localAvatar: UIImage?
+  @State private var localBanner: UIImage?
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
-  init(user: User) {
+  init(user: User, tabInteractionTab: Nav.TabIdentifier? = nil, tabInteractions: TabInteractionCenter? = nil) {
     _user = StateObject(wrappedValue: user)
+    self.tabInteractionTab = tabInteractionTab
+    self.tabInteractions = tabInteractions
   }
 
 #if DEBUG
@@ -90,6 +101,8 @@ struct UserView: View {
   /// without a live Reddit session.
   fileprivate init(previewUser: User, extras: UserProfileExtras?, tab: ProfileTab) {
     _user = StateObject(wrappedValue: previewUser)
+    tabInteractionTab = nil
+    tabInteractions = nil
     _extras = State(initialValue: extras)
     _selectedTab = State(initialValue: tab)
   }
@@ -270,7 +283,12 @@ struct UserView: View {
   }
 
   var body: some View {
-    List {
+    TabScrollRoot(
+      topID: Self.topID,
+      tab: tabInteractionTab,
+      tabInteractions: tabInteractions,
+      request: tabInteractionTab.flatMap { tabInteractions?.requests[$0] }
+    ) {
       if let data = user.data {
         Section {
           UserHeaderNative(
@@ -283,11 +301,13 @@ struct UserView: View {
             onToggleFollow: toggleFollow,
             onToggleBlock: requestToggleBlock,
             onEditProfile: { showEditProfile = true },
+            localAvatar: localAvatar,
+            localBanner: localBanner,
             contentWidth: $contentWidth
           )
-            .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 8, trailing: 14))
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
+          .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 8, trailing: 14))
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
 
           UserStatsRow(data: data, extras: extras)
             .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 12, trailing: 14))
@@ -341,17 +361,22 @@ struct UserView: View {
     ) {
       Button("OK", role: .cancel) {}
     } message: {
-      Text(actionError ?? "")
+      if let actionError { Text(actionError) }
     }
     .sheet(isPresented: $showEditProfile) {
       if let data = user.data, let subredditID = data.subreddit?.name, !subredditID.isEmpty {
         EditProfileSheet(
           subredditID: subredditID,
+          username: data.name,
           initialTitle: data.subreddit?.title ?? "",
           initialBio: data.subreddit?.public_description ?? "",
           initialNSFW: data.subreddit?.over_18 ?? false,
-          initialLinks: extras?.socialLinks ?? []
-        ) {
+          initialLinks: extras?.socialLinks ?? [],
+          initialAvatarURL: data.snoovatar_img ?? data.subreddit?.icon_img ?? data.icon_img,
+          initialBannerURL: data.subreddit?.banner_img
+        ) { newAvatar, newBanner in
+          if let newAvatar { localAvatar = newAvatar }
+          if let newBanner { localBanner = newBanner }
           Task { await refreshProfile() }
         }
       }
@@ -417,11 +442,13 @@ private struct UserHeaderNative: View {
   var onToggleFollow: () -> Void = {}
   var onToggleBlock: () -> Void = {}
   var onEditProfile: () -> Void = {}
+  var localAvatar: UIImage?
+  var localBanner: UIImage?
   @Binding var contentWidth: CGFloat
   @Environment(\.auroraTheme) private var theme
 
   private var hasBanner: Bool {
-    data.subreddit?.banner_img?.isEmpty == false
+    localBanner != nil || data.subreddit?.banner_img?.isEmpty == false
   }
 
   private var isAdmin: Bool { extras?.isEmployee == true || data.is_employee == true }
@@ -439,7 +466,13 @@ private struct UserHeaderNative: View {
   var body: some View {
     VStack(spacing: 14) {
       ZStack {
-        if let bannerImgFull = data.subreddit?.banner_img, !bannerImgFull.isEmpty, let bannerImg = URL(string: String(bannerImgFull.split(separator: "?")[0])) {
+        if let localBanner {
+          Image(uiImage: localBanner)
+            .resizable()
+            .scaledToFill()
+            .frame(width: contentWidth, height: 160)
+            .clipShape(RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+        } else if let bannerImgFull = data.subreddit?.banner_img, !bannerImgFull.isEmpty, let bannerImg = URL(string: String(bannerImgFull.split(separator: "?")[0])) {
           URLImage(url: bannerImg)
             .scaledToFill()
             .frame(width: contentWidth, height: 160)
@@ -457,7 +490,15 @@ private struct UserHeaderNative: View {
             .frame(height: 92)
         }
 
-        if let iconFull = data.subreddit?.icon_img ?? data.snoovatar_img ?? data.icon_img, !iconFull.isEmpty, let icon = URL(string: String(iconFull.split(separator: "?")[0])) {
+        if let localAvatar {
+          Image(uiImage: localAvatar)
+            .resizable()
+            .scaledToFill()
+            .frame(width: 124, height: 124)
+            .clipShape(Circle())
+            .overlay(Circle().stroke(theme.hairline, lineWidth: 1))
+            .offset(y: hasBanner ? 80 : 0)
+        } else if let iconFull = data.subreddit?.icon_img ?? data.snoovatar_img ?? data.icon_img, !iconFull.isEmpty, let icon = URL(string: String(iconFull.split(separator: "?")[0])) {
           URLImage(url: icon)
             .scaledToFill()
             .frame(width: 124, height: 124)
@@ -995,13 +1036,17 @@ private struct EditableSocialLink: Identifiable {
 
 private struct EditProfileSheet: View {
   let subredditID: String
+  let username: String
   let initialTitle: String
   let initialBio: String
   let initialNSFW: Bool
   let initialLinks: [ProfileSocialLink]
-  var onSaved: () -> Void
+  let initialAvatarURL: String?
+  let initialBannerURL: String?
+  var onSaved: (_ avatar: UIImage?, _ banner: UIImage?) -> Void
 
   @Environment(\.dismiss) private var dismiss
+  @Environment(\.auroraTheme) private var theme
   @State private var title: String
   @State private var bio: String
   @State private var nsfw: Bool
@@ -1009,12 +1054,22 @@ private struct EditProfileSheet: View {
   @State private var saving = false
   @State private var errorText: String?
 
-  init(subredditID: String, initialTitle: String, initialBio: String, initialNSFW: Bool, initialLinks: [ProfileSocialLink], onSaved: @escaping () -> Void) {
+  @State private var avatarItem: PhotosPickerItem?
+  @State private var bannerItem: PhotosPickerItem?
+  @State private var avatarData: Data?
+  @State private var bannerData: Data?
+  @State private var avatarPreview: UIImage?
+  @State private var bannerPreview: UIImage?
+
+  init(subredditID: String, username: String, initialTitle: String, initialBio: String, initialNSFW: Bool, initialLinks: [ProfileSocialLink], initialAvatarURL: String?, initialBannerURL: String?, onSaved: @escaping (_ avatar: UIImage?, _ banner: UIImage?) -> Void) {
     self.subredditID = subredditID
+    self.username = username
     self.initialTitle = initialTitle
     self.initialBio = initialBio
     self.initialNSFW = initialNSFW
     self.initialLinks = initialLinks
+    self.initialAvatarURL = initialAvatarURL
+    self.initialBannerURL = initialBannerURL
     self.onSaved = onSaved
     _title = State(initialValue: initialTitle)
     _bio = State(initialValue: initialBio)
@@ -1025,6 +1080,22 @@ private struct EditProfileSheet: View {
   var body: some View {
     NavigationStack {
       Form {
+        Section("Avatar") {
+          HStack(spacing: 14) {
+            avatarThumb
+            PhotosPicker(selection: $avatarItem, matching: .images) {
+              Text(avatarPreview == nil ? "Change avatar" : "New avatar selected")
+            }
+          }
+        }
+
+        Section("Banner") {
+          bannerThumb
+          PhotosPicker(selection: $bannerItem, matching: .images) {
+            Text(bannerPreview == nil ? "Change banner" : "New banner selected")
+          }
+        }
+
         Section("Display name") {
           TextField("Display name", text: $title)
         }
@@ -1076,6 +1147,62 @@ private struct EditProfileSheet: View {
         }
       }
       .interactiveDismissDisabled(saving)
+      .onChange(of: avatarItem) { loadPickedImage(avatarItem, maxDimension: 1024, isBanner: false) }
+      .onChange(of: bannerItem) { loadPickedImage(bannerItem, maxDimension: 2048, isBanner: true) }
+    }
+  }
+
+  @ViewBuilder private var avatarThumb: some View {
+    Group {
+      if let avatarPreview {
+        Image(uiImage: avatarPreview).resizable().scaledToFill()
+      } else if let url = loadableURL(initialAvatarURL) {
+        URLImage(url: url).scaledToFill()
+      } else {
+        AuroraAvatar(name: username, size: 72)
+      }
+    }
+    .frame(width: 72, height: 72)
+    .clipShape(Circle())
+    .overlay(Circle().stroke(theme.hairline, lineWidth: 1))
+  }
+
+  @ViewBuilder private var bannerThumb: some View {
+    Group {
+      if let bannerPreview {
+        Image(uiImage: bannerPreview).resizable().scaledToFill()
+      } else if let url = loadableURL(initialBannerURL) {
+        URLImage(url: url).scaledToFill()
+      } else {
+        Rectangle().fill(.quaternary)
+      }
+    }
+    .frame(height: 90)
+    .frame(maxWidth: .infinity)
+    .clipped()
+    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+  }
+
+  private func loadableURL(_ raw: String?) -> URL? {
+    guard let raw, !raw.isEmpty else { return nil }
+    let clean = String(raw.split(separator: "?").first ?? Substring(raw))
+    return URL(string: clean)
+  }
+
+  private func loadPickedImage(_ item: PhotosPickerItem?, maxDimension: CGFloat, isBanner: Bool) {
+    guard let item else { return }
+    Task {
+      guard let data = try? await item.loadTransferable(type: Data.self),
+            let processed = processPickedImage(data, maxDimension: maxDimension) else { return }
+      await MainActor.run {
+        if isBanner {
+          bannerData = processed.jpeg
+          bannerPreview = processed.image
+        } else {
+          avatarData = processed.jpeg
+          avatarPreview = processed.image
+        }
+      }
     }
   }
 
@@ -1093,30 +1220,81 @@ private struct EditProfileSheet: View {
     let linksChanged = trimmed.map { "\($0.title)|\($0.url)" } != initialLinks.map { "\($0.title ?? "")|\($0.url ?? "")" }
 
     Task {
-      let okSettings = await RedditWire.shared.updateProfileSettings(
-        subredditID: subredditID,
-        title: title.trimmingCharacters(in: .whitespacesAndNewlines),
-        publicDescription: bio,
-        isNsfw: nsfw
-      )
-      var okLinks = true
-      if linksChanged {
-        let profileLinks = trimmed.map {
-          ProfileSocialLink(id: $0.id.uuidString, title: $0.title.isEmpty ? nil : $0.title, url: $0.url, type: $0.type, handle: nil)
+      // Each step names what it was doing so a failure explains itself.
+      if let failure = await performSave(linksChanged: linksChanged, trimmedLinks: trimmed) {
+        await MainActor.run {
+          saving = false
+          errorText = failure
         }
-        okLinks = await RedditWire.shared.setSocialLinks(profileLinks)
+        return
       }
       await MainActor.run {
         saving = false
-        if okSettings && okLinks {
-          onSaved()
-          dismiss()
-        } else {
-          errorText = "Couldn't save changes. Please try again."
-        }
+        onSaved(avatarPreview, bannerPreview)
+        dismiss()
       }
     }
   }
+
+  /// Runs the save steps in order, returning the first step's labeled error
+  /// message, or nil if everything succeeded.
+  private func performSave(linksChanged: Bool, trimmedLinks: [EditableSocialLink]) async -> String? {
+    var iconURL: String?
+    var bannerURL: String?
+
+    if let avatarData {
+      do { iconURL = try await RedditWire.shared.uploadProfileAsset(avatarData, kind: .avatar) }
+      catch { return "Couldn't upload your avatar — \(RedditWire.userFacingMessage(for: error))" }
+    }
+    if let bannerData {
+      do { bannerURL = try await RedditWire.shared.uploadProfileAsset(bannerData, kind: .banner) }
+      catch { return "Couldn't upload your banner — \(RedditWire.userFacingMessage(for: error))" }
+    }
+
+    if iconURL != nil || bannerURL != nil {
+      if let error = await RedditWire.shared.applyProfileStyles(iconURL: iconURL, bannerURL: bannerURL) {
+        return "Couldn't apply your new photo — \(error)"
+      }
+    }
+
+    if let error = await RedditWire.shared.updateProfileSettings(
+      subredditID: subredditID,
+      title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+      publicDescription: bio,
+      isNsfw: nsfw
+    ) {
+      return "Couldn't save your name & bio — \(error)"
+    }
+
+    if linksChanged {
+      let profileLinks = trimmedLinks.map {
+        ProfileSocialLink(id: $0.id.uuidString, title: $0.title.isEmpty ? nil : $0.title, url: $0.url, type: $0.type, handle: nil)
+      }
+      if let error = await RedditWire.shared.setSocialLinks(profileLinks) {
+        return "Couldn't save your links — \(error)"
+      }
+    }
+
+    return nil
+  }
+}
+
+/// Decode picked image data, downscale to fit `maxDimension`, and re-encode as
+/// JPEG (Reddit's profile upload accepts JPEG/PNG; we normalize to JPEG).
+private func processPickedImage(_ data: Data, maxDimension: CGFloat) -> (jpeg: Data, image: UIImage)? {
+  guard let image = UIImage(data: data) else { return nil }
+  let maxSide = max(image.size.width, image.size.height)
+  let target: UIImage
+  if maxSide > maxDimension, maxSide > 0 {
+    let scale = maxDimension / maxSide
+    let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+    let renderer = UIGraphicsImageRenderer(size: newSize)
+    target = renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+  } else {
+    target = image
+  }
+  guard let jpeg = target.jpegData(compressionQuality: 0.85) else { return nil }
+  return (jpeg, target)
 }
 
 #if DEBUG

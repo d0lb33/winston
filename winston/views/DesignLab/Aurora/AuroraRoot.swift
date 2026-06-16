@@ -45,12 +45,16 @@ struct AuroraRoot: View {
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
   init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
+    let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
     self.router = router
     self.accountID = accountID
     self.themeOverride = themeOverride
     self.onClose = onClose
+    _posts = State(initialValue: PostsNav(launchFeed: launchFeed))
+    _model = State(initialValue: AuroraFeedModel(subreddit: launchFeed.initialSubreddit))
     if let cid = accountID {
       _subs = FetchRequest<CachedSub>(
         sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
@@ -128,6 +132,9 @@ struct AuroraRoot: View {
       consumeContextualDestinationIfNeeded()
       consumeRouterPathIfNeeded(router.fullPath)
     }
+    .onChange(of: tabInteractions.requests[.posts]) { _, request in
+      handleTabInteractionRequest(request)
+    }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
       // CachedSub @FetchRequest re-syncs); only react to a real new pick.
@@ -152,7 +159,7 @@ struct AuroraRoot: View {
       consumeRouterPathIfNeeded(path)
     }
     .onChange(of: router.rootResetToken) { _, _ in
-      posts.reset()
+      resetToLaunchFeed()
     }
     .onChange(of: posts.selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected (regular width).
@@ -186,10 +193,30 @@ struct AuroraRoot: View {
   // MARK: - Account / external navigation bridges
 
   private func resetAccountScopedState() {
-    posts.community = "popular"
-    posts.resetContentAndDetail()
+    resetToLaunchFeed()
     sort = .hot
-    model.prepareForAccountSwitch(defaultSubreddit: Subreddit(id: "popular"))
+  }
+
+  private func resetToLaunchFeed() {
+    let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
+    posts.reset(to: launchFeed)
+    model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
+    tabInteractions.setIsAtTop(.posts, true)
+  }
+
+  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
+    guard let request else { return }
+    switch request.kind {
+    case .scrollToTop:
+      break
+    case .goBack:
+      if posts.goBackOneStep(), posts.preferredColumn == .sidebar {
+        tabInteractions.setIsAtTop(.posts, true)
+      }
+    case .resetToRoot:
+      posts.resetToSidebarRoot()
+      tabInteractions.setIsAtTop(.posts, true)
+    }
   }
 
   /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
@@ -254,7 +281,10 @@ struct AuroraRoot: View {
         .diagnosticScreen("aurora.saved")
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                 selectedPostID: selectedPostID, sort: $sort) { destination in
+                 selectedPostID: selectedPostID, sort: $sort,
+                 tabInteractionTab: .posts,
+                 tabInteractions: tabInteractions,
+                 tabInteractionRequest: tabInteractions.requests[.posts]) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -493,7 +523,9 @@ struct AuroraDesignLabPreview: View {
   let theme: AuroraTheme
   let onClose: () -> Void
   @StateObject private var router = Router(id: "aurora-designlab")
+  @StateObject private var tabInteractions = TabInteractionCenter()
   var body: some View {
     AuroraRoot(router: router, themeOverride: theme, onClose: onClose)
+      .environmentObject(tabInteractions)
   }
 }

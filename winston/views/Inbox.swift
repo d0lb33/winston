@@ -17,6 +17,7 @@ struct Inbox: View {
   @State private var loading = false
   @State private var loadingMore = false
   @Default(.GeneralDefSettings) private var generalDefSettings
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   func fetch(_ loadMore: Bool = false, _ force: Bool = false) async {
     if loading || loadingMore { return }
@@ -97,9 +98,13 @@ struct Inbox: View {
       .injectInTabDestinations(viewControllerHolder: router.navController)
       .loader(loading)
       .onAppear {
+        tabInteractions.setIsAtTop(.inbox, true)
         Task(priority: .background) {
           await fetch()
         }
+      }
+      .onChange(of: tabInteractions.requests[.inbox]) { _, request in
+        handleTabInteractionRequest(request)
       }
       .refreshable {
         await fetch(false, true)
@@ -114,21 +119,41 @@ struct Inbox: View {
     }
 //    .swipeAnywhere()
   }
+
+  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
+    guard let request else { return }
+    switch request.kind {
+    case .scrollToTop:
+      break
+    case .goBack:
+      router.goBack()
+    case .resetToRoot:
+      router.requestRootReset()
+    }
+  }
 }
 
 private struct InboxList: View {
+  private static let topID = "inbox-top"
+
   let notifications: [InboxNotification]
   let loadingMore: Bool
   let reachedEnd: Bool
   let fetchMore: () async -> Void
   let markRead: (InboxNotification) async -> Void
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   var body: some View {
     Group {
       if notifications.isEmpty {
         InboxEmptyState()
       } else {
-        List {
+        TabScrollRoot(
+          topID: Self.topID,
+          tab: .inbox,
+          tabInteractions: tabInteractions,
+          request: tabInteractions.requests[.inbox]
+        ) {
           ForEach(notifications) { notification in
             AuroraInboxNotificationRow(notification: notification) {
               await markRead(notification)

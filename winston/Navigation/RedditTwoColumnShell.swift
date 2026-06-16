@@ -17,11 +17,23 @@ import SwiftUI
 
 struct RedditTwoColumnShell<Source: View>: View {
   @ObservedObject var router: Router
+  let tab: Nav.TabIdentifier?
   @State private var nav = ColumnNav()
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.horizontalSizeClass) private var hSize
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
   @ViewBuilder var source: (ColumnNav) -> Source
+
+  init(
+    router: Router,
+    tab: Nav.TabIdentifier? = nil,
+    @ViewBuilder source: @escaping (ColumnNav) -> Source
+  ) {
+    self.router = router
+    self.tab = tab
+    self.source = source
+  }
 
   var body: some View {
     @Bindable var nav = nav
@@ -56,8 +68,14 @@ struct RedditTwoColumnShell<Source: View>: View {
     .fontDesign(auroraTheme.fontDesign)
     .preferredColorScheme(auroraTheme.colorScheme)
     .onAppear {
+      if let tab {
+        tabInteractions.setIsAtTop(tab, true)
+      }
       consumeContextualDestinationIfNeeded()
       consumeRouterPathIfNeeded(router.fullPath)
+    }
+    .onChange(of: tab.flatMap { tabInteractions.requests[$0] }) { _, request in
+      handleTabInteractionRequest(request)
     }
     .onChange(of: router.contextualDestination) { _, _ in
       consumeContextualDestinationIfNeeded()
@@ -70,6 +88,18 @@ struct RedditTwoColumnShell<Source: View>: View {
     }
     .onChange(of: nav.forwardSnapshot) { old, new in
       nav.recordForwardTransition(from: old, to: new)
+    }
+  }
+
+  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
+    guard let request else { return }
+    switch request.kind {
+    case .scrollToTop:
+      break
+    case .goBack:
+      _ = nav.goBackOneStep()
+    case .resetToRoot:
+      nav.reset()
     }
   }
 

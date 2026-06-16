@@ -25,12 +25,17 @@ private struct AuroraReadCandidatePreferenceKey: PreferenceKey {
 }
 
 struct AuroraFeed: View {
+  private static let topID = "aurora-feed-top"
+
   let model: AuroraFeedModel
   let title: String
   /// The real community backing this feed (for the header + join). nil for Popular/Home/All.
   let community: Subreddit?
-  @Binding var selectedPostID: String?
-  @Binding var sort: SubListingSortOption
+  @Binding private var selectedPostID: String?
+  @Binding private var sort: SubListingSortOption
+  let tabInteractionTab: Nav.TabIdentifier?
+  let tabInteractions: TabInteractionCenter?
+  let tabInteractionRequest: TabInteractionRequest?
   var onCompactNavigate: ((Router.NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
@@ -40,68 +45,94 @@ struct AuroraFeed: View {
   @State private var latestReadCandidateMaxYByID: [String: CGFloat] = [:]
   @State private var previousReadCandidateMaxYByID: [String: CGFloat] = [:]
 
+  init(
+    model: AuroraFeedModel,
+    title: String,
+    community: Subreddit?,
+    selectedPostID: Binding<String?>,
+    sort: Binding<SubListingSortOption>,
+    tabInteractionTab: Nav.TabIdentifier? = nil,
+    tabInteractions: TabInteractionCenter? = nil,
+    tabInteractionRequest: TabInteractionRequest? = nil,
+    onCompactNavigate: ((Router.NavDest) -> Void)? = nil
+  ) {
+    self.model = model
+    self.title = title
+    self.community = community
+    self._selectedPostID = selectedPostID
+    self._sort = sort
+    self.tabInteractionTab = tabInteractionTab
+    self.tabInteractions = tabInteractions
+    self.tabInteractionRequest = tabInteractionRequest
+    self.onCompactNavigate = onCompactNavigate
+  }
+
   var body: some View {
     let visiblePosts = model.visiblePosts
 
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
 
-      List(selection: $selectedPostID) {
-        if let community {
-          AuroraCommunityHeader(sub: community)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
+      TabSelectableScrollRoot(
+        topID: Self.topID,
+        tab: tabInteractionTab,
+        tabInteractions: tabInteractions,
+        request: tabInteractionRequest,
+        selection: $selectedPostID,
+        onOffsetChange: { offsetY in
+          markReadCandidatesIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts)
         }
-        ForEach(visiblePosts) { post in
-          AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
-            .tag(post.id)
-            .background {
-              if postLinkDefSettings.readOnScroll {
-                GeometryReader { proxy in
-                  Color.clear.preference(
-                    key: AuroraReadCandidatePreferenceKey.self,
-                    value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
-                  )
+      ) {
+          if let community {
+            AuroraCommunityHeader(sub: community)
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+              .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
+          }
+          ForEach(visiblePosts) { post in
+            AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
+              .tag(post.id)
+              .background {
+                if postLinkDefSettings.readOnScroll {
+                  GeometryReader { proxy in
+                    Color.clear.preference(
+                      key: AuroraReadCandidatePreferenceKey.self,
+                      value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
+                    )
+                  }
                 }
               }
-            }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-              Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
-                .tint(.orange)
-              Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
-                .tint(.indigo)
-            }
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-              Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
-                Label(post.data?.saved == true ? "Unsave" : "Save", systemImage: "bookmark")
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+              .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+              .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                Button { Task { _ = await post.vote(.up) } } label: { Label("Upvote", systemImage: "arrow.up") }
+                  .tint(.orange)
+                Button { Task { _ = await post.vote(.down) } } label: { Label("Downvote", systemImage: "arrow.down") }
+                  .tint(.indigo)
               }
-              .tint(.green)
-            }
-            .onAppear {
-              if post.id == visiblePosts.last?.id {
-                Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
+              .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
+                  Label(post.data?.saved == true ? "Unsave" : "Save", systemImage: "bookmark")
+                }
+                .tint(.green)
               }
-            }
-        }
-        if model.loading && !visiblePosts.isEmpty {
-          HStack { Spacer(); ProgressView(); Spacer() }
-            .padding(.vertical, 16)
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
-        }
+              .onAppear {
+                if post.id == visiblePosts.last?.id {
+                  Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
+                }
+              }
+          }
+          if model.loading && !visiblePosts.isEmpty {
+            HStack { Spacer(); ProgressView(); Spacer() }
+              .padding(.vertical, 16)
+              .listRowBackground(Color.clear)
+              .listRowSeparator(.hidden)
+          }
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
       .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed")
-      .onScrollGeometryChange(for: CGFloat.self) { geometry in
-        geometry.contentOffset.y
-      } action: { _, newOffsetY in
-        markReadCandidatesIfNeeded(offsetY: newOffsetY, visiblePosts: visiblePosts)
-      }
       .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
         latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
       }

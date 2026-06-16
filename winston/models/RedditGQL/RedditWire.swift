@@ -16,6 +16,55 @@ import RedditPOC
 import Defaults
 import SwiftUI
 
+enum ProfileImageKind: Sendable {
+  case avatar, banner
+}
+
+enum RedditWireUploadError: LocalizedError {
+  case noLease
+  case badURL
+  case uploadFailed(status: Int)
+  case noAssetURL
+
+  var errorDescription: String? {
+    switch self {
+    case .noLease: return "Couldn't get an upload lease from Reddit."
+    case .badURL: return "Reddit returned an invalid upload URL."
+    case .uploadFailed(let status): return "Image upload failed (HTTP \(status))."
+    case .noAssetURL: return "Upload finished but no asset URL was returned."
+    }
+  }
+}
+
+private final class SimpleXMLValueCollector: NSObject, XMLParserDelegate {
+  private let wantedTags: Set<String>
+  private var currentTag: String?
+  private var currentValue = ""
+  private(set) var values: [String: String] = [:]
+
+  init(tags: Set<String>) {
+    self.wantedTags = tags
+  }
+
+  func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
+    guard wantedTags.contains(elementName) else { return }
+    currentTag = elementName
+    currentValue = ""
+  }
+
+  func parser(_ parser: XMLParser, foundCharacters string: String) {
+    guard currentTag != nil else { return }
+    currentValue += string
+  }
+
+  func parser(_ parser: XMLParser, didEndElement elementName: String, namespaceURI: String?, qualifiedName qName: String?) {
+    guard currentTag == elementName else { return }
+    values[elementName] = currentValue
+    currentTag = nil
+    currentValue = ""
+  }
+}
+
 struct RedditSearchResults {
   var posts: [Post]
   var subreddits: [Subreddit]
@@ -1255,7 +1304,7 @@ final class RedditWire: ObservableObject {
       let message = describe(error)
       status = "follow failed: \(message)"
       AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "Follow mutation failed", metadata: ["account": accountFullname, "following": "\(following)", "error": message])
-      return Self.friendlyMutationMessage(message)
+      return Self.userFacingMessage(for: error)
     }
   }
 
@@ -1270,27 +1319,51 @@ final class RedditWire: ObservableObject {
       let message = describe(error)
       status = "block failed: \(message)"
       AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "Block mutation failed", metadata: ["redditor": redditorFullname, "blocked": "\(blocked)", "error": message])
-      return Self.friendlyMutationMessage(message)
+      return Self.userFacingMessage(for: error)
     }
   }
 
-  /// Map a raw POC error string to a short, user-facing message. The raw error
-  /// is still recorded in diagnostics for debugging.
-  static func friendlyMutationMessage(_ raw: String) -> String {
-    if raw.contains("RATE_LIMITED") || raw.range(of: "too many requests", options: .caseInsensitive) != nil {
-      return "Reddit is rate-limiting this action. Please wait a minute and try again."
+  /// Map an error to a short, user-facing message that still explains what
+  /// happened — surfacing Reddit's own error text where available. The raw error
+  /// is recorded separately in diagnostics for debugging.
+  static func userFacingMessage(for error: Error) -> String {
+    if let uploadError = error as? RedditWireUploadError {
+      return uploadError.errorDescription ?? "Image upload failed."
     }
-    if raw.range(of: "unauthorized", options: .caseInsensitive) != nil {
-      return "You don't have permission to do that."
+    guard let pocError = error as? RedditPOCError else {
+      return error.localizedDescription
     }
-    return "Something went wrong. Please try again."
+    switch pocError {
+    case .graphqlErrors(_, _, let errors):
+      let codes = errors.compactMap { $0.extensions?.objectValue?["code"]?.stringValue }
+      if codes.contains("RATE_LIMITED") || errors.contains(where: { $0.message.range(of: "too many requests", options: .caseInsensitive) != nil }) {
+        return "Reddit is rate-limiting this action. Please wait a minute and try again."
+      }
+      let messages = errors.map(\.message).filter { !$0.isEmpty }
+      return messages.isEmpty ? "Reddit rejected the request." : "Reddit says: \(messages.joined(separator: " "))"
+    case .unauthorized, .unauthorizedAfterRefresh:
+      return "You're not authorized to do that — try signing in to Reddit again."
+    case .persistedQueryNotFound:
+      return "This action isn't available right now (Reddit changed its API)."
+    case .cloudflareChallenge(let operation, _):
+      return "Reddit wants a browser challenge before \(operation). Open Reddit login again and complete it."
+    case .httpError(_, let statusCode, _):
+      return "Reddit returned an error (HTTP \(statusCode)). Please try again."
+    case .nonHTTPResponse:
+      return "No response from Reddit. Check your connection and try again."
+    case .sideEffectRequiresConfirmation:
+      return "This action needs confirmation."
+    default:
+      return "\(pocError)"
+    }
   }
 
   // MARK: - Edit profile
 
   /// Update the signed-in user's profile text settings. `subredditID` is the
   /// profile subreddit's `t5_…` id (the builder normalizes the prefix).
-  func updateProfileSettings(subredditID: String, title: String?, publicDescription: String?, isNsfw: Bool?) async -> Bool {
+  /// Returns nil on success, or a user-facing error message on failure.
+  func updateProfileSettings(subredditID: String, title: String?, publicDescription: String?, isNsfw: Bool?) async -> String? {
     do {
       _ = try await client.updateSubredditSettingsResponse(
         subredditID: subredditID,
@@ -1300,16 +1373,19 @@ final class RedditWire: ObservableObject {
         allowSideEffects: true
       )
       status = "profile settings saved"
-      return true
+      return nil
     } catch {
-      status = "profile settings failed: \(describe(error))"
-      return false
+      let message = describe(error)
+      status = "profile settings failed: \(message)"
+      AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "UpdateSubredditSettings failed", metadata: ["error": message])
+      return Self.userFacingMessage(for: error)
     }
   }
 
   /// Replace the signed-in user's profile social links with `links` (links
   /// without a URL are dropped; missing labels fall back to the URL).
-  func setSocialLinks(_ links: [ProfileSocialLink]) async -> Bool {
+  /// Returns nil on success, or a user-facing error message on failure.
+  func setSocialLinks(_ links: [ProfileSocialLink]) async -> String? {
     let redditLinks = links.compactMap { link -> RedditSocialLink? in
       guard let url = link.url?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return nil }
       let label = (link.title?.isEmpty == false) ? link.title! : url
@@ -1318,11 +1394,132 @@ final class RedditWire: ObservableObject {
     do {
       _ = try await client.setSocialLinksResponse(redditLinks, allowSideEffects: true)
       status = "social links saved (\(redditLinks.count))"
-      return true
+      return nil
     } catch {
-      status = "social links failed: \(describe(error))"
-      return false
+      let message = describe(error)
+      status = "social links failed: \(message)"
+      AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "SetSocialLinks failed", metadata: ["error": message])
+      return Self.userFacingMessage(for: error)
     }
+  }
+
+  // MARK: - Profile avatar / banner upload
+
+  /// Upload a JPEG avatar or banner: request an upload lease, push the bytes to
+  /// the lease's storage endpoint (S3 presigned POST), and return the resulting
+  /// asset URL (to hand to `applyProfileStyles`). Throws on any failure.
+  func uploadProfileAsset(_ jpegData: Data, kind: ProfileImageKind) async throws -> String {
+    let filename = (kind == .avatar ? "avatar" : "banner") + ".jpg"
+    let imageType: ProfileImageType = kind == .avatar ? .icon : .banner
+
+    let leaseResp = try await client.profileStructuredStylesUploadLeaseResponse(
+      filepath: filename,
+      imageType: imageType,
+      mimeType: .jpeg,
+      allowSideEffects: true
+    )
+    guard
+      let lease = leaseResp.data?.rawData.objectValue?["createProfileStructuredStylesUploadLease"]?.objectValue?["uploadLease"]?.objectValue,
+      let leaseURLString = lease["uploadLeaseUrl"]?.stringValue
+    else {
+      throw RedditWireUploadError.noLease
+    }
+
+    let normalized = leaseURLString.hasPrefix("//") ? "https:\(leaseURLString)" : leaseURLString
+    guard let actionURL = URL(string: normalized) else { throw RedditWireUploadError.badURL }
+
+    let fields = (lease["uploadLeaseHeaders"]?.arrayValue ?? []).compactMap { entry -> (String, String)? in
+      guard let name = entry.objectValue?["header"]?.stringValue,
+            let value = entry.objectValue?["value"]?.stringValue else { return nil }
+      return (name, value)
+    }
+
+    let assetURL = try await Self.uploadMultipart(actionURL: actionURL, fields: fields, fileData: jpegData, filename: filename, contentType: "image/jpeg")
+    AppDiagnostics.asyncRecord(.info, category: "reddit.profile", message: "Profile asset uploaded", metadata: ["kind": "\(kind)", "assetURL": assetURL])
+    return assetURL
+  }
+
+  /// Apply uploaded avatar/banner URLs to the profile. Returns nil on success or
+  /// a user-facing error message.
+  func applyProfileStyles(iconURL: String?, bannerURL: String?) async -> String? {
+    do {
+      _ = try await client.updateProfileStylesResponse(iconURL: iconURL, profileBannerURL: bannerURL, allowSideEffects: true)
+      status = "profile styles updated"
+      return nil
+    } catch {
+      let message = describe(error)
+      status = "profile styles failed: \(message)"
+      AppDiagnostics.asyncRecord(.error, category: "reddit.profile", message: "UpdateProfileStyles failed", metadata: ["error": message])
+      return Self.userFacingMessage(for: error)
+    }
+  }
+
+  /// Multipart/form-data POST to the lease endpoint. Lease fields come first,
+  /// the file part MUST be last (S3 requirement). Returns the asset URL parsed
+  /// from the XML response (`<Location>`, falling back to `<Key>`).
+  private static func uploadMultipart(actionURL: URL, fields: [(String, String)], fileData: Data, filename: String, contentType: String) async throws -> String {
+    let boundary = "WinstonBoundary-\(UUID().uuidString)"
+    var request = URLRequest(url: actionURL)
+    request.httpMethod = "POST"
+    request.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+    let lineBreak = "\r\n"
+    var body = Data()
+    func appendString(_ string: String) {
+      if let data = string.data(using: .utf8) { body.append(data) }
+    }
+    for (name, value) in fields {
+      appendString("--\(boundary)\(lineBreak)")
+      appendString("Content-Disposition: form-data; name=\"\(name)\"\(lineBreak)\(lineBreak)")
+      appendString("\(value)\(lineBreak)")
+    }
+    appendString("--\(boundary)\(lineBreak)")
+    appendString("Content-Disposition: form-data; name=\"file\"; filename=\"\(filename)\"\(lineBreak)")
+    appendString("Content-Type: \(contentType)\(lineBreak)\(lineBreak)")
+    body.append(fileData)
+    appendString(lineBreak)
+    appendString("--\(boundary)--\(lineBreak)")
+    request.httpBody = body
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+      throw RedditWireUploadError.uploadFailed(status: (response as? HTTPURLResponse)?.statusCode ?? -1)
+    }
+    let uploadValues = Self.uploadXMLValues(from: data)
+    let rawKey = uploadValues["Key"]
+    let rawLocation = uploadValues["Location"]
+
+    // Prefer the decoded "<action>/<key>" form. S3's <Location> percent-encodes
+    // the key's slashes (%2F), which Reddit's styles endpoint rejects with
+    // "Invalid value for profileIcon".
+    let assetURL: String?
+    if let key = rawKey, !key.isEmpty {
+      var base = actionURL.absoluteString
+      if base.hasSuffix("/") { base.removeLast() }
+      assetURL = base + "/" + key
+    } else if let location = rawLocation, !location.isEmpty {
+      assetURL = location.removingPercentEncoding ?? location
+    } else {
+      assetURL = nil
+    }
+
+    AppDiagnostics.asyncRecord(.info, category: "reddit.profile", message: "Profile upload S3 response", metadata: [
+      "status": "\(http.statusCode)",
+      "location": rawLocation ?? "nil",
+      "key": rawKey ?? "nil",
+      "assetURL": assetURL ?? "nil"
+    ])
+
+    guard let assetURL else { throw RedditWireUploadError.noAssetURL }
+    return assetURL
+  }
+
+  private static func uploadXMLValues(from data: Data) -> [String: String] {
+    let collector = SimpleXMLValueCollector(tags: ["Key", "Location"])
+    let parser = XMLParser(data: data)
+    parser.delegate = collector
+    _ = parser.parse()
+    return collector.values
   }
 
   /// Pull a post fullname (`t3_…`) out of a connection node. Standard post

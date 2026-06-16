@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import UIKit
+import SwiftUI
 
 class Nav: ObservableObject, Identifiable, Equatable {
   static let shared = Nav()
@@ -60,7 +61,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   var id: UUID
   @Published var activeTab: TabIdentifier {
     willSet {
-      if activeTab == newValue { self.activeRouter.requestRootReset() }
+      guard activeTab != newValue else { return }
       AppDiagnostics.asyncBreadcrumb("Tab changed", metadata: ["from": activeTab.rawValue, "to": newValue.rawValue])
     }
   }
@@ -147,6 +148,198 @@ class Nav: ObservableObject, Identifiable, Equatable {
   static func openURL(_ urlStr: String) {
     if let url = URL(string: urlStr)  {
       openURL(url)
+    }
+  }
+}
+
+enum TabInteractionRequestKind: Equatable {
+  case scrollToTop
+  case goBack
+  case resetToRoot
+}
+
+struct TabInteractionRequest: Equatable {
+  let id = UUID()
+  let kind: TabInteractionRequestKind
+}
+
+@MainActor
+final class TabInteractionCenter: ObservableObject {
+  @Published private(set) var requests: [Nav.TabIdentifier: TabInteractionRequest] = [:]
+
+  private var isAtTopByTab: [Nav.TabIdentifier: Bool] = [:]
+  private var lastTap: (tab: Nav.TabIdentifier, date: Date)?
+  private let doubleTapInterval: TimeInterval = 0.3
+
+  func selectedTabChanged(to tab: Nav.TabIdentifier) {
+    lastTap = nil
+    isAtTopByTab[tab] = isAtTopByTab[tab] ?? true
+  }
+
+  func setIsAtTop(_ tab: Nav.TabIdentifier, _ isAtTop: Bool) {
+    isAtTopByTab[tab] = isAtTop
+  }
+
+  func selectedTabTappedAgain(_ tab: Nav.TabIdentifier) {
+    let now = Date()
+    if let lastTap,
+       lastTap.tab == tab,
+       now.timeIntervalSince(lastTap.date) <= doubleTapInterval {
+      self.lastTap = nil
+      publish(.resetToRoot, for: tab)
+      return
+    }
+
+    lastTap = (tab, now)
+    publish((isAtTopByTab[tab] == false) ? .scrollToTop : .goBack, for: tab)
+  }
+
+  private func publish(_ kind: TabInteractionRequestKind, for tab: Nav.TabIdentifier) {
+    requests[tab] = TabInteractionRequest(kind: kind)
+    AppDiagnostics.asyncBreadcrumb(
+      "Tab interaction request",
+      metadata: ["tab": tab.rawValue, "kind": "\(kind)"]
+    )
+  }
+}
+
+struct TabScrollRoot<Content: View>: View {
+  private let topID: String
+  private let tab: Nav.TabIdentifier?
+  private let tabInteractions: TabInteractionCenter?
+  private let request: TabInteractionRequest?
+  private let onResetToRoot: (() -> Void)?
+  private let onOffsetChange: (CGFloat) -> Void
+  private let content: () -> Content
+
+  init(
+    topID: String,
+    tab: Nav.TabIdentifier?,
+    tabInteractions: TabInteractionCenter?,
+    request: TabInteractionRequest?,
+    onResetToRoot: (() -> Void)? = nil,
+    onOffsetChange: @escaping (CGFloat) -> Void = { _ in },
+    @ViewBuilder content: @escaping () -> Content
+  ) {
+    self.topID = topID
+    self.tab = tab
+    self.tabInteractions = tabInteractions
+    self.request = request
+    self.onResetToRoot = onResetToRoot
+    self.onOffsetChange = onOffsetChange
+    self.content = content
+  }
+
+  var body: some View {
+    ScrollViewReader { proxy in
+      List {
+        Color.clear
+          .frame(height: 0)
+          .id(topID)
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+          .listRowInsets(EdgeInsets())
+
+        content()
+      }
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentOffset.y
+      } action: { _, newOffsetY in
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, newOffsetY <= 4)
+        }
+        onOffsetChange(newOffsetY)
+      }
+      .onAppear {
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, true)
+        }
+      }
+      .onChange(of: request) { _, request in
+        guard let request else { return }
+        if request.kind == .resetToRoot {
+          onResetToRoot?()
+        }
+        guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
+        withAnimation(.snappy) {
+          proxy.scrollTo(topID, anchor: .top)
+        }
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, true)
+        }
+      }
+    }
+  }
+}
+
+struct TabSelectableScrollRoot<Selection: Hashable, Content: View>: View {
+  private let topID: String
+  private let tab: Nav.TabIdentifier?
+  private let tabInteractions: TabInteractionCenter?
+  private let request: TabInteractionRequest?
+  private let onResetToRoot: (() -> Void)?
+  private let onOffsetChange: (CGFloat) -> Void
+  @Binding private var selection: Selection?
+  private let content: () -> Content
+
+  init(
+    topID: String,
+    tab: Nav.TabIdentifier?,
+    tabInteractions: TabInteractionCenter?,
+    request: TabInteractionRequest?,
+    selection: Binding<Selection?>,
+    onResetToRoot: (() -> Void)? = nil,
+    onOffsetChange: @escaping (CGFloat) -> Void = { _ in },
+    @ViewBuilder content: @escaping () -> Content
+  ) {
+    self.topID = topID
+    self.tab = tab
+    self.tabInteractions = tabInteractions
+    self.request = request
+    self._selection = selection
+    self.onResetToRoot = onResetToRoot
+    self.onOffsetChange = onOffsetChange
+    self.content = content
+  }
+
+  var body: some View {
+    ScrollViewReader { proxy in
+      List(selection: $selection) {
+        Color.clear
+          .frame(height: 0)
+          .id(topID)
+          .listRowSeparator(.hidden)
+          .listRowBackground(Color.clear)
+          .listRowInsets(EdgeInsets())
+
+        content()
+      }
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentOffset.y
+      } action: { _, newOffsetY in
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, newOffsetY <= 4)
+        }
+        onOffsetChange(newOffsetY)
+      }
+      .onAppear {
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, true)
+        }
+      }
+      .onChange(of: request) { _, request in
+        guard let request else { return }
+        if request.kind == .resetToRoot {
+          onResetToRoot?()
+        }
+        guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
+        withAnimation(.snappy) {
+          proxy.scrollTo(topID, anchor: .top)
+        }
+        if let tab, let tabInteractions {
+          tabInteractions.setIsAtTop(tab, true)
+        }
+      }
     }
   }
 }

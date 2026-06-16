@@ -19,6 +19,45 @@
 
 import SwiftUI
 
+enum DefaultLaunchFeed: Equatable {
+  case home
+  case popular
+  case saved
+  case subscriptionList
+
+  init(settingsValue: String) {
+    switch settingsValue {
+    case "home":
+      self = .home
+    case "saved":
+      self = .saved
+    case "subList":
+      self = .subscriptionList
+    case "popular", "all":
+      self = .popular
+    default:
+      self = .popular
+    }
+  }
+
+  var selection: String? {
+    switch self {
+    case .home: return "home"
+    case .popular: return "popular"
+    case .saved: return "saved"
+    case .subscriptionList: return nil
+    }
+  }
+
+  var initialSubreddit: Subreddit {
+    Subreddit(id: selection ?? "popular")
+  }
+
+  var preferredColumn: NavigationSplitViewColumn {
+    selection == nil ? .sidebar : .content
+  }
+}
+
 /// Top-level container for the app's navigation state. One per app; mirrors the
 /// existing `Nav.shared` singleton while the two coexist during migration.
 @Observable
@@ -187,6 +226,11 @@ final class PostsNav: RedditNavigator, RedditSplitForwardNavigating {
   var forwardContentColumn: NavigationSplitViewColumn { .content }
   var hasForwardDetailRoot: Bool { selectedPostID != nil || detailPost != nil }
 
+  init(launchFeed: DefaultLaunchFeed = .popular) {
+    community = launchFeed.selection
+    preferredColumn = launchFeed.preferredColumn
+  }
+
   // MARK: RedditNavigator
 
   func navigate(_ destination: Router.NavDest, from origin: RedditNavigationOrigin) {
@@ -239,9 +283,49 @@ final class PostsNav: RedditNavigator, RedditSplitForwardNavigating {
     preferredColumn = .content
   }
 
-  func reset() {
-    community = "popular"
+  func goBackOneStep() -> Bool {
+    if !detailPath.isEmpty {
+      beginUserNavigation()
+      detailPath.removeLast()
+      preferredColumn = .detail
+      return true
+    }
+
+    if selectedPostID != nil || detailPost != nil || detailHighlightID != nil {
+      beginUserNavigation()
+      selectedPostID = nil
+      detailPost = nil
+      detailHighlightID = nil
+      preferredColumn = .content
+      return true
+    }
+
+    if !contentPath.isEmpty {
+      beginUserNavigation()
+      contentPath.removeLast()
+      preferredColumn = .content
+      return true
+    }
+
+    if community != nil || preferredColumn != .sidebar {
+      beginUserNavigation()
+      preferredColumn = .sidebar
+      return true
+    }
+
+    return false
+  }
+
+  func reset(to launchFeed: DefaultLaunchFeed = .popular) {
+    community = launchFeed.selection
     resetContentAndDetail()
+    preferredColumn = launchFeed.preferredColumn
+  }
+
+  func resetToSidebarRoot() {
+    community = nil
+    resetContentAndDetail()
+    preferredColumn = .sidebar
   }
 
   static func postDetail(from destination: Router.NavDest) -> (post: Post, highlightID: String?)? {
@@ -316,6 +400,38 @@ final class ColumnNav: RedditNavigator, RedditSplitForwardNavigating {
     preferredColumn = .sidebar
   }
 
+  func goBackOneStep() -> Bool {
+    if !detailPath.isEmpty {
+      beginUserNavigation()
+      detailPath.removeLast()
+      preferredColumn = .detail
+      return true
+    }
+
+    if detailPost != nil || detailHighlightID != nil {
+      beginUserNavigation()
+      detailPost = nil
+      detailHighlightID = nil
+      preferredColumn = .sidebar
+      return true
+    }
+
+    if !contentPath.isEmpty {
+      beginUserNavigation()
+      contentPath.removeLast()
+      preferredColumn = .sidebar
+      return true
+    }
+
+    if preferredColumn != .sidebar {
+      beginUserNavigation()
+      preferredColumn = .sidebar
+      return true
+    }
+
+    return false
+  }
+
   func reset() { resetContentAndDetail() }
 }
 
@@ -325,6 +441,12 @@ final class ColumnNav: RedditNavigator, RedditSplitForwardNavigating {
 @MainActor
 final class StackNav {
   var path: [Router.NavDest] = []
+
+  func goBackOneStep() -> Bool {
+    guard !path.isEmpty else { return false }
+    path.removeLast()
+    return true
+  }
 
   func reset() { path = [] }
 }
@@ -382,5 +504,24 @@ final class SettingsNav: RedditNavigator, RedditSplitForwardNavigating {
     contentPath = []
     detailPath = []
     preferredColumn = .sidebar
+  }
+
+  func goBackOneStep() -> Bool {
+    if !detailPath.isEmpty {
+      beginUserNavigation()
+      detailPath.removeLast()
+      preferredColumn = .detail
+      return true
+    }
+
+    if selection != .general || preferredColumn != .sidebar {
+      beginUserNavigation()
+      selection = .general
+      detailPath = []
+      preferredColumn = .sidebar
+      return true
+    }
+
+    return false
   }
 }
