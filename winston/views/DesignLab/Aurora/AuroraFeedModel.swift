@@ -16,7 +16,7 @@ import Defaults
 @MainActor
 final class AuroraFeedModel {
   private(set) var posts: [Post] = []
-  private(set) var hiddenPostIDs: Set<String> = []
+  private(set) var visiblePosts: [Post] = []
   private(set) var loading = false
   private(set) var reachedEnd = false
   private(set) var failed = false
@@ -30,6 +30,7 @@ final class AuroraFeedModel {
   @ObservationIgnored private var hidingReadPostsUntilUnread = false
   @ObservationIgnored private var retriedEmptyInitialPage = false
   @ObservationIgnored private var loadGeneration = 0
+  @ObservationIgnored private var hiddenPostIDs: Set<String> = []
 
   init(subreddit: Subreddit) {
     self.subreddit = subreddit
@@ -42,10 +43,6 @@ final class AuroraFeedModel {
     return subreddit.feedName.lowercased()
   }
 
-  var visiblePosts: [Post] {
-    posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
-  }
-
   /// Point the column at a different feed and clear state so the next appearance
   /// reloads from the top. Synchronous so the view sees the reset immediately.
   func prepare(for sub: Subreddit) {
@@ -54,6 +51,7 @@ final class AuroraFeedModel {
     subreddit = sub
     posts = []
     hiddenPostIDs.removeAll(keepingCapacity: true)
+    refreshVisiblePosts()
     loadedIDs.removeAll(keepingCapacity: true)
     after = nil
     inFlight = false
@@ -70,6 +68,7 @@ final class AuroraFeedModel {
     subreddit = defaultSubreddit
     posts = []
     hiddenPostIDs.removeAll(keepingCapacity: true)
+    refreshVisiblePosts()
     loadedIDs.removeAll(keepingCapacity: true)
     after = nil
     inFlight = false
@@ -108,6 +107,7 @@ final class AuroraFeedModel {
     guard !hiddenPostIDs.isEmpty || posts.contains(where: { $0.data?.winstonHidden == true }) else { return }
     posts.forEach { $0.data?.winstonHidden = false }
     hiddenPostIDs.removeAll(keepingCapacity: true)
+    refreshVisiblePosts()
   }
 
   @discardableResult
@@ -120,6 +120,7 @@ final class AuroraFeedModel {
         post.data?.winstonHidden = true
         hiddenPostIDs.insert(post.id)
       }
+      refreshVisiblePosts()
     }
 
     return readPosts.count
@@ -214,6 +215,7 @@ final class AuroraFeedModel {
         hiddenPostIDs.removeAll(keepingCapacity: true)
         posts = fresh
       }
+      refreshVisiblePosts()
     }
     fresh.forEach { loadedIDs.insert($0.id) }
     after = result.1
@@ -229,6 +231,10 @@ final class AuroraFeedModel {
 
   private func shouldRetryEmptyInitialPage(more: Bool, received: Int, nextAfter: String?) -> Bool {
     !more && posts.isEmpty && received == 0 && nextAfter == nil && !retriedEmptyInitialPage
+  }
+
+  private func refreshVisiblePosts() {
+    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
   }
 
   private func feedIdentity(for sub: Subreddit) -> String {

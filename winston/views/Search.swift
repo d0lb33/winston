@@ -178,7 +178,7 @@ struct SearchRecentSectionHeader: View {
 @MainActor
 private final class SearchViewModel: ObservableObject {
   @Published private(set) var posts: [Post] = []
-  @Published private(set) var hiddenPostIDs: Set<String> = []
+  @Published private(set) var visiblePosts: [Post] = []
   @Published private(set) var subreddits: [Subreddit] = []
   @Published private(set) var comments: [Comment] = []
   @Published private(set) var users: [User] = []
@@ -198,10 +198,7 @@ private final class SearchViewModel: ObservableObject {
   private var requestSerial = 0
   private var searchTask: Task<Void, Never>?
   private var hidingReadPostsUntilUnread = false
-
-  var visiblePosts: [Post] {
-    posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
-  }
+  private var hiddenPostIDs: Set<String> = []
 
   var canLoadMore: Bool {
     switch currentScope {
@@ -241,6 +238,7 @@ private final class SearchViewModel: ObservableObject {
       showEmpty = false
       posts = []
       hiddenPostIDs.removeAll(keepingCapacity: true)
+      refreshVisiblePosts()
       subreddits = []
       comments = []
       users = []
@@ -266,6 +264,7 @@ private final class SearchViewModel: ObservableObject {
 
       self.updateWithoutAnimation {
         self.posts = []
+        self.refreshVisiblePosts()
         self.subreddits = page.items.deduped { $0.id }
         self.comments = []
         self.users = []
@@ -299,6 +298,7 @@ private final class SearchViewModel: ObservableObject {
       showEmpty = false
       posts = []
       hiddenPostIDs.removeAll(keepingCapacity: true)
+      refreshVisiblePosts()
       subreddits = []
       comments = []
       users = []
@@ -463,6 +463,7 @@ private final class SearchViewModel: ObservableObject {
     updateWithoutAnimation {
       resetHiddenPosts()
       posts = []
+      refreshVisiblePosts()
       subreddits = []
       comments = []
       users = []
@@ -479,6 +480,7 @@ private final class SearchViewModel: ObservableObject {
     guard !hiddenPostIDs.isEmpty || posts.contains(where: { $0.data?.winstonHidden == true }) else { return }
     posts.forEach { $0.data?.winstonHidden = false }
     hiddenPostIDs.removeAll(keepingCapacity: true)
+    refreshVisiblePosts()
   }
 
   @discardableResult
@@ -491,6 +493,7 @@ private final class SearchViewModel: ObservableObject {
         post.data?.winstonHidden = true
         hiddenPostIDs.insert(post.id)
       }
+      refreshVisiblePosts()
     }
 
     return readPosts.count
@@ -572,6 +575,7 @@ private final class SearchViewModel: ObservableObject {
       let freshComments = uniqueComments(from: page.comments.items)
       let freshUsers = uniqueUsers(from: page.users.items)
       posts.append(contentsOf: freshPosts)
+      refreshVisiblePosts()
       subreddits.append(contentsOf: freshSubreddits)
       comments.append(contentsOf: freshComments)
       users.append(contentsOf: freshUsers)
@@ -579,6 +583,7 @@ private final class SearchViewModel: ObservableObject {
     } else {
       posts = page.posts.items.deduped { $0.id }
       hiddenPostIDs.removeAll(keepingCapacity: true)
+      refreshVisiblePosts()
       subreddits = page.subreddits.items.deduped { $0.id }
       comments = page.comments.items.deduped { $0.id }
       users = page.users.items.deduped { $0.id }
@@ -589,6 +594,10 @@ private final class SearchViewModel: ObservableObject {
   private func uniquePosts(from newPosts: [Post]) -> [Post] {
     var seen = Set(posts.map(\.id))
     return newPosts.filter { seen.insert($0.id).inserted }
+  }
+
+  private func refreshVisiblePosts() {
+    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) && !($0.data?.winstonHidden ?? false) }
   }
 
   private func uniqueSubreddits(from newSubreddits: [Subreddit]) -> [Subreddit] {
@@ -620,55 +629,72 @@ private struct SearchListContent: View {
   let searchAll: () -> Void
   let loadMore: () -> Void
 
-  @Environment(\.auroraTheme) private var auroraTheme
-
   var body: some View {
     if model.showingNullState {
-      nullStateContent
+      SearchNullStateContent(
+        recentSuggestions: model.recentSuggestions,
+        trendingSuggestions: model.trendingSuggestions,
+        loadingNullState: model.loadingNullState,
+        activateSuggestion: activateSuggestion,
+        removeRecentSearch: model.removeRecentSearch,
+        clearRecentSearches: model.clearRecentSearches
+      )
     } else if model.showingFullSearch {
-      fullSearchContent
+      SearchScopePickerSection(searchScope: $searchScope)
+      SearchPostsSection(
+        posts: model.visiblePosts,
+        isVisible: shows(.posts),
+        listWidth: listWidth,
+        select: selectPost
+      )
+      SearchCommunitiesSection(subreddits: model.subreddits, isVisible: shows(.subreddits), select: selectSubreddit)
+      SearchCommentsSection(comments: model.comments, isVisible: shows(.comments), select: selectComment)
+      SearchUsersSection(users: model.users, isVisible: shows(.users), select: selectUser)
+      SearchLoadMoreSection(canLoadMore: model.canLoadMore, loading: model.loadingMore, loadMore: loadMore)
     } else {
-      quickSearchContent
+      SearchAllButtonSection(searchAll: searchAll)
+      SearchCommunitiesSection(subreddits: model.subreddits, isVisible: shows(.subreddits), select: selectSubreddit)
     }
   }
 
-  @ViewBuilder private var nullStateContent: some View {
-    if !model.recentSuggestions.isEmpty {
-      Section(header: SearchRecentSectionHeader(clearAll: model.clearRecentSearches)) {
-        ForEach(model.recentSuggestions) { suggestion in
-          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: model.removeRecentSearch)
+  private func shows(_ scope: SearchScope) -> Bool {
+    searchScope == .all || searchScope == scope
+  }
+}
+
+private struct SearchNullStateContent: View {
+  let recentSuggestions: [SearchSuggestion]
+  let trendingSuggestions: [SearchSuggestion]
+  let loadingNullState: Bool
+  let activateSuggestion: (SearchSuggestion) -> Void
+  let removeRecentSearch: (String) -> Void
+  let clearRecentSearches: () -> Void
+
+  var body: some View {
+    if !recentSuggestions.isEmpty {
+      Section(header: SearchRecentSectionHeader(clearAll: clearRecentSearches)) {
+        ForEach(recentSuggestions) { suggestion in
+          SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: removeRecentSearch)
         }
       }
     }
 
     Section(header: AuroraResultSectionHeader(title: "Trending", count: nil)) {
-      if model.loadingNullState && model.trendingSuggestions.isEmpty {
+      if loadingNullState && trendingSuggestions.isEmpty {
         AuroraLoadMoreFooter(loading: true)
       } else {
-        ForEach(model.trendingSuggestions) { suggestion in
+        ForEach(trendingSuggestions) { suggestion in
           SearchSuggestionRow(suggestion: suggestion, select: activateSuggestion, clear: nil)
         }
       }
     }
   }
+}
 
-  @ViewBuilder private var fullSearchContent: some View {
-    scopePickerSection
-    postsSection
-    communitiesSection
-    commentsSection
-    usersSection
-    loadMoreSection
-  }
+private struct SearchScopePickerSection: View {
+  @Binding var searchScope: SearchScope
 
-  @ViewBuilder private var quickSearchContent: some View {
-    Section {
-      searchAllButton
-    }
-    communitiesSection
-  }
-
-  private var scopePickerSection: some View {
+  var body: some View {
     Section {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 8) {
@@ -684,85 +710,120 @@ private struct SearchListContent: View {
       }
     }
   }
+}
 
-  @ViewBuilder private var postsSection: some View {
-    if shows(.posts) && !model.visiblePosts.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Posts", count: model.visiblePosts.count)) {
-        ForEach(model.visiblePosts) { post in
-          AuroraPostResultRow(post: post, availableRowWidth: listWidth > 0 ? max(1, listWidth - 28) : nil, select: selectPost)
+private struct SearchPostsSection: View {
+  let posts: [Post]
+  let isVisible: Bool
+  let listWidth: CGFloat
+  let select: (Post) -> Void
+
+  var body: some View {
+    if isVisible && !posts.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Posts", count: posts.count)) {
+        ForEach(posts) { post in
+          AuroraPostResultRow(post: post, availableRowWidth: listWidth > 0 ? max(1, listWidth - 28) : nil, select: select)
         }
       }
     }
   }
+}
 
-  @ViewBuilder private var communitiesSection: some View {
-    if shows(.subreddits) && !model.subreddits.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Communities", count: model.subreddits.count)) {
-        ForEach(model.subreddits) { sub in
-          AuroraCommunityResultRow(subreddit: sub, select: selectSubreddit)
+private struct SearchCommunitiesSection: View {
+  let subreddits: [Subreddit]
+  let isVisible: Bool
+  let select: (Subreddit) -> Void
+
+  var body: some View {
+    if isVisible && !subreddits.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Communities", count: subreddits.count)) {
+        ForEach(subreddits) { sub in
+          AuroraCommunityResultRow(subreddit: sub, select: select)
         }
       }
     }
   }
+}
 
-  @ViewBuilder private var commentsSection: some View {
-    if shows(.comments) && !model.comments.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Comments", count: model.comments.count)) {
-        ForEach(model.comments) { comment in
-          AuroraCommentResultRow(comment: comment, select: selectComment)
+private struct SearchCommentsSection: View {
+  let comments: [Comment]
+  let isVisible: Bool
+  let select: (Comment) -> Void
+
+  var body: some View {
+    if isVisible && !comments.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Comments", count: comments.count)) {
+        ForEach(comments) { comment in
+          AuroraCommentResultRow(comment: comment, select: select)
         }
       }
     }
   }
+}
 
-  @ViewBuilder private var usersSection: some View {
-    if shows(.users) && !model.users.isEmpty {
-      Section(header: AuroraResultSectionHeader(title: "Users", count: model.users.count)) {
-        ForEach(model.users) { user in
-          AuroraUserResultRow(user: user, select: selectUser)
+private struct SearchUsersSection: View {
+  let users: [User]
+  let isVisible: Bool
+  let select: (User) -> Void
+
+  var body: some View {
+    if isVisible && !users.isEmpty {
+      Section(header: AuroraResultSectionHeader(title: "Users", count: users.count)) {
+        ForEach(users) { user in
+          AuroraUserResultRow(user: user, select: select)
         }
       }
     }
   }
+}
 
-  @ViewBuilder private var loadMoreSection: some View {
-    if model.canLoadMore {
+private struct SearchLoadMoreSection: View {
+  let canLoadMore: Bool
+  let loading: Bool
+  let loadMore: () -> Void
+
+  var body: some View {
+    if canLoadMore {
       Section {
-        AuroraLoadMoreFooter(loading: model.loadingMore)
+        AuroraLoadMoreFooter(loading: loading)
           .onAppear(perform: loadMore)
       }
     }
   }
+}
 
-  private var searchAllButton: some View {
-    Button(action: searchAll) {
-      HStack(spacing: 12) {
-        Image(systemName: "magnifyingglass")
-          .font(.headline.weight(.semibold))
-          .foregroundStyle(auroraTheme.accent)
-          .frame(width: 30, height: 30)
-          .background(auroraTheme.chipFill, in: .circle)
-        Text("Search all")
-          .font(.subheadline.weight(.semibold))
-          .foregroundStyle(.primary)
-        Spacer()
-        Image(systemName: "chevron.right")
-          .font(.caption.weight(.bold))
-          .foregroundStyle(.tertiary)
+private struct SearchAllButtonSection: View {
+  let searchAll: () -> Void
+
+  @Environment(\.auroraTheme) private var auroraTheme
+
+  var body: some View {
+    Section {
+      Button(action: searchAll) {
+        HStack(spacing: 12) {
+          Image(systemName: "magnifyingglass")
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(auroraTheme.accent)
+            .frame(width: 30, height: 30)
+            .background(auroraTheme.chipFill, in: .circle)
+          Text("Search all")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.primary)
+          Spacer()
+          Image(systemName: "chevron.right")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(auroraTheme.cardFill, in: RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous)
+            .stroke(auroraTheme.hairline, lineWidth: 0.7)
+        )
       }
-      .padding(14)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .background(auroraTheme.cardFill, in: RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: auroraTheme.cornerRadius, style: .continuous)
-          .stroke(auroraTheme.hairline, lineWidth: 0.7)
-      )
+      .buttonStyle(.plain)
     }
-    .buttonStyle(.plain)
-  }
-
-  private func shows(_ scope: SearchScope) -> Bool {
-    searchScope == .all || searchScope == scope
   }
 }
 
