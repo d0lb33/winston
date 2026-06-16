@@ -1084,6 +1084,28 @@ final class RedditWire: ObservableObject {
     }
   }
 
+  /// Header `UserData` + richer `UserProfileExtras` (trophies, active
+  /// communities, social links, contribution counts) from a single concurrent
+  /// fan-out. Used by the tabbed profile view; resilient to any single call
+  /// failing (missing sections just come back empty).
+  func userProfileBundle(_ username: String) async -> (user: UserData?, extras: UserProfileExtras?) {
+    let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return (nil, nil) }
+
+    async let detailsTask = client.userProfileDetailsResponse(trimmed)
+    async let trophiesTask = client.profileTrophiesResponse(trimmed)
+    async let activeTask = client.getActiveSubredditsResponse(trimmed)
+
+    let details = (try? await detailsTask)?.data?.redditorInfoByName
+    let trophies = (try? await trophiesTask)?.data?.trophies ?? []
+    let active = (try? await activeTask)?.data?.activeSubreddits ?? []
+
+    let user = details.flatMap { UserData(graphQL: $0) }
+    let extras = UserProfileExtras(details: details, trophies: trophies, activeCommunities: active)
+    status = "profile bundle u/\(trimmed) → trophies \(trophies.count), active \(active.count)"
+    return (user, extras)
+  }
+
   func userOverviewData(_ username: String, filter: String? = nil, after: String? = nil) async -> [Either<PostData, CommentData>]? {
     let trimmed = username.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return nil }

@@ -2218,12 +2218,6 @@
         }
       }
     },
-    "Latest %@" : {
-
-    },
-    "Latest activity" : {
-
-    },
     "Left" : {
       "localizations" : {
         "de" : {
@@ -2739,6 +2733,9 @@
 
     },
     "Not upvoted" : {
+
+    },
+    "Nothing here yet" : {
 
     },
     "Now paste it here:" : {

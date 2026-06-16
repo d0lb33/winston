@@ -54,6 +54,20 @@ extension User {
     }
   }
   
+  /// Like `refetchUser` but also returns the richer `UserProfileExtras`
+  /// (trophies, active communities, social links, contribution counts),
+  /// fetched concurrently in a single fan-out.
+  func refetchUserBundle() async -> UserProfileExtras? {
+    await MainActor.run { self.loading = true }
+    let userName = data?.name ?? id
+    let bundle = await RedditWire.shared.userProfileBundle(userName)
+    await MainActor.run {
+      if let fetched = bundle.user { self.data = fetched }
+      self.loading = false
+    }
+    return bundle.extras
+  }
+
   func fetchItself() {
     Task(priority: .background) {
       if let data = await RedditWire.shared.userProfile(id) {
@@ -192,6 +206,66 @@ struct UserDataSubreddit: Codable, Hashable {
   let disable_contributor_requests: Bool?
   let subreddit_type: String?
   let user_is_subscriber: Bool?
+}
+
+// MARK: - Extended profile data (GraphQL-only, not part of REST `UserData`)
+
+/// Richer profile data the Reddit app surfaces but Winston's REST-shaped
+/// `UserData` doesn't model: trophies, active/moderated communities, social
+/// links, and contribution counts. Fetched alongside `UserData` via
+/// `RedditWire.userProfileBundle` and held by the profile view.
+struct UserProfileExtras: Hashable {
+  var trophies: [UserTrophy] = []
+  var activeCommunities: [ProfileActiveCommunity] = []
+  var moderatedCommunities: [ProfileActiveCommunity] = []
+  var socialLinks: [ProfileSocialLink] = []
+  var postCount: Int? = nil
+  var commentCount: Int? = nil
+  var trophyTotal: Int? = nil
+  var primaryColor: String? = nil
+  var isAcceptingChats: Bool? = nil
+  var isAcceptingFollowers: Bool? = nil
+  var isEmployee: Bool? = nil
+  var isFriend: Bool? = nil
+
+  /// True when there's nothing extra to show beyond the basic header/karma.
+  var isEmpty: Bool {
+    trophies.isEmpty && activeCommunities.isEmpty && moderatedCommunities.isEmpty && socialLinks.isEmpty
+  }
+}
+
+struct UserTrophy: Identifiable, Hashable {
+  var id: String
+  var name: String
+  var description: String?
+  var iconURL: String?
+  var grantedAt: Double?
+}
+
+struct ProfileActiveCommunity: Identifiable, Hashable {
+  var id: String
+  var name: String
+  var prefixedName: String?
+  var title: String?
+  var subscribers: Int?
+  var weeklyActiveUsers: Int?
+  var iconURL: String?
+  var primaryColor: String?
+  var isSubscribed: Bool?
+
+  /// `r/`-prefixed display name, falling back to one built from `name`.
+  var displayPrefixedName: String {
+    if let prefixedName, !prefixedName.isEmpty { return prefixedName }
+    return "r/\(name)"
+  }
+}
+
+struct ProfileSocialLink: Identifiable, Hashable {
+  var id: String
+  var title: String?
+  var url: String?
+  var type: String?
+  var handle: String?
 }
 
 

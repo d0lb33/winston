@@ -407,6 +407,7 @@ extension UserData {
       ]
       if let banner = info.styles?.profileBanner?.url { subreddit["banner_img"] = banner }
       if let icon = redditLoadableAvatarURL(profile.icon?.url ?? profile.snoovatarIcon?.url) { subreddit["icon_img"] = icon }
+      if let primary = info.styles?.primaryColor ?? info.styles?.legacyPrimaryColor { subreddit["primary_color"] = primary }
       dict["subreddit"] = subreddit
     }
 
@@ -415,6 +416,73 @@ extension UserData {
       let decoded = try? JSONDecoder().decode(UserData.self, from: data)
     else { return nil }
     self = decoded
+  }
+}
+
+// MARK: - Extended profile data adapters
+
+extension UserTrophy {
+  init(graphQL t: ProfileTrophy) {
+    self.id = t.trophyId ?? t.awardId ?? t.name ?? UUID().uuidString
+    self.name = t.name ?? "Trophy"
+    self.description = (t.description?.isEmpty == false) ? t.description : nil
+    self.iconURL = t.icon70Url
+    let epoch = PostData.epoch(fromISO8601: t.grantedAt)
+    self.grantedAt = epoch > 0 ? epoch : nil
+  }
+}
+
+extension ProfileActiveCommunity {
+  init(graphQL s: ProfileActiveSubreddit) {
+    let rawName = s.name ?? s.prefixedName?.replacingOccurrences(of: "r/", with: "") ?? s.id ?? ""
+    self.id = s.id ?? rawName
+    self.name = rawName
+    self.prefixedName = s.prefixedName ?? (rawName.isEmpty ? nil : "r/\(rawName)")
+    self.title = s.title
+    self.subscribers = s.subscribersCount
+    self.weeklyActiveUsers = s.communityStats?.weeklyActiveUsersCount
+    self.iconURL = redditLoadableAvatarURL(s.iconURL ?? s.icon?.url)
+    self.primaryColor = s.primaryColor
+    self.isSubscribed = s.isSubscribed
+  }
+}
+
+extension ProfileSocialLink {
+  /// Reddit returns social links as loosely-typed nodes; pull the fields we
+  /// can and drop anything without a usable destination.
+  init?(graphQL json: JSONValue) {
+    guard let obj = json.objectValue else { return nil }
+    let url = obj["url"]?.stringValue ?? obj["outboundUrl"]?.stringValue
+    let handle = obj["handle"]?.stringValue
+    let title = obj["title"]?.stringValue
+    guard url != nil || handle != nil || title != nil else { return nil }
+    self.id = obj["id"]?.stringValue ?? url ?? handle ?? title ?? UUID().uuidString
+    self.title = title
+    self.url = url
+    self.type = obj["type"]?.stringValue
+    self.handle = handle
+  }
+}
+
+extension UserProfileExtras {
+  /// Build from a `RedditorProfileDetails` plus the separately-fetched trophy
+  /// and active-community lists.
+  init(details: RedditorProfileDetails?,
+       trophies: [ProfileTrophy] = [],
+       activeCommunities: [ProfileActiveSubreddit] = [],
+       moderatedCommunities: [ProfileActiveSubreddit] = []) {
+    self.init()
+    self.trophies = trophies.map(UserTrophy.init(graphQL:))
+    self.activeCommunities = activeCommunities.map(ProfileActiveCommunity.init(graphQL:))
+    self.moderatedCommunities = moderatedCommunities.map(ProfileActiveCommunity.init(graphQL:))
+    self.socialLinks = (details?.profileInfo?.socialLinks ?? []).compactMap(ProfileSocialLink.init(graphQL:))
+    self.postCount = details?.contributionStats?.postCount
+    self.commentCount = details?.contributionStats?.commentCount
+    self.trophyTotal = details?.trophyCase?.totalUnlocked
+    self.primaryColor = details?.profileInfo?.styles?.primaryColor ?? details?.profileInfo?.styles?.legacyPrimaryColor
+    self.isAcceptingChats = details?.isAcceptingChats
+    self.isAcceptingFollowers = details?.isAcceptingFollowers
+    self.isEmployee = details?.isEmployee
   }
 }
 
