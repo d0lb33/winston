@@ -109,18 +109,22 @@ final class ObjectCache<T: Any> {
   private var cache: [String: CacheItem<T>] = [:]
   private let lock = NSLock()
   let cacheLimit: Int
+  let diagnosticsPrefix: String?
 
-  init(cacheLimit: Int = 50, cache: [String: CacheItem<T>] = [:]) {
+  init(cacheLimit: Int = 50, cache: [String: CacheItem<T>] = [:], diagnosticsPrefix: String? = nil) {
     self.cacheLimit = cacheLimit
     self.cache = cache
+    self.diagnosticsPrefix = diagnosticsPrefix
   }
 
   func get(key: String) -> T? {
     lock.lock()
     defer { lock.unlock() }
     if let cacheItem = cache[key], cacheItem.expires == nil || Date() < cacheItem.expires! {
+      bump("hit")
       return cacheItem.data
     }
+    bump("miss")
     return nil
   }
 
@@ -137,6 +141,7 @@ final class ObjectCache<T: Any> {
         a.value.createdAt < b.value.createdAt
       })?.key else { return }
       cache.removeValue(forKey: oldestKey)
+      bump("evict")
     }
   }
 
@@ -150,5 +155,10 @@ final class ObjectCache<T: Any> {
     lock.lock()
     defer { lock.unlock() }
     cache.removeAll(keepingCapacity: true)
+  }
+
+  private func bump(_ event: String) {
+    guard let diagnosticsPrefix else { return }
+    ScrollPerfProbe.shared.bump("\(diagnosticsPrefix).\(event)")
   }
 }

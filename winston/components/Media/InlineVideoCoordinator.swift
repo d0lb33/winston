@@ -182,6 +182,12 @@ final class MediaPrefetchCoordinator {
   private var prewarmedVideoKeys: Set<String> = []
   private var prefetchVideoKeys: Set<String> = []
   private var cancelledFastScrollUpdates = 0
+  private var lastDirection = "down"
+  private var lastWindowPostCount = 0
+  private var lastImageRequestCount = 0
+  private var lastVideoTargetCount = 0
+  private var lastQueuedVideoCount = 0
+  private var lastFastScrollSkipDirection = "none"
 
   private init() {
     monitor.pathUpdateHandler = { [weak self] path in
@@ -204,9 +210,12 @@ final class MediaPrefetchCoordinator {
       return
     }
 
+    lastDirection = movingTowardLaterPosts ? "down" : "up"
     if isFastScrolling {
       cancelledFastScrollUpdates += 1
+      lastFastScrollSkipDirection = lastDirection
       ScrollPerfProbe.shared.bump("mediaPrefetch.fastScrollSkip")
+      ScrollPerfProbe.shared.bump("mediaPrefetch.fastScrollSkip.\(lastDirection)")
       return
     }
 
@@ -217,6 +226,7 @@ final class MediaPrefetchCoordinator {
       movingTowardLaterPosts: movingTowardLaterPosts,
       imageAheadCount: policy.imageAheadCount
     )
+    lastWindowPostCount = window.count
 
     startImagePrefetch(for: window)
     startVideoPrewarm(for: window, limit: policy.videoAheadCount, maxConcurrent: policy.maxVideoConcurrency)
@@ -232,6 +242,12 @@ final class MediaPrefetchCoordinator {
       "mediaPrefetchActiveVideoTasks": "\(activeVideoTasks.count)",
       "mediaPrefetchPrewarmedVideos": "\(prewarmedVideoKeys.count)",
       "mediaPrefetchFastScrollSkips": "\(cancelledFastScrollUpdates)",
+      "mediaPrefetchDirection": lastDirection,
+      "mediaPrefetchFastSkipDirection": lastFastScrollSkipDirection,
+      "mediaPrefetchWindowPosts": "\(lastWindowPostCount)",
+      "mediaPrefetchImageRequests": "\(lastImageRequestCount)",
+      "mediaPrefetchVideoCandidates": "\(lastVideoTargetCount)",
+      "mediaPrefetchQueuedVideos": "\(lastQueuedVideoCount)",
       "mediaPrefetchExpensiveNetwork": "\(pathIsExpensive)",
       "mediaPrefetchConstrainedNetwork": "\(pathIsConstrained)",
       "mediaPrefetchLowPower": "\(ProcessInfo.processInfo.isLowPowerModeEnabled)"
@@ -277,10 +293,12 @@ final class MediaPrefetchCoordinator {
 
   private func startImagePrefetch(for posts: [Post]) {
     let requests = posts.flatMap { imageRequests(for: $0) }
+    lastImageRequestCount = requests.count
     let signature = requests.map(\.description).joined(separator: "|")
     guard !requests.isEmpty, signature != lastImageSignature else { return }
     lastImageSignature = signature
     ScrollPerfProbe.shared.bump("mediaPrefetch.images")
+    ScrollPerfProbe.shared.bump("mediaPrefetch.images.\(lastDirection)")
     Post.prefetcher.startPrefetching(with: requests)
     if AppDiagnostics.isEnabled(.debug, category: "ui.media.prefetch") {
       AppDiagnostics.asyncRecord(
@@ -294,6 +312,7 @@ final class MediaPrefetchCoordinator {
 
   private func startVideoPrewarm(for posts: [Post], limit: Int, maxConcurrent: Int) {
     let videos = posts.compactMap { videoTarget(for: $0) }
+    lastVideoTargetCount = videos.count
     let limited = Array(videos.prefix(limit))
     let signature = limited.map(\.key).joined(separator: "|")
     guard signature != lastVideoSignature else { return }
@@ -302,6 +321,11 @@ final class MediaPrefetchCoordinator {
 
     pendingVideos = limited.filter { target in
       !prewarmedVideoKeys.contains(target.key) && activeVideoTasks[target.key] == nil
+    }
+    lastQueuedVideoCount = pendingVideos.count
+    if !pendingVideos.isEmpty {
+      ScrollPerfProbe.shared.bump("mediaPrefetch.videoQueued")
+      ScrollPerfProbe.shared.bump("mediaPrefetch.videoQueued.\(lastDirection)")
     }
     startQueuedVideoPrewarmIfNeeded(maxConcurrent: maxConcurrent)
   }
@@ -642,6 +666,7 @@ final class InlineVideoCoordinator {
       "inlineFastScrolling": "\(isFastScrolling)",
       "inlineViewportHeight": String(format: "%.1f", viewportHeight),
       "inlineLastDeltaY": String(format: "%.1f", lastScrollDeltaY),
+      "inlineDirection": movingTowardLaterPosts ? "down" : "up",
       "inlineActiveVisible": activeVisibilityDescription
     ]
     MediaPrefetchCoordinator.shared.diagnosticMetadata().forEach { key, value in
