@@ -35,14 +35,7 @@ func updatePostsInBox(force: Bool = false) async {
     })
     
     let context = PersistenceController.shared.container.newBackgroundContext()
-    let seenCommentCounts = await context.perform(schedule: .enqueued) {
-      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-      let results = (try? context.fetch(fetchRequest)) ?? []
-      return results.reduce(into: [String: Int32]()) { counts, seenPost in
-        guard let postID = seenPost.postID else { return }
-        counts[postID] = seenPost.numComments
-      }
-    }
+    let seenCommentCounts = await Post.seenCommentCounts(for: Set(newPostsInBox.map(\.id)), context: context)
 
     newPostsInBox = newPostsInBox.map { post in
       var newPost = post

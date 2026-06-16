@@ -308,16 +308,70 @@ extension Post {
   }
 
   private static func seenPostSnapshots(for postIDs: Set<String>, context: NSManagedObjectContext) -> [String: SeenPostSnapshot] {
+    let fetchRequest = seenPostRequest(for: postIDs)
+    guard fetchRequest.predicate != nil else { return [:] }
+
+    return context.performAndWait {
+      fetchSeenPosts(using: fetchRequest, in: context).reduce(into: [String: SeenPostSnapshot]()) { seenPosts, seenPost in
+        guard let postID = seenPost.postID else { return }
+        seenPosts[postID] = SeenPostSnapshot(count: Int(seenPost.numComments), comments: seenPost.seenComments)
+      }
+    }
+  }
+
+  private static func seenPostRequest(for postIDs: Set<String>) -> NSFetchRequest<SeenPost> {
+    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+    let postIDs = postIDs.filter { !$0.isEmpty }
+
+    if !postIDs.isEmpty {
+      fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(postIDs))
+    }
+
+    return fetchRequest
+  }
+
+  private static func fetchSeenPosts(for postIDs: Set<String>, in context: NSManagedObjectContext) -> [SeenPost] {
+    fetchSeenPosts(using: seenPostRequest(for: postIDs), in: context)
+  }
+
+  private static func fetchSeenPosts(using fetchRequest: NSFetchRequest<SeenPost>, in context: NSManagedObjectContext) -> [SeenPost] {
+    guard fetchRequest.predicate != nil else { return [] }
+    return (try? context.fetch(fetchRequest)) ?? []
+  }
+
+  private static func upsertSeenPost(postID: String, in context: NSManagedObjectContext) -> (seenPost: SeenPost, didCreate: Bool)? {
+    guard !postID.isEmpty else { return nil }
+
+    if let seenPost = fetchSeenPosts(for: [postID], in: context).first {
+      return (seenPost, false)
+    }
+
+    let newSeenPost = SeenPost(context: context)
+    newSeenPost.postID = postID
+    return (newSeenPost, true)
+  }
+
+  private static func appendSeenCommentIDs(_ ids: [String], to seenPost: SeenPost) -> String {
+    var seenComments = seenPost.seenComments ?? ""
+
+    ids.filter { !$0.isEmpty }.forEach { id in
+      if !seenComments.contains(id) {
+        seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
+      }
+    }
+
+    seenPost.seenComments = seenComments
+    return seenComments
+  }
+
+  static func seenCommentCounts(for postIDs: Set<String>, context: NSManagedObjectContext) async -> [String: Int32] {
     let postIDs = postIDs.filter { !$0.isEmpty }
     guard !postIDs.isEmpty else { return [:] }
 
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(postIDs))
-
-    return context.performAndWait {
-      ((try? context.fetch(fetchRequest)) ?? []).reduce(into: [String: SeenPostSnapshot]()) { seenPosts, seenPost in
+    return await context.perform(schedule: .enqueued) {
+      fetchSeenPosts(for: Set(postIDs), in: context).reduce(into: [String: Int32]()) { counts, seenPost in
         guard let postID = seenPost.postID else { return }
-        seenPosts[postID] = SeenPostSnapshot(count: Int(seenPost.numComments), comments: seenPost.seenComments)
+        counts[postID] = seenPost.numComments
       }
     }
   }
@@ -447,10 +501,7 @@ extension Post {
 
     let context = PersistenceController.shared.primaryBGContext
     await context.perform(schedule: .enqueued) {
-      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-      fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(ids))
-
-      let existingIDs = Set((try? context.fetch(fetchRequest))?.compactMap(\.postID) ?? [])
+      let existingIDs = Set(fetchSeenPosts(for: Set(ids), in: context).compactMap(\.postID))
       let missingIDs = Set(ids).subtracting(existingIDs)
       guard !missingIDs.isEmpty else { return }
 
@@ -481,21 +532,10 @@ extension Post {
     let context = PersistenceController.shared.primaryBGContext
     let postID = self.id
     let didCreateSeenPost = await context.perform(schedule: .enqueued) {
-      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-      let results = (try? context.fetch(fetchRequest)) ?? []
-      let foundPost = results.first(where: { obj in obj.postID == postID })
-
-      if let seenPost = foundPost {
-        seenPost.numComments = Int32(numComments)
-        try? context.save()
-        return false
-      } else {
-        let newSeenPost = SeenPost(context: context)
-        newSeenPost.postID = postID
-        newSeenPost.numComments = Int32(numComments)
-        try? context.save()
-        return true
-      }
+      guard let result = Self.upsertSeenPost(postID: postID, in: context) else { return false }
+      result.seenPost.numComments = Int32(numComments)
+      try? context.save()
+      return result.didCreate
     }
     
     DispatchQueue.main.async {
@@ -513,16 +553,8 @@ extension Post {
     let postID = self.id
     let newComments = self.getCommentIds(comments: comments)
     let finalSeen = await context.perform(schedule: .enqueued) {
-      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-      let results = (try? context.fetch(fetchRequest)) ?? []
-      guard let seenPost = results.first(where: { obj in obj.postID == postID }) else { return nil as String? }
-      var seenComments = seenPost.seenComments ?? ""
-      newComments.forEach { id in
-        if !seenComments.contains(id) {
-          seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
-        }
-      }
-      seenPost.seenComments = seenComments
+      guard let seenPost = Self.fetchSeenPosts(for: [postID], in: context).first else { return nil as String? }
+      let seenComments = Self.appendSeenCommentIDs(newComments, to: seenPost)
       try? context.save()
       return seenComments
     }
@@ -541,16 +573,8 @@ extension Post {
     let postID = self.id
     let newComments: [String] = comments.map { $0.data?.id ?? "" }
     let finalSeen = await context.perform(schedule: .enqueued) {
-      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-      let results = (try? context.fetch(fetchRequest)) ?? []
-      guard let seenPost = results.first(where: { obj in obj.postID == postID }) else { return nil as String? }
-      var seenComments = seenPost.seenComments ?? ""
-      newComments.forEach { id in
-        if !seenComments.contains(id) {
-          seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
-        }
-      }
-      seenPost.seenComments = seenComments
+      guard let seenPost = Self.fetchSeenPosts(for: [postID], in: context).first else { return nil as String? }
+      let seenComments = Self.appendSeenCommentIDs(newComments, to: seenPost)
       try? context.save()
       return seenComments
     }
