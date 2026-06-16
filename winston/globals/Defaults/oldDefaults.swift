@@ -58,7 +58,6 @@ extension Defaults.Keys {
   static let _readPostOnScroll = Key<Bool>("readPostOnScroll", default: false)
   static let _lightboxViewsPost = Key<Bool>("lightboxViewsPost", default: false)
   static let _hideReadPosts = Key<Bool>("hideReadPosts", default: false)
-  static let _enableSwipeAnywhere = Key<Bool>("enableSwipeAnywhere", default: false)
   static let _autoPlayVideos = Key<Bool>("autoPlayVideos", default: true)
   static let _muteVideos = Key<Bool>("muteVideos", default: true)
   static let _pauseBackgroundAudioOnFullscreen = Key<Bool>("pauseBackgroundAudioOnFullscreen", default: true)

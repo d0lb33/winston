@@ -32,9 +32,6 @@ struct PostViewNative: View {
   /// Defaults value → each access JSON-decodes the whole struct). Threaded down as a
   /// plain CGFloat so comment rows never decode it per-row during scroll.
   private let maxMediaHeightPct: CGFloat
-  /// Read once (BehaviorDefSettings is also a codable Defaults value); passed to each row's
-  /// swipe modifier so it never decodes per-row.
-  private let swipeAnywhere: Bool
 
   @Default(.CommentLinkDefSettings) private var commentDefSettings
   @Environment(\.useTheme) private var selectedTheme
@@ -44,7 +41,6 @@ struct PostViewNative: View {
     self.subreddit = subreddit
     self.highlightID = highlightID
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
-    self.swipeAnywhere = Defaults[.BehaviorDefSettings].enableSwipeAnywhere
 
     let defSettings = Defaults[.PostPageDefSettings]
     let commentsDefSettings = Defaults[.CommentsSectionDefSettings]
@@ -83,7 +79,6 @@ struct PostViewNative: View {
             postFullname: post.data?.name ?? "",
             opAuthor: post.data?.author,
             swipeActions: commentDefSettings.swipeActions,
-            swipeAnywhere: swipeAnywhere,
             maxMediaHeightPct: maxMediaHeightPct
           )
         } header: {

@@ -9,8 +9,12 @@ import SwiftUI
 import Defaults
 
 struct Inbox: View {
+  /// Legacy `Router` retained only as the write-only deep-link inbox (see
+  /// `.routerDeepLinkInbox`); the surface itself is driven by `nav`.
   @ObservedObject var router: Router
-  
+  /// Single source of truth for this single-stack surface.
+  @State private var nav = StackNav()
+
   @State private var notifications: [InboxNotification] = []
   @State private var nextAfter: String?
   @State private var reachedEnd = false
@@ -86,7 +90,7 @@ struct Inbox: View {
   }
   
   var body: some View {
-    NavigationStack(path: $router.fullPath) {
+    NavigationStack(path: $nav.path) {
       InboxList(
         notifications: notifications,
         loadingMore: loadingMore,
@@ -95,7 +99,8 @@ struct Inbox: View {
         markRead: { await markRead($0) }
       )
       .auroraListChrome()
-      .injectInTabDestinations(viewControllerHolder: router.navController)
+      .redditNavigation(nav, origin: .content)
+      .redditDestinations(nav, origin: .content)
       .loader(loading)
       .onAppear {
         tabInteractions.setIsAtTop(.inbox, true)
@@ -120,24 +125,28 @@ struct Inbox: View {
     .environment(\.tabInteractionTab, Nav.TabIdentifier.inbox)
     .environment(\.tabInteractionCenter, tabInteractions)
     .environment(\.tabInteractionRequest, tabInteractions.requests[.inbox])
-//    .swipeAnywhere()
+    .routerDeepLinkInbox(
+      router: router,
+      consume: { nav.consumeDeepLink(path: $0) },
+      onRootReset: { nav.reset() }
+    )
   }
 
   private var isPostDestinationVisible: Bool {
-    router.fullPath.last.flatMap { PostsNav.postDetail(from: $0) } != nil
+    nav.path.last.flatMap { PostsNav.postDetail(from: $0) } != nil
   }
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
     switch request.kind {
     case .scrollToTop:
-      if !router.fullPath.isEmpty && !isPostDestinationVisible {
-        router.goBack()
+      if !nav.path.isEmpty && !isPostDestinationVisible {
+        _ = nav.goBackOneStep()
       }
     case .goBack:
-      router.goBack()
+      _ = nav.goBackOneStep()
     case .resetToRoot:
-      router.requestRootReset()
+      nav.reset()
     }
   }
 }

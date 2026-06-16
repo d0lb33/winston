@@ -478,7 +478,6 @@ struct CommentLinkContent: View {
         comment: comment,
         actionsSet: defSettings.swipeActions,
         enabled: forcedBodySize == nil,
-        swipeAnywhere: Defaults[.BehaviorDefSettings].enableSwipeAnywhere,
         actionsArePresented: $swipeActionsPresented
       )
       .onAppear {

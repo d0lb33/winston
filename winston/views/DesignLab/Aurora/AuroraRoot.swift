@@ -121,10 +121,6 @@ struct AuroraRoot: View {
       detailColumn
     }
     .navigationSplitViewStyle(.balanced)
-    .forwardEdgeSwipe(
-      isActive: hSize != .regular,
-      navigation: posts
-    )
     .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
     .overlay(alignment: .topTrailing) {
@@ -137,9 +133,12 @@ struct AuroraRoot: View {
     .diagnosticScreen("aurora.posts")
     .onAppear {
       reloadSavedListSummaries()
-      consumeContextualDestinationIfNeeded()
-      consumeRouterPathIfNeeded(router.fullPath)
     }
+    .routerDeepLinkInbox(
+      router: router,
+      consume: { posts.consumeDeepLink(path: $0) },
+      onRootReset: { resetToLaunchFeed() }
+    )
     .onChange(of: tabInteractions.requests[.posts]) { _, request in
       handleTabInteractionRequest(request)
     }
@@ -160,41 +159,14 @@ struct AuroraRoot: View {
       resetAccountScopedState()
       reloadSavedListSummaries()
     }
-    .onChange(of: router.contextualDestination) { _, _ in
-      consumeContextualDestinationIfNeeded()
-    }
-    .onChange(of: router.fullPath) { _, path in
-      consumeRouterPathIfNeeded(path)
-    }
-    .onChange(of: router.rootResetToken) { _, _ in
-      resetToLaunchFeed()
-    }
     .onChange(of: posts.selectedPostID) { _, newID in
       // Advance to the post detail when a card is selected (regular width).
       guard let newID, let post = model.post(id: newID) else { return }
       posts.selectFeedPost(post)
       AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
     }
-    .onChange(of: posts.forwardSnapshot) { old, new in
-      // Record genuine user back-navigation so "go forward" can replay it. Purely
-      // additive — never mutates the real nav paths.
-      posts.recordForwardTransition(from: old, to: new)
-    }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
-    }
-  }
-
-  /// Forward affordance shared by the content and detail columns. Appears only when
-  /// there is something to go forward to; replays the most recent back-navigation.
-  @ToolbarContentBuilder private var forwardToolbarItem: some ToolbarContent {
-    if posts.canGoForward {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button { posts.goForward() } label: {
-          Image(systemName: "chevron.forward")
-        }
-        .accessibilityLabel("Go forward")
-      }
     }
   }
 
@@ -242,31 +214,6 @@ struct AuroraRoot: View {
     }
   }
 
-  /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
-  private func consumeContextualDestinationIfNeeded() {
-    guard let destination = router.contextualDestination else { return }
-    router.contextualDestination = nil
-    openExternalDestination(destination)
-  }
-
-  /// `Nav.to(...)` appends to the active tab's `Router.fullPath`. Translate anything that
-  /// lands there into `posts` and clear the Router (it no longer drives this surface).
-  private func consumeRouterPathIfNeeded(_ path: [Router.NavDest]) {
-    guard !path.isEmpty else { return }
-    for destination in path { openExternalDestination(destination) }
-    router.resetNavPath()
-  }
-
-  private func openExternalDestination(_ destination: Router.NavDest) {
-    if let detail = PostsNav.postDetail(from: destination) {
-      posts.openPostInDetail(detail.post, highlightID: detail.highlightID)
-    } else if case .reddit(.subFeed(let sub)) = destination, feedsAndSuch.contains(sub.id) {
-      posts.community = sub.id
-    } else {
-      posts.navigate(destination, from: .content)
-    }
-  }
-
   // MARK: - Columns
 
   private var contentColumn: some View {
@@ -275,10 +222,7 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.contentPath) {
       feedContent(selectedPostID: $posts.selectedPostID)
         .redditNavigation(posts, origin: .content)
-        .navigationDestination(for: Router.NavDest.self) { destination in
-          RouterDestinationView(destination: destination)
-        }
-        .toolbar { forwardToolbarItem }
+        .redditDestinations(posts, origin: .content)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
@@ -319,10 +263,7 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.detailPath) {
       detailContent
         .redditNavigation(posts, origin: .detail)
-        .navigationDestination(for: Router.NavDest.self) { destination in
-          RouterDestinationView(destination: destination)
-        }
-        .toolbar { forwardToolbarItem }
+        .redditDestinations(posts, origin: .detail)
     }
     .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? Nav.TabIdentifier.posts : nil)
     .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)

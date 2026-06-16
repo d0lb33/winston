@@ -22,7 +22,6 @@ struct CommentsTreeView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
-  let swipeAnywhere: Bool
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
 
@@ -34,7 +33,6 @@ struct CommentsTreeView: View {
     postFullname: String,
     opAuthor: String?,
     swipeActions: SwipeActionsSet,
-    swipeAnywhere: Bool,
     maxMediaHeightPct: CGFloat,
     contentWidth: CGFloat = 0
   ) {
@@ -45,7 +43,6 @@ struct CommentsTreeView: View {
     self.postFullname = postFullname
     self.opAuthor = opAuthor
     self.swipeActions = swipeActions
-    self.swipeAnywhere = swipeAnywhere
     self.maxMediaHeightPct = maxMediaHeightPct
     self.contentWidth = contentWidth
   }
@@ -86,7 +83,6 @@ struct CommentsTreeView: View {
           postFullname: postFullname,
           opAuthor: opAuthor,
           swipeActions: swipeActions,
-          swipeAnywhere: swipeAnywhere,
           maxMediaHeightPct: maxMediaHeightPct,
           contentWidth: contentWidth
         )

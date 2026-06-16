@@ -1799,9 +1799,6 @@
         }
       }
     },
-    "Go forward" : {
-
-    },
     "Gotcha!" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -2685,6 +2682,7 @@
 
     },
     "Navigation everywhere" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4340,6 +4338,7 @@
       }
     },
     "This will allow you to do go back by swiping anywhere in the screen, but will disable post and comments swipe gestures." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

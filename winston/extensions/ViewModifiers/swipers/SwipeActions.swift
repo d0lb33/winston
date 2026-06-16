@@ -19,7 +19,6 @@ enum TriggeredAction: Int {
 
 
 struct SwipeUI<T: GenericRedditEntityDataType, B: Hashable>: ViewModifier {
-  @Default(.BehaviorDefSettings) private var behaviorDefSettings
   @State private var dragAmount: CGFloat = 0
   @State private var offset: CGFloat?
   @State private var triggeredAction: TriggeredAction = .none
@@ -80,7 +79,6 @@ struct SwipeUI<T: GenericRedditEntityDataType, B: Hashable>: ViewModifier {
     let actualOffsetX = controlledDragAmount?.wrappedValue ?? dragAmount
     let offsetXInterpolate = interpolatorBuilder([0, firstActionThreshold], value: actualOffsetX)
     let offsetXNegativeInterpolate = interpolatorBuilder([0, -firstActionThreshold], value: actualOffsetX)
-    let enableSwipeAnywhere = behaviorDefSettings.enableSwipeAnywhere
     let actualOffset = controlledDragAmount != nil ? 0 : dragAmount
     
     content
@@ -88,7 +86,7 @@ struct SwipeUI<T: GenericRedditEntityDataType, B: Hashable>: ViewModifier {
       .overlay { Color.primary.opacity(pressed ? 0.1 : 0) }
       .offset(x: actualOffset)
       .background {
-        if !enableSwipeAnywhere && controlledIsSource {
+        if controlledIsSource {
           HStack {
             
             SwipeUIBtn(info: infoRight(), secondActiveFunc: actionsSet.rightSecond.active, firstActiveFunc: actionsSet.rightFirst.active, entity: entity!)
@@ -133,9 +131,7 @@ struct SwipeUI<T: GenericRedditEntityDataType, B: Hashable>: ViewModifier {
     //        }
     //      })
       .gesture(
-        enableSwipeAnywhere
-        ? nil
-        : DragGesture(minimumDistance: 30, coordinateSpace: .local)
+        DragGesture(minimumDistance: 30, coordinateSpace: .local)
           .onChanged { val in
             let x = val.translation.width
             if offset == nil && x != 0 {

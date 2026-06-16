@@ -37,10 +37,9 @@ struct AuroraPostDetail: View {
   @State private var showingAllComments = false
   @State private var hasConsumedTabScrollToTop = false
 
-  /// Capped inline-media height + swipe-anywhere, read ONCE here (both are codable
-  /// Defaults values → each access JSON-decodes the whole struct) and threaded down.
+  /// Capped inline-media height, read ONCE here (a codable Defaults value → each access
+  /// JSON-decodes the whole struct) and threaded down.
   private let maxMediaHeightPct: CGFloat
-  private let swipeAnywhere: Bool
 
   @Default(.CommentLinkDefSettings) private var commentDefSettings
   @Environment(\.auroraTheme) private var theme
@@ -75,7 +74,6 @@ struct AuroraPostDetail: View {
     self.tabInteractions = tabInteractions
     self.tabInteractionRequest = tabInteractionRequest
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
-    self.swipeAnywhere = Defaults[.BehaviorDefSettings].enableSwipeAnywhere
 
     let defSettings = Defaults[.PostPageDefSettings]
     let commentsDefSettings = Defaults[.CommentsSectionDefSettings]
@@ -133,7 +131,6 @@ struct AuroraPostDetail: View {
               postFullname: post.data?.name ?? "",
               opAuthor: post.data?.author,
               swipeActions: commentDefSettings.swipeActions,
-              swipeAnywhere: swipeAnywhere,
               maxMediaHeightPct: maxMediaHeightPct,
               contentWidth: contentWidth
             )

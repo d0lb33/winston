@@ -34,9 +34,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
     Nav.shared.activeRouter.requestRootReset()
   }
   /* </Util static functions for ease of use> */
-  
-  static let swipeAnywhereGestureName = "swipe-anywhere-winston"
-  
+
   static private func newRouterForTab(_ tab: TabIdentifier, _ id: UUID) -> Router { Router(id: "\(tab.rawValue)TabRouter-\(id.uuidString)") }
     
   enum TabIdentifier: String, Codable, Hashable, CaseIterable {

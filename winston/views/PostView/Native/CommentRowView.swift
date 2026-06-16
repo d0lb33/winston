@@ -20,7 +20,6 @@ struct CommentRowView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
-  let swipeAnywhere: Bool
   /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
@@ -47,7 +46,6 @@ struct CommentRowView: View {
       comment: comment,
       actionsSet: swipeActions,
       enabled: row.kind == .comment,
-      swipeAnywhere: swipeAnywhere,
       actionsArePresented: $swipePresented
     )
     .contextMenu { if row.kind == .comment { contextMenuContent } }

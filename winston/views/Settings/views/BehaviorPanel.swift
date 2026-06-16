@@ -72,13 +72,6 @@ struct BehaviorPanel: View {
           Text("Sets how many posts to load per chunk (loads more on scroll)")
         }
         
-        Section {
-          Toggle("Navigation everywhere", isOn: $behaviorDefSettings.enableSwipeAnywhere)
-        } footer: {
-          Text("This will allow you to do go back by swiping anywhere in the screen, but will disable post and comments swipe gestures.")
-            .padding(.bottom)
-        }
-        
         Section("Posts") {
           NativeSettingsNavigationRow(.setting(.postSwipe), title: "Posts swipe settings")
           Toggle("Loop videos", isOn: $videoDefSettings.loop)

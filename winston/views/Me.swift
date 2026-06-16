@@ -32,7 +32,6 @@ struct Me: View {
         }
       }
     }
-//    .swipeAnywhere()
   }
 }
 

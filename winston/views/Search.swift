@@ -849,7 +849,6 @@ struct Search: View {
           splitNavigation = navigation
         }
     }
-//    .swipeAnywhere()
   }
 
   private var searchRoot: some View {

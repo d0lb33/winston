@@ -50,10 +50,7 @@ struct RedditTwoColumnShell<Source: View>: View {
       NavigationStack(path: $nav.contentPath) {
         source(nav)
           .redditNavigation(nav, origin: .content)
-          .navigationDestination(for: Router.NavDest.self) { destination in
-            RouterDestinationView(destination: destination)
-          }
-          .toolbar { forwardToolbarItem }
+          .redditDestinations(nav, origin: .content)
       }
       .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
@@ -65,20 +62,13 @@ struct RedditTwoColumnShell<Source: View>: View {
           tabInteractionRequest: isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil
         )
           .redditNavigation(nav, origin: .detail)
-          .navigationDestination(for: Router.NavDest.self) { destination in
-            RouterDestinationView(destination: destination)
-          }
-          .toolbar { forwardToolbarItem }
+          .redditDestinations(nav, origin: .detail)
       }
       .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? tab : nil)
       .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)
       .environment(\.tabInteractionRequest, isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil)
     }
     .navigationSplitViewStyle(.balanced)
-    .forwardEdgeSwipe(
-      isActive: hSize != .regular,
-      navigation: nav
-    )
     .environment(\.auroraTheme, auroraTheme)
     .tint(auroraTheme.accent)
     .fontDesign(auroraTheme.fontDesign)
@@ -87,23 +77,14 @@ struct RedditTwoColumnShell<Source: View>: View {
       if let tab {
         tabInteractions.setIsAtTop(tab, true)
       }
-      consumeContextualDestinationIfNeeded()
-      consumeRouterPathIfNeeded(router.fullPath)
     }
+    .routerDeepLinkInbox(
+      router: router,
+      consume: { nav.consumeDeepLink(path: $0) },
+      onRootReset: { nav.reset() }
+    )
     .onChange(of: tab.flatMap { tabInteractions.requests[$0] }) { _, request in
       handleTabInteractionRequest(request)
-    }
-    .onChange(of: router.contextualDestination) { _, _ in
-      consumeContextualDestinationIfNeeded()
-    }
-    .onChange(of: router.fullPath) { _, path in
-      consumeRouterPathIfNeeded(path)
-    }
-    .onChange(of: router.rootResetToken) { _, _ in
-      nav.reset()
-    }
-    .onChange(of: nav.forwardSnapshot) { old, new in
-      nav.recordForwardTransition(from: old, to: new)
     }
   }
 
@@ -132,39 +113,6 @@ struct RedditTwoColumnShell<Source: View>: View {
     }
   }
 
-  @ToolbarContentBuilder private var forwardToolbarItem: some ToolbarContent {
-    if nav.canGoForward {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button { nav.goForward() } label: {
-          Image(systemName: "chevron.forward")
-        }
-        .accessibilityLabel("Go forward")
-      }
-    }
-  }
-
-  /// Deep links / shortcuts arrive on the legacy Router as a contextual destination.
-  private func consumeContextualDestinationIfNeeded() {
-    guard let destination = router.contextualDestination else { return }
-    router.contextualDestination = nil
-    openExternalDestination(destination)
-  }
-
-  /// `Nav.to(...)` appends to the active tab's `Router.fullPath`. Translate anything that
-  /// lands there into `nav` and clear the Router (it no longer drives this surface).
-  private func consumeRouterPathIfNeeded(_ path: [Router.NavDest]) {
-    guard !path.isEmpty else { return }
-    for destination in path { openExternalDestination(destination) }
-    router.resetNavPath()
-  }
-
-  private func openExternalDestination(_ destination: Router.NavDest) {
-    if let detail = PostsNav.postDetail(from: destination) {
-      nav.openPostInDetail(detail.post, highlightID: detail.highlightID)
-    } else {
-      nav.navigate(destination, from: .content)
-    }
-  }
 }
 
 struct ColumnDetailContent: View {

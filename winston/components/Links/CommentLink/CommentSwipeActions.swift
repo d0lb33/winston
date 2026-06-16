@@ -18,16 +18,12 @@ struct CommentSwipeActionsModifier: ViewModifier {
   @ObservedObject var comment: Comment
   let actionsSet: SwipeActionsSet
   let enabled: Bool
-  /// Passed in (read once upstream) rather than via @Default here — BehaviorDefSettings is
-  /// a codable Defaults value, so reading it in this per-row modifier JSON-decodes the whole
-  /// struct on every comment row during scroll.
-  let swipeAnywhere: Bool
   /// True while either edge's buttons are revealed; lets the row suppress its
   /// collapse tap so dismissing the buttons doesn't also toggle the comment.
   @Binding var actionsArePresented: Bool
 
   func body(content: Content) -> some View {
-    if !enabled || swipeAnywhere {
+    if !enabled {
       content
     } else {
       content
@@ -61,7 +57,7 @@ struct CommentSwipeActionsModifier: ViewModifier {
 }
 
 extension View {
-  func commentSwipeActions(comment: Comment, actionsSet: SwipeActionsSet, enabled: Bool = true, swipeAnywhere: Bool, actionsArePresented: Binding<Bool>) -> some View {
-    modifier(CommentSwipeActionsModifier(comment: comment, actionsSet: actionsSet, enabled: enabled, swipeAnywhere: swipeAnywhere, actionsArePresented: actionsArePresented))
+  func commentSwipeActions(comment: Comment, actionsSet: SwipeActionsSet, enabled: Bool = true, actionsArePresented: Binding<Bool>) -> some View {
+    modifier(CommentSwipeActionsModifier(comment: comment, actionsSet: actionsSet, enabled: enabled, actionsArePresented: actionsArePresented))
   }
 }
