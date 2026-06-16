@@ -205,6 +205,12 @@ final class AuroraFeedModel {
     }
 
     let fresh = more ? newPosts.filter { !loadedIDs.contains($0.id) } : newPosts.deduped { $0.id }
+    if more, FeedScrollWorkCoordinator.shared.shouldDeferWork {
+      ScrollPerfProbe.shared.bump("auroraLoadApplyDeferred")
+      await FeedScrollWorkCoordinator.shared.waitUntilIdle()
+      guard !Task.isCancelled, requestIdentity == feedIdentity, generation == loadGeneration else { return 0 }
+    }
+
     var transaction = Transaction()
     transaction.disablesAnimations = true
     withTransaction(transaction) {

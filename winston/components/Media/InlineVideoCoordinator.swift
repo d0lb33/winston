@@ -33,6 +33,7 @@ final class FeedScrollWorkCoordinator {
   private var scheduledWorkItems: [String: DispatchWorkItem] = [:]
   private var pendingWork: [String: () -> Void] = [:]
   private var pendingSeenPosts: [String: Post] = [:]
+  private var idleContinuations: [CheckedContinuation<Void, Never>] = []
 
   var shouldDeferWork: Bool { isScrolling || isSettling }
 
@@ -59,6 +60,13 @@ final class FeedScrollWorkCoordinator {
 
     guard !shouldDeferWork else { return }
     schedulePendingWork(key: key, delay: delay ?? 0)
+  }
+
+  func waitUntilIdle() async {
+    guard shouldDeferWork else { return }
+    await withCheckedContinuation { continuation in
+      idleContinuations.append(continuation)
+    }
   }
 
   func cancel(key: String) {
@@ -92,6 +100,7 @@ final class FeedScrollWorkCoordinator {
     workItems.values.forEach { $0() }
 
     flushPendingSeenPosts()
+    resumeIdleWaiters()
   }
 
   private func scheduleIdleFlush(delay: TimeInterval? = nil) {
@@ -145,6 +154,12 @@ final class FeedScrollWorkCoordinator {
   private func cancelScheduledWorkItems() {
     scheduledWorkItems.values.forEach { $0.cancel() }
     scheduledWorkItems.removeAll(keepingCapacity: true)
+  }
+
+  private func resumeIdleWaiters() {
+    let waiters = idleContinuations
+    idleContinuations.removeAll(keepingCapacity: true)
+    waiters.forEach { $0.resume() }
   }
 }
 

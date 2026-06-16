@@ -123,7 +123,7 @@ struct AuroraFeed: View {
               }
               .onAppear {
                 if post.id == visiblePosts.last?.id {
-                  Task { @MainActor in await model.loadMore(sort: sort, contentWidth: contentWidth) }
+                  scheduleLoadMore(sort: sort, contentWidth: contentWidth)
                 }
               }
           }
@@ -179,6 +179,14 @@ struct AuroraFeed: View {
     visiblePosts
       .filter { crossedIDs.contains($0.id) }
       .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
+  }
+
+  private func scheduleLoadMore(sort: SubListingSortOption, contentWidth: CGFloat) {
+    FeedScrollWorkCoordinator.shared.performWhenIdle(key: "aurora.loadMore.\(model.feedIdentity)") {
+      Task { @MainActor in
+        await model.loadMore(sort: sort, contentWidth: contentWidth)
+      }
+    }
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {
