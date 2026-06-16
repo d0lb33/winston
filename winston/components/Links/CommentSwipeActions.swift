@@ -3,8 +3,7 @@
 //  winston
 //
 //  Native swipe actions for comment rows, populated from the user's configured
-//  comment swipe actions (Settings → Comments → swipe actions). Replaces the
-//  legacy drag-to-trigger SwipeUI system for comments.
+//  comment swipe actions (Settings → Comments → swipe actions).
 //
 
 import SwiftUI

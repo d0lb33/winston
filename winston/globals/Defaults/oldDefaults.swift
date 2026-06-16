@@ -43,11 +43,9 @@ extension Defaults.Keys {
   
   static let _showUpvoteRatio = Key<Bool>("showUpvoteRatio", default: true)
   
-  static let _coloredCommentNames = Key<Bool>("coloredCommentNames", default: false)
   static let _showVotes = Key<Bool>("showVotes", default: true)
   static let _showSelfText = Key<Bool>("showSelfText", default: true)
   
-  static let _enableVotesPopover = Key<Bool>("enableVotesPopover", default: true)
   static let _maxPostLinkImageHeightPercentage = Key<Double>("maxPostLinkImageHeightPercentage", default: 100)
   static let _replyModalBlurBackground = Key<Bool>("replyModalBlurBackground", default: true)
   static let _newPostModalBlurBackground = Key<Bool>("newPostModalBlurBackground", default: true)

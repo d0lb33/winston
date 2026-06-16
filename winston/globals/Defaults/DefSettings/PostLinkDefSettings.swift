@@ -74,12 +74,9 @@ struct PostLinkDefSettings: Equatable, Hashable, Codable, Defaults.Serializable 
   var blurNSFW: Bool = true
   var isMediaTappable: Bool = true
   var showSelfText: Bool = true
-  var enableVotesPopover: Bool = false
   var maxMediaHeightScreenPercentage: Double = 100
   var readOnScroll: Bool = false
   var lightboxReadsPost: Bool = false
-  var dividerPosition: VSide = .bottom
-  var titlePosition: VSide = .top
   var hideOnRead: Bool = false
 
   var effectivePostStyle: PostLinkDisplayStyle {
@@ -93,7 +90,7 @@ struct PostLinkDefSettings: Equatable, Hashable, Codable, Defaults.Serializable 
   }
 
   enum CodingKeys: String, CodingKey {
-    case postStyle, compactMode, showAuthor, swipeActions, showVotesCluster, showUpVoteRatio, blurNSFW, isMediaTappable, showSelfText, enableVotesPopover, maxMediaHeightScreenPercentage, readOnScroll, lightboxReadsPost, dividerPosition, titlePosition, hideOnRead
+    case postStyle, compactMode, showAuthor, swipeActions, showVotesCluster, showUpVoteRatio, blurNSFW, isMediaTappable, showSelfText, maxMediaHeightScreenPercentage, readOnScroll, lightboxReadsPost, hideOnRead
   }
 
   init(
@@ -106,12 +103,9 @@ struct PostLinkDefSettings: Equatable, Hashable, Codable, Defaults.Serializable 
     blurNSFW: Bool = true,
     isMediaTappable: Bool = true,
     showSelfText: Bool = true,
-    enableVotesPopover: Bool = false,
     maxMediaHeightScreenPercentage: Double = 100,
     readOnScroll: Bool = false,
     lightboxReadsPost: Bool = false,
-    dividerPosition: VSide = .bottom,
-    titlePosition: VSide = .top,
     hideOnRead: Bool = false
   ) {
     self.postStyle = postStyle
@@ -123,12 +117,9 @@ struct PostLinkDefSettings: Equatable, Hashable, Codable, Defaults.Serializable 
     self.blurNSFW = blurNSFW
     self.isMediaTappable = isMediaTappable
     self.showSelfText = showSelfText
-    self.enableVotesPopover = enableVotesPopover
     self.maxMediaHeightScreenPercentage = maxMediaHeightScreenPercentage
     self.readOnScroll = readOnScroll
     self.lightboxReadsPost = lightboxReadsPost
-    self.dividerPosition = dividerPosition
-    self.titlePosition = titlePosition
     self.hideOnRead = hideOnRead
   }
 
@@ -144,12 +135,9 @@ struct PostLinkDefSettings: Equatable, Hashable, Codable, Defaults.Serializable 
     blurNSFW = try container.decodeIfPresent(Bool.self, forKey: .blurNSFW) ?? fallback.blurNSFW
     isMediaTappable = try container.decodeIfPresent(Bool.self, forKey: .isMediaTappable) ?? fallback.isMediaTappable
     showSelfText = try container.decodeIfPresent(Bool.self, forKey: .showSelfText) ?? fallback.showSelfText
-    enableVotesPopover = try container.decodeIfPresent(Bool.self, forKey: .enableVotesPopover) ?? fallback.enableVotesPopover
     maxMediaHeightScreenPercentage = try container.decodeIfPresent(Double.self, forKey: .maxMediaHeightScreenPercentage) ?? fallback.maxMediaHeightScreenPercentage
     readOnScroll = try container.decodeIfPresent(Bool.self, forKey: .readOnScroll) ?? fallback.readOnScroll
     lightboxReadsPost = try container.decodeIfPresent(Bool.self, forKey: .lightboxReadsPost) ?? fallback.lightboxReadsPost
-    dividerPosition = try container.decodeIfPresent(VSide.self, forKey: .dividerPosition) ?? fallback.dividerPosition
-    titlePosition = try container.decodeIfPresent(VSide.self, forKey: .titlePosition) ?? fallback.titlePosition
     hideOnRead = try container.decodeIfPresent(Bool.self, forKey: .hideOnRead) ?? fallback.hideOnRead
   }
 }

@@ -12,7 +12,7 @@ struct PostLinkContextPreview: View {
   weak var sub: Subreddit?
   var body: some View {
     if let post = post, let sub = sub {
-      NavigationStack { PostView(post: post, subreddit: sub, forceCollapse: true) }
+      NavigationStack { AuroraPostDetail(post: post, subreddit: sub) }
     }
   }
 }

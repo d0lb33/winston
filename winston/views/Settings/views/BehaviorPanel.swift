@@ -13,7 +13,6 @@ struct BehaviorPanel: View {
   @Default(.BehaviorDefSettings) var behaviorDefSettings
   @Default(.PostLinkDefSettings) var postLinkDefSettings
   @Default(.PostPageDefSettings) var postPageDefSettings
-  @Default(.CommentLinkDefSettings) var commentLinkDefSettings
   @Default(.CommentsSectionDefSettings) var commentsSectionDefSettings
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.GeneralDefSettings) var generalDefSettings
@@ -218,7 +217,6 @@ struct BehaviorPanel: View {
           }
           
           Toggle("Collapse AutoModerator comments", isOn: $commentsSectionDefSettings.collapseAutoModerator)
-          Toggle("Comment skipper button", isOn: $commentsSectionDefSettings.commentSkipper)
           Toggle("Save comment sort per post", isOn: $postPageDefSettings.perPostSort)
         }
         

@@ -101,8 +101,7 @@ extension MediaExtractedType {
   /// True for inline AVPlayer-backed media that participates in single-active-video
   /// scroll gating. (.streamable resolves to .video once its URL is fetched.)
   /// A crosspost reports inline-video when the embedded original post has one, so the
-  /// feed registers the outer row for center election (the embedded player keys off the
-  /// outer post id — see PostLinkNormal's inlineVideoKeyOverride).
+  /// feed registers the outer row for center election.
   @MainActor
   var isInlineVideo: Bool {
     switch self {

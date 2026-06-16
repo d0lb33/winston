@@ -178,7 +178,7 @@ func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWi
     ACC_mediaSize.width = round(ACC_mediaSize.width)
     ACC_mediaSize.height = round(ACC_mediaSize.height)
     
-    let ACC_SubDividerHeight = SubsNStuffLine.height
+    let ACC_SubDividerHeight: CGFloat = 2
     
     let badgeAvatarHeight = theme.badge.avatar.visible ? theme.badge.avatar.size : 0
     let badgeAuthorHeight = theme.badge.authorText.size * 1.2

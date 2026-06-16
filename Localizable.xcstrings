@@ -70,6 +70,7 @@
       }
     },
     "..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -169,9 +170,6 @@
         }
       }
     },
-    "*Collapsed...*" : {
-
-    },
     "*No results found*" : {
       "localizations" : {
         "de" : {
@@ -189,6 +187,7 @@
       }
     },
     "%@" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -210,16 +209,6 @@
           "stringUnit" : {
             "state" : "new",
             "value" : "%1$@ %2$@"
-          }
-        }
-      }
-    },
-    "%@ %@ %@" : {
-      "localizations" : {
-        "en" : {
-          "stringUnit" : {
-            "state" : "new",
-            "value" : "%1$@ %2$@ %3$@"
           }
         }
       }
@@ -895,6 +884,7 @@
 
     },
     "Colored Usernames" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -909,9 +899,6 @@
           }
         }
       }
-    },
-    "Comment skipper button" : {
-
     },
     "Comments" : {
       "localizations" : {
@@ -1192,6 +1179,7 @@
 
     },
     "Depressive load full :(" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2103,6 +2091,7 @@
       }
     },
     "ing" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2228,10 +2217,8 @@
     "Joined" : {
 
     },
-    "Jump to Next Comment" : {
-
-    },
     "Just a sec..." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2339,6 +2326,7 @@
       }
     },
     "Load" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2361,9 +2349,6 @@
 
     },
     "Load me + subscriptions" : {
-
-    },
-    "LOAD MORE" : {
 
     },
     "Loading About details..." : {
@@ -2655,6 +2640,7 @@
       }
     },
     "more" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2794,9 +2780,6 @@
     "No extra About details found." : {
 
     },
-    "No filtered posts" : {
-
-    },
     "No inbox notifications" : {
 
     },
@@ -2916,6 +2899,7 @@
 
     },
     "oops" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2932,6 +2916,7 @@
       }
     },
     "Oops" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3641,6 +3626,7 @@
       }
     },
     "SELECTING" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3767,9 +3753,6 @@
         }
       }
     },
-    "Show Divider at Top" : {
-
-    },
     "Show hide-read action in feed tools" : {
 
     },
@@ -3826,6 +3809,7 @@
       }
     },
     "Show Title at Top" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -4566,6 +4550,7 @@
 
     },
     "View full conversation" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

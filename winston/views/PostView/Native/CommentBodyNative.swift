@@ -19,6 +19,7 @@
 import SwiftUI
 import MarkdownUI
 import Nuke
+import Defaults
 
 private enum CommentBodyPart: Identifiable, Equatable {
   case text(String)
@@ -211,5 +212,78 @@ struct CommentBodyNative: View {
   private static func appendText(_ text: String, to parts: inout [CommentBodyPart]) {
     guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
     parts.append(.text(text))
+  }
+}
+
+struct NativeCommentPreview: View {
+  @ObservedObject var comment: Comment
+  var compact = false
+  var availableWidth: CGFloat? = nil
+
+  @Default(.PostLinkDefSettings) private var postLinkDefSettings
+  @Environment(\.auroraTheme) private var theme
+  @Environment(\.contentWidth) private var contentWidth
+
+  private var bodyWidth: CGFloat {
+    max(1, (availableWidth ?? contentWidth) - 32)
+  }
+
+  var body: some View {
+    if let data = comment.data {
+      VStack(alignment: .leading, spacing: compact ? 4 : 8) {
+        header(data)
+
+        if let body = data.body, !body.isEmpty {
+          CommentBodyNative(
+            markdown: body,
+            availableWidth: bodyWidth,
+            fontSize: compact ? 14 : 15,
+            lineSpacing: compact ? 1 : 2,
+            postTitle: data.link_title ?? "",
+            badgeKit: data.badgeKit,
+            avatarImageRequest: comment.winstonData?.avatarImageRequest,
+            cornerRadius: 10,
+            maxMediaHeightScreenPercentage: min(postLinkDefSettings.maxMediaHeightScreenPercentage, compact ? 35 : 45),
+            diagnosticContext: "commentPreview:\(comment.id)"
+          )
+          .frame(maxHeight: compact ? 46 : nil, alignment: .top)
+          .clipped()
+        }
+      }
+      .padding(compact ? 10 : 12)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: compact ? 12 : theme.cornerRadius, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: compact ? 12 : theme.cornerRadius, style: .continuous)
+          .stroke(theme.hairline, lineWidth: 0.7)
+      )
+    }
+  }
+
+  private func header(_ data: CommentData) -> some View {
+    let author = displayAuthor(data)
+    return HStack(spacing: 7) {
+      AuroraAvatar(name: author, avatarRequest: comment.winstonData?.avatarImageRequest, size: compact ? 18 : 22)
+      Text(author)
+        .font(compact ? .caption.weight(.semibold) : .subheadline.weight(.semibold))
+        .lineLimit(1)
+      if let subreddit = data.subreddit, !subreddit.isEmpty {
+        Text("r/\(subreddit)")
+          .font(.caption)
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
+      Spacer(minLength: 8)
+      if let ups = data.ups {
+        Label(formatBigNumber(ups), systemImage: "arrow.up")
+          .font(.caption2.weight(.medium))
+          .foregroundStyle(.secondary)
+      }
+    }
+  }
+
+  private func displayAuthor(_ data: CommentData) -> String {
+    if let author = data.author, !author.isEmpty { return author }
+    return "[deleted]"
   }
 }

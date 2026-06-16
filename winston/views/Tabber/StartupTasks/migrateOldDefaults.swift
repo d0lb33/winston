@@ -25,12 +25,9 @@ func migrateOldDefaults() {
     blurNSFW: Defaults[._blurPostLinkNSFW],
     isMediaTappable: Defaults[._tappableFeedMedia],
     showSelfText: Defaults[._showSelfText],
-    enableVotesPopover: Defaults[._enableVotesPopover],
     maxMediaHeightScreenPercentage: Defaults[._maxPostLinkImageHeightPercentage],
     readOnScroll: Defaults[._readPostOnScroll],
     lightboxReadsPost: Defaults[._lightboxViewsPost],
-    dividerPosition: Defaults[._showSubsAtTop] ? .top : .bottom,
-    titlePosition: Defaults[._showTitleAtTop] ? .top : .bottom,
     hideOnRead: Defaults[._hideReadPosts]
   )
   let newVideoDefSettings = VideoDefSettings(
@@ -67,8 +64,7 @@ func migrateOldDefaults() {
     subredditSorts: Defaults[._subredditSorts]
   )
   let newCommentLinkDefSettings = CommentLinkDefSettings(
-    swipeActions: Defaults[._commentSwipeActions],
-    coloredNames: Defaults[._coloredCommentNames]
+    swipeActions: Defaults[._commentSwipeActions]
   )
   let newCommentsSectionDefSettings = CommentsSectionDefSettings(
     collapseAutoModerator: Defaults[._collapseAutoModerator],

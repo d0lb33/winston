@@ -10,6 +10,38 @@ import SwiftUI
 import Defaults
 import NukeUI
 
+struct BadgeGlowDot: View, Equatable {
+  static func == (lhs: BadgeGlowDot, rhs: BadgeGlowDot) -> Bool {
+    lhs.unseenType == rhs.unseenType && lhs.seen == rhs.seen
+  }
+
+  let unseenType: UnseenType
+  let seen: Bool
+
+  var body: some View {
+    ZStack {
+      switch unseenType {
+      case .dot(let color):
+        ZStack {
+          Circle()
+            .fill(Color.hex("CFFFDE"))
+            .frame(width: 5, height: 5)
+          Circle()
+            .fill(color())
+            .frame(width: 8, height: 8)
+            .blur(radius: 8)
+        }
+      case .fade:
+        EmptyView()
+      }
+    }
+    .padding(.horizontal, 6)
+    .scaleEffect(seen ? 0.1 : 1)
+    .opacity(seen ? 0 : 1)
+    .allowsHitTesting(false)
+  }
+}
+
 struct UserFlair: View, Equatable {
   static func == (lhs: UserFlair, rhs: UserFlair) -> Bool {
     return lhs.flair == rhs.flair && lhs.flairText == rhs.flairText && lhs.flairBackground == rhs.flairBackground
@@ -109,7 +141,7 @@ struct BadgeView: View, Equatable {
               .onTapGesture(perform: openUser)
             
             if unseen {
-              PostLinkGlowDot(unseenType: .dot(commentTheme?.unseenDot ?? ColorSchemes<ThemeColor>(light: .init(hex: "FF0000"), dark: .init(hex: "FF0000"))), seen: false, badge: true).equatable()
+              BadgeGlowDot(unseenType: .dot(commentTheme?.unseenDot ?? ColorSchemes<ThemeColor>(light: .init(hex: "FF0000"), dark: .init(hex: "FF0000"))), seen: false).equatable()
             }
             
             if let flairs = flairWithoutEmojis(str: userFlair) {

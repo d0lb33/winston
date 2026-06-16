@@ -11,7 +11,6 @@ import Defaults
 struct AppearancePanel: View {
   @Default(.PostLinkDefSettings) var postLinkDefSettings
   @Default(.AppearanceDefSettings) var appearanceDefSettings
-  @Default(.CommentLinkDefSettings) var commentLinkDefSettings
   @Default(.auroraThemeID) private var auroraThemeID
 
   @State private var appIconManager = AppIconManger()
@@ -61,13 +60,6 @@ struct AppearancePanel: View {
           Toggle("Show Upvote Ratio", isOn: $postLinkDefSettings.showUpVoteRatio)
           Toggle("Show Voting Buttons", isOn: $postLinkDefSettings.showVotesCluster)
           Toggle("Show Self Text", isOn: $postLinkDefSettings.showSelfText)
-          Toggle("Show Divider at Top", isOn: Binding(get: {
-            postLinkDefSettings.dividerPosition == .top
-          }, set: { postLinkDefSettings.dividerPosition = $0 ? .top : .bottom } ))
-          Toggle("Show Title at Top", isOn: Binding(
-            get: { postLinkDefSettings.titlePosition == .top },
-            set: { postLinkDefSettings.titlePosition = $0 ? .top : .bottom } )
-          )
           Toggle("Show Author", isOn: $postLinkDefSettings.showAuthor)
         }
 
@@ -100,10 +92,6 @@ struct AppearancePanel: View {
               Text("Left").tag("Left")
               Text("Right").tag("Right")
             }
-        }
-
-        Section("Comments") {
-          Toggle("Colored Usernames", isOn: $commentLinkDefSettings.coloredNames)
         }
 
         Section("Accessibility"){

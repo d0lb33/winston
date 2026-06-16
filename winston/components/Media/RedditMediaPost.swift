@@ -30,12 +30,12 @@ struct RedditMediaPost: View {
       if hasData {
         switch entity {
         case .comment(let comment):
-          if let commentWinstonData = comment.winstonData {
-            CommentLink(showReplies: false, comment: comment, commentWinstonData: commentWinstonData, children: comment.childrenWinston)
+          if comment.winstonData != nil {
+            NativeCommentPreview(comment: comment, compact: true)
               .padding(.vertical, 8)
           }
         case .post(let post):
-          ShortPostLink(noHPad: true, post: post)
+          EmbeddedPostPreview(post: post)
         case .user(let user):
           UserLinkContainer(noHPad: true, user: user)
         case .subreddit(let subreddit):
@@ -143,6 +143,43 @@ struct RedditMediaPost: View {
         "id": subreddit.id,
         "hasData": "\(subreddit.data != nil)"
       ]
+    }
+  }
+}
+
+private struct EmbeddedPostPreview: View {
+  @ObservedObject var post: Post
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    if let data = post.data {
+      HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 4) {
+          Text(data.title.escape)
+            .font(.subheadline.weight(.semibold))
+            .lineLimit(2)
+          HStack(spacing: 8) {
+            Text("r/\(data.subreddit)")
+            Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
+            Label(formatBigNumber(data.ups), systemImage: "arrow.up")
+          }
+          .font(.caption2.weight(.medium))
+          .foregroundStyle(.secondary)
+        }
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(.tertiary)
+      }
+      .padding(.vertical, 10)
+      .padding(.horizontal, 12)
+      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+      .contentShape(Rectangle())
+      .onTapGesture {
+        navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
+      }
     }
   }
 }
