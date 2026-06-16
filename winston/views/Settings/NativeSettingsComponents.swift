@@ -19,9 +19,90 @@ struct NativeSettingsListModifier: ViewModifier {
   }
 }
 
+private struct SettingsPanelTabInteractionOwnerKey: EnvironmentKey {
+  static let defaultValue = false
+}
+
+extension EnvironmentValues {
+  var settingsPanelIsTabInteractionOwner: Bool {
+    get { self[SettingsPanelTabInteractionOwnerKey.self] }
+    set { self[SettingsPanelTabInteractionOwnerKey.self] = newValue }
+  }
+}
+
 extension View {
   func nativeSettingsList() -> some View {
     modifier(NativeSettingsListModifier())
+  }
+}
+
+struct SettingsPanelScrollRoot<Content: View>: View {
+  private let topID: String
+  private let explicitIsTabInteractionOwner: Bool?
+  private let onResetToRoot: (() -> Void)?
+  private let content: () -> Content
+
+  @Environment(\.settingsPanelIsTabInteractionOwner) private var environmentIsTabInteractionOwner
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
+  @State private var hasConsumedTabScrollToTop = false
+  @State private var scrollPosition = ScrollPosition(edge: .top)
+
+  init(
+    topID: String,
+    isTabInteractionOwner: Bool? = nil,
+    onResetToRoot: (() -> Void)? = nil,
+    @ViewBuilder content: @escaping () -> Content
+  ) {
+    self.topID = topID
+    self.explicitIsTabInteractionOwner = isTabInteractionOwner
+    self.onResetToRoot = onResetToRoot
+    self.content = content
+  }
+
+  private var isTabInteractionOwner: Bool {
+    explicitIsTabInteractionOwner ?? environmentIsTabInteractionOwner
+  }
+
+  var body: some View {
+    List {
+      content()
+    }
+    .nativeSettingsList()
+    .scrollPosition($scrollPosition)
+    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+      geometry.contentOffset.y
+    } action: { _, newOffsetY in
+      updateTabInteractionTopState(newOffsetY <= 4)
+    }
+    .onAppear {
+      hasConsumedTabScrollToTop = false
+      if isTabInteractionOwner {
+        tabInteractions.setIsAtTop(.settings, false)
+      }
+    }
+    .onChange(of: isTabInteractionOwner) { _, isOwner in
+      hasConsumedTabScrollToTop = false
+      if isOwner {
+        tabInteractions.setIsAtTop(.settings, false)
+      }
+    }
+    .onChange(of: tabInteractions.requests[.settings]) { _, request in
+      guard isTabInteractionOwner, let request else { return }
+      if request.kind == .resetToRoot {
+        onResetToRoot?()
+      }
+      guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
+      hasConsumedTabScrollToTop = true
+      withAnimation(.snappy) {
+        scrollPosition.scrollTo(edge: .top)
+      }
+      tabInteractions.setIsAtTop(.settings, true)
+    }
+  }
+
+  private func updateTabInteractionTopState(_ isAtTop: Bool) {
+    guard isTabInteractionOwner else { return }
+    tabInteractions.setIsAtTop(.settings, hasConsumedTabScrollToTop ? isAtTop : false)
   }
 }
 

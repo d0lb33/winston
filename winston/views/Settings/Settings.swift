@@ -19,6 +19,27 @@ struct Settings: View {
   @State private var presentingGQLDebug: Bool = false
   @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
+  private var isSidebarVisibleForTabInteraction: Bool {
+    hSize == .regular || nav.preferredColumn == .sidebar
+  }
+
+  private var isDetailVisibleForTabInteraction: Bool {
+    hSize != .regular && nav.preferredColumn == .detail
+  }
+
+  private var isDetailScrollOwnerForTabInteraction: Bool {
+    guard isDetailVisibleForTabInteraction else { return false }
+    guard let destination = nav.detailPath.last else {
+      return nav.selection?.usesSettingsPanelScrollRoot ?? true
+    }
+    switch destination {
+    case .setting(let setting):
+      return setting.usesSettingsPanelScrollRoot
+    case .reddit:
+      return PostsNav.postDetail(from: destination) != nil
+    }
+  }
+
   var body: some View {
     @Bindable var nav = nav
 
@@ -26,6 +47,7 @@ struct Settings: View {
       NavigationStack {
         SettingsSidebarList(
           selectedSetting: nav.selection,
+          isTabInteractionOwner: isSidebarVisibleForTabInteraction,
           showWhatsNew: { presentingWhatsNew.toggle() },
           showAnnouncements: { presentingAnnouncement.toggle() },
           showGraphQLDebug: { presentingGQLDebug.toggle() },
@@ -48,6 +70,10 @@ struct Settings: View {
           }
           .toolbar { forwardToolbarItem }
       }
+      .environment(\.settingsPanelIsTabInteractionOwner, isDetailScrollOwnerForTabInteraction)
+      .environment(\.tabInteractionTab, isDetailScrollOwnerForTabInteraction ? Nav.TabIdentifier.settings : nil)
+      .environment(\.tabInteractionCenter, isDetailScrollOwnerForTabInteraction ? tabInteractions : nil)
+      .environment(\.tabInteractionRequest, isDetailScrollOwnerForTabInteraction ? tabInteractions.requests[.settings] : nil)
     }
     .navigationSplitViewStyle(.balanced)
     .forwardEdgeSwipe(isActive: hSize != .regular, navigation: nav)
@@ -86,7 +112,10 @@ struct Settings: View {
     guard let request else { return }
     switch request.kind {
     case .scrollToTop:
-      break
+      guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction else {
+        _ = nav.goBackOneStep()
+        return
+      }
     case .goBack:
       _ = nav.goBackOneStep()
     case .resetToRoot:
@@ -133,19 +162,17 @@ private struct SettingsSidebarList: View {
   private static let topID = "settings-top"
 
   let selectedSetting: Router.NavDest.Setting?
+  let isTabInteractionOwner: Bool
   let showWhatsNew: () -> Void
   let showAnnouncements: () -> Void
   let showGraphQLDebug: () -> Void
   let donateMonthly: () -> Void
   let openTipJar: () -> Void
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
   var body: some View {
-    TabScrollRoot(
+    SettingsPanelScrollRoot(
       topID: Self.topID,
-      tab: .settings,
-      tabInteractions: tabInteractions,
-      request: tabInteractions.requests[.settings]
+      isTabInteractionOwner: isTabInteractionOwner
     ) {
       SettingsMainSection(selectedSetting: selectedSetting)
       SettingsInfoSection(
@@ -162,7 +189,6 @@ private struct SettingsSidebarList: View {
         openTipJar: openTipJar
       )
     }
-    .nativeSettingsList()
   }
 }
 
@@ -296,3 +322,14 @@ private struct SettingsDetailColumnContent: View {
 //    Settings()
 //  }
 //}
+
+private extension Router.NavDest.Setting {
+  var usesSettingsPanelScrollRoot: Bool {
+    switch self {
+    case .general, .behavior, .appearance, .accounts, .diagnostics, .about, .commentSwipe, .postSwipe, .accessibility, .filteredSubreddits, .faq, .appIcon:
+      return true
+    case .designLab:
+      return false
+    }
+  }
+}

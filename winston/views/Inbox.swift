@@ -117,14 +117,23 @@ struct Inbox: View {
       }
       .navigationTitle("Inbox")
     }
+    .environment(\.tabInteractionTab, Nav.TabIdentifier.inbox)
+    .environment(\.tabInteractionCenter, tabInteractions)
+    .environment(\.tabInteractionRequest, tabInteractions.requests[.inbox])
 //    .swipeAnywhere()
+  }
+
+  private var isPostDestinationVisible: Bool {
+    router.fullPath.last.flatMap { PostsNav.postDetail(from: $0) } != nil
   }
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
     switch request.kind {
     case .scrollToTop:
-      break
+      if !router.fullPath.isEmpty && !isPostDestinationVisible {
+        router.goBack()
+      }
     case .goBack:
       router.goBack()
     case .resetToRoot:

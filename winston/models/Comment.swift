@@ -101,10 +101,8 @@ extension Comment {
   
   static func initMultiple(datas: [ListingChild<T>], parent: ObservableArray<GenericRedditEntity<T, B>>? = nil) -> [Comment] {
     let context = PersistenceController.shared.primaryBGContext
-    let fetchRequest = NSFetchRequest<CollapsedComment>(entityName: "CollapsedComment")
-    let collapsedIDs = context.performAndWait {
-      Set(((try? context.fetch(fetchRequest)) ?? []).compactMap(\.commentID))
-    }
+    let commentIDs = Set(datas.compactMap(\.data?.id))
+    let collapsedIDs = collapsedCommentIDs(for: commentIDs, context: context)
     return datas.compactMap { x in
       if let data = x.data {
         let isCollapsed = collapsedIDs.contains(data.id)
@@ -113,6 +111,18 @@ extension Comment {
         return newComment
       }
       return nil
+    }
+  }
+
+  private static func collapsedCommentIDs(for commentIDs: Set<String>, context: NSManagedObjectContext) -> Set<String> {
+    let commentIDs = commentIDs.filter { !$0.isEmpty }
+    guard !commentIDs.isEmpty else { return [] }
+
+    let fetchRequest = NSFetchRequest<CollapsedComment>(entityName: "CollapsedComment")
+    fetchRequest.predicate = NSPredicate(format: "commentID IN %@", Array(commentIDs))
+
+    return context.performAndWait {
+      Set(((try? context.fetch(fetchRequest)) ?? []).compactMap(\.commentID))
     }
   }
   

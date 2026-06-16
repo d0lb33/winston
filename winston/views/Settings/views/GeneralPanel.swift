@@ -19,7 +19,7 @@ struct GeneralPanel: View {
   @State private var doImport: Bool = false
   @State private var showResetReadHistoryAlert: Bool = false
   var body: some View {
-    List{
+    SettingsPanelScrollRoot(topID: "settings-general-top") {
       
       Group {
         Section("Backup"){
@@ -89,7 +89,6 @@ struct GeneralPanel: View {
       }
       
     }
-    .nativeSettingsList()
     .navigationTitle("General")
     .navigationBarTitleDisplayMode(.inline)
     .alert("Reset read history?", isPresented: $showResetReadHistoryAlert) {

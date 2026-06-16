@@ -12,7 +12,7 @@ struct AboutPanel: View {
   let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String
   @Environment(\.openURL) private var openURL
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-about-top") {
       Group {
         Section {
           HStack {
@@ -68,7 +68,6 @@ struct AboutPanel: View {
         }
       }
     }
-    .nativeSettingsList()
     .navigationTitle("About")
     .navigationBarTitleDisplayMode(.inline)
   }

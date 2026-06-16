@@ -11,7 +11,7 @@ import Defaults
 struct PostSwipePanel: View {
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
     var body: some View {
-      List {
+      SettingsPanelScrollRoot(topID: "settings-post-swipe-top") {
         
         Section {
           Group {
@@ -55,7 +55,6 @@ struct PostSwipePanel: View {
         }
         
       }
-      .nativeSettingsList()
       .navigationTitle("Posts Swipe Settings")
       .navigationBarTitleDisplayMode(.inline)
     }

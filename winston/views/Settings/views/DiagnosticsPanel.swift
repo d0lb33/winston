@@ -23,7 +23,7 @@ struct DiagnosticsPanel: View {
   @AppStorage(RenderDiagnostics.defaultsKey) private var printRenderChanges = false
 
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-diagnostics-top") {
       Section("Live State") {
         DiagnosticRow(label: "Session", value: diagnostics.currentSessionID)
         DiagnosticRow(label: "Reddit", value: wire.status)
@@ -125,7 +125,6 @@ struct DiagnosticsPanel: View {
         }
       }
     }
-    .nativeSettingsList()
     .navigationTitle("Diagnostics")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {

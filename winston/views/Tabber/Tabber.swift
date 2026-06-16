@@ -17,6 +17,7 @@ struct Tabber: View, Equatable {
   @StateObject private var tabInteractions = TabInteractionCenter()
   
   @State private var tabBarHeight: Double? = nil
+  @State private var tabReselectDetectionEnabled = false
   
   @Environment(\.useTheme) private var currentTheme
   @Environment(\.colorScheme) private var colorScheme
@@ -44,8 +45,20 @@ struct Tabber: View, Equatable {
   
   var body: some View {
     let accountScopeKey = wire.accountScopeID?.uuidString ?? "none"
+    let tabSelection = Binding<Nav.TabIdentifier>(
+      get: { nav.activeTab },
+      set: { tab in
+        if tab == nav.activeTab {
+          guard tabReselectDetectionEnabled else { return }
+          AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": tab.rawValue, "source": "selectionBinding"])
+          tabInteractions.selectedTabTappedAgain(tab)
+        } else {
+          nav.activeTab = tab
+        }
+      }
+    )
 
-    TabView(selection: $nav.activeTab) {
+    TabView(selection: tabSelection) {
       
       WithAccountOnly {
         SubredditsStack(router: nav[.posts])
@@ -85,10 +98,13 @@ struct Tabber: View, Equatable {
         .tabItem { Label("Settings", systemImage: "gearshape.fill") }
       
     }
-    .background(TabBarTapAccessor(tabInteractions: tabInteractions).allowsHitTesting(false))
+    .background(TabBarReselectAccessor(tabInteractions: tabInteractions).allowsHitTesting(false))
     .environmentObject(tabInteractions)
     .onAppear {
       tabInteractions.selectedTabChanged(to: nav.activeTab)
+      DispatchQueue.main.async {
+        tabReselectDetectionEnabled = true
+      }
     }
     .onChange(of: nav.activeTab) { _, tab in
       tabInteractions.selectedTabChanged(to: tab)
@@ -109,54 +125,190 @@ struct Tabber: View, Equatable {
   }
 }
 
-private struct TabBarTapAccessor: UIViewControllerRepresentable {
+private struct TabBarReselectAccessor: UIViewRepresentable {
   @ObservedObject var tabInteractions: TabInteractionCenter
 
-  func makeUIViewController(context: Context) -> UIViewController {
-    let controller = Controller()
-    controller.tabInteractions = tabInteractions
-    return controller
+  func makeUIView(context: Context) -> AccessorView {
+    let view = AccessorView()
+    view.coordinator = context.coordinator
+    context.coordinator.tabInteractions = tabInteractions
+    return view
   }
 
-  func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
-    guard let controller = uiViewController as? Controller else { return }
-    controller.tabInteractions = tabInteractions
-    controller.attachIfPossible()
+  func updateUIView(_ uiView: AccessorView, context: Context) {
+    context.coordinator.tabInteractions = tabInteractions
+    context.coordinator.attachIfPossible(from: uiView)
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
   }
 
   @MainActor
-  private final class Controller: UIViewController, UITabBarControllerDelegate {
+  final class AccessorView: UIView {
+    weak var coordinator: Coordinator?
+
+    override func didMoveToWindow() {
+      super.didMoveToWindow()
+      guard window != nil else {
+        coordinator?.detach()
+        return
+      }
+      coordinator?.resetAttachAttempts()
+      coordinator?.attachIfPossible(from: self)
+    }
+  }
+
+  @MainActor
+  final class Coordinator: NSObject {
     weak var tabInteractions: TabInteractionCenter?
-    weak var previousDelegate: (any UITabBarControllerDelegate)?
+    private weak var sourceView: UIView?
+    private weak var attachedTabBar: UITabBar?
+    private weak var pendingSelectedControl: UIControl?
+    private var attachedControls: [UIControl] = []
+    private var attachAttempts = 0
+    private let maxAttachAttempts = 8
 
-    override func viewWillAppear(_ animated: Bool) {
-      super.viewWillAppear(animated)
-      attachIfPossible()
+    func resetAttachAttempts() {
+      attachAttempts = 0
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-      super.viewDidAppear(animated)
-      attachIfPossible()
+    func attachIfPossible(from view: UIView) {
+      sourceView = view
+
+      guard view.window != nil else {
+        scheduleRetry()
+        return
+      }
+
+      guard let tabBarController = findTabBarController(from: view) else {
+        scheduleRetry()
+        return
+      }
+
+      attach(to: tabBarController.tabBar)
     }
 
-    func attachIfPossible() {
-      guard let tabBarController else { return }
-      if tabBarController.delegate !== self {
-        previousDelegate = tabBarController.delegate
-        tabBarController.delegate = self
+    func detach() {
+      for control in attachedControls {
+        control.removeTarget(self, action: #selector(tabButtonTouchDown(_:)), for: .touchDown)
+        control.removeTarget(self, action: #selector(tabButtonTouchUpInside(_:)), for: .touchUpInside)
+        control.removeTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchCancel)
+        control.removeTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchDragExit)
+      }
+      attachedControls = []
+      attachedTabBar = nil
+      pendingSelectedControl = nil
+    }
+
+    private func attach(to tabBar: UITabBar) {
+      let controls = tabControls(in: tabBar)
+      guard !controls.isEmpty else {
+        scheduleRetry()
+        return
+      }
+
+      if attachedTabBar !== tabBar || controls != attachedControls {
+        detach()
+        for control in controls {
+          control.addTarget(self, action: #selector(tabButtonTouchDown(_:)), for: .touchDown)
+          control.addTarget(self, action: #selector(tabButtonTouchUpInside(_:)), for: .touchUpInside)
+          control.addTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchCancel)
+          control.addTarget(self, action: #selector(tabButtonTouchCancelled(_:)), for: .touchDragExit)
+        }
+        attachedControls = controls
+        attachedTabBar = tabBar
+        AppDiagnostics.asyncBreadcrumb("Tab bar reselect control accessor attached", metadata: ["controls": "\(controls.count)"])
+      }
+
+      attachAttempts = 0
+    }
+
+    private func scheduleRetry() {
+      guard attachAttempts < maxAttachAttempts else { return }
+      attachAttempts += 1
+      DispatchQueue.main.async { [weak self] in
+        guard let self, let sourceView else { return }
+        self.attachIfPossible(from: sourceView)
       }
     }
 
-    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
-      if viewController === tabBarController.selectedViewController {
-        let tab = Nav.shared.activeTab
-        tabInteractions?.selectedTabTappedAgain(tab)
+    @objc private func tabButtonTouchDown(_ sender: UIControl) {
+      guard isSelectedControl(sender) else {
+        pendingSelectedControl = nil
+        return
       }
-      return previousDelegate?.tabBarController?(tabBarController, shouldSelect: viewController) ?? true
+      pendingSelectedControl = sender
     }
 
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-      previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+    @objc private func tabButtonTouchUpInside(_ sender: UIControl) {
+      guard pendingSelectedControl === sender else { return }
+      pendingSelectedControl = nil
+      let tab = Nav.shared.activeTab
+      AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": tab.rawValue, "source": "tabButtonControl"])
+      tabInteractions?.selectedTabTappedAgain(tab)
+    }
+
+    @objc private func tabButtonTouchCancelled(_ sender: UIControl) {
+      if pendingSelectedControl === sender {
+        pendingSelectedControl = nil
+      }
+    }
+
+    private func isSelectedControl(_ control: UIControl) -> Bool {
+      guard let tabBar = attachedTabBar,
+            let items = tabBar.items,
+            let selectedItem = tabBar.selectedItem,
+            let selectedIndex = items.firstIndex(of: selectedItem)
+      else { return false }
+
+      let controls = tabControls(in: tabBar)
+      guard selectedIndex < controls.count else { return false }
+      return controls[selectedIndex] === control
+    }
+
+    private func tabControls(in tabBar: UITabBar) -> [UIControl] {
+      tabBar.subviews
+        .compactMap { $0 as? UIControl }
+        .filter { !$0.isHidden && $0.alpha > 0.01 && $0.frame.width > 0 && $0.frame.height > 0 }
+        .sorted { $0.frame.minX < $1.frame.minX }
+    }
+
+    private func findTabBarController(from view: UIView) -> UITabBarController? {
+      if let responderController = sequence(first: view.next, next: { $0?.next })
+        .first(where: { $0 is UITabBarController }) as? UITabBarController {
+        return responderController
+      }
+
+      guard let root = view.window?.rootViewController else { return nil }
+      return findTabBarController(in: root)
+    }
+
+    private func findTabBarController(in controller: UIViewController) -> UITabBarController? {
+      if let tabBarController = controller as? UITabBarController {
+        return tabBarController
+      }
+
+      if let presented = controller.presentedViewController,
+         let tabBarController = findTabBarController(in: presented) {
+        return tabBarController
+      }
+
+      for child in controller.children {
+        if let tabBarController = findTabBarController(in: child) {
+          return tabBarController
+        }
+      }
+
+      if let navigationController = controller as? UINavigationController {
+        for viewController in navigationController.viewControllers {
+          if let tabBarController = findTabBarController(in: viewController) {
+            return tabBarController
+          }
+        }
+      }
+
+      return nil
     }
   }
 }

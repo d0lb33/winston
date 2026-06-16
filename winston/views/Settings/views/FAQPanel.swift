@@ -10,7 +10,7 @@ import SwiftUI
 struct FAQPanel: View {
   var body: some View {
     
-    List{
+    SettingsPanelScrollRoot(topID: "settings-faq-top") {
       Section {
         QuestionAnswer(question: "What does the Box Icon do?", answer: "Save posts in the Posts Box to be read later. These will live in Winston and wont be synced to Reddit.", systemImage: "shippingbox")
         QuestionAnswer(question: "What's Winston Everywhere?", answer: "Winston Everywhere is a Safari extension, that autmatically redirects Reddit links to Winston.", systemImage: "safari")
@@ -20,7 +20,6 @@ struct FAQPanel: View {
         QuestionAnswer(question: "Who are you?", answer: "We're lo.cafe, a group of friends (Igor (me), Ernesto, Laís, Oeste (teenager cat) and Bidu(old cat)) that produces amazing software together. We made lo-rain, an app that makes it rain over your desktop on MacOS, we're making a game and many other crazy stuff. [Check our website!](https://lo.cafe)", systemImage: "safari")
       }
     }
-    .nativeSettingsList()
     .navigationBarTitle("Frequently Asked Questions", displayMode: .inline)
     
   }

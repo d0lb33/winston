@@ -11,7 +11,7 @@ struct AccessibilityPanel: View {
 //  @Default(.forceFeedbackModifiers) var forceFeedbackModifiers
 //  @Default(.hapticFeedbackOnLPM) var hapticFeedbackOnLPM
     var body: some View {
-      List {
+      SettingsPanelScrollRoot(topID: "settings-accessibility-top") {
 //        Section("Haptics"){
 //          Picker("Haptic Feedback Strength -- DOESNT WORK", selection: Binding(get: {
 //            forceFeedbackModifiers
@@ -30,7 +30,6 @@ struct AccessibilityPanel: View {
 //          Toggle("Haptics on Low Power Mode -- DOESNT WORK", isOn: $hapticFeedbackOnLPM)
 //        }
       }
-      .nativeSettingsList()
       .navigationTitle("Accessibility")
       .navigationBarTitleDisplayMode(.inline)
     }

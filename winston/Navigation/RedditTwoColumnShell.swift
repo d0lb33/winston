@@ -35,6 +35,14 @@ struct RedditTwoColumnShell<Source: View>: View {
     self.source = source
   }
 
+  private var isSourceRootVisibleForTabInteraction: Bool {
+    tab != nil && nav.contentPath.isEmpty && (hSize == .regular || nav.preferredColumn == .sidebar)
+  }
+
+  private var isDetailVisibleForTabInteraction: Bool {
+    tab != nil && nav.detailPost != nil && hSize != .regular && nav.preferredColumn == .detail
+  }
+
   var body: some View {
     @Bindable var nav = nav
 
@@ -50,13 +58,21 @@ struct RedditTwoColumnShell<Source: View>: View {
       .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
       NavigationStack(path: $nav.detailPath) {
-        ColumnDetailContent(nav: nav)
+        ColumnDetailContent(
+          nav: nav,
+          tabInteractionTab: isDetailVisibleForTabInteraction ? tab : nil,
+          tabInteractions: isDetailVisibleForTabInteraction ? tabInteractions : nil,
+          tabInteractionRequest: isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil
+        )
           .redditNavigation(nav, origin: .detail)
           .navigationDestination(for: Router.NavDest.self) { destination in
             RouterDestinationView(destination: destination)
           }
           .toolbar { forwardToolbarItem }
       }
+      .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? tab : nil)
+      .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)
+      .environment(\.tabInteractionRequest, isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil)
     }
     .navigationSplitViewStyle(.balanced)
     .forwardEdgeSwipe(
@@ -95,7 +111,20 @@ struct RedditTwoColumnShell<Source: View>: View {
     guard let request else { return }
     switch request.kind {
     case .scrollToTop:
-      break
+      guard isSourceRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
+        AppDiagnostics.asyncBreadcrumb(
+          "Split tab scroll request routed to back",
+          metadata: [
+            "tab": tab?.rawValue ?? "none",
+            "preferredColumn": "\(nav.preferredColumn)",
+            "contentPathCount": "\(nav.contentPath.count)",
+            "detailPathCount": "\(nav.detailPath.count)",
+            "hasDetailPost": "\(nav.detailPost != nil)"
+          ]
+        )
+        _ = nav.goBackOneStep()
+        return
+      }
     case .goBack:
       _ = nav.goBackOneStep()
     case .resetToRoot:
@@ -140,13 +169,19 @@ struct RedditTwoColumnShell<Source: View>: View {
 
 struct ColumnDetailContent: View {
   let nav: ColumnNav
+  var tabInteractionTab: Nav.TabIdentifier?
+  var tabInteractions: TabInteractionCenter?
+  var tabInteractionRequest: TabInteractionRequest?
 
   var body: some View {
     if let post = nav.detailPost {
       AuroraPostDetail(
         post: post,
         subreddit: detailSubreddit(for: post),
-        highlightID: nav.detailHighlightID
+        highlightID: nav.detailHighlightID,
+        tabInteractionTab: tabInteractionTab,
+        tabInteractions: tabInteractions,
+        tabInteractionRequest: tabInteractionRequest
       )
       .id("\(post.id)-\(nav.detailHighlightID ?? "root")")
       .diagnosticScreen("reddit.detail.\(post.id)")

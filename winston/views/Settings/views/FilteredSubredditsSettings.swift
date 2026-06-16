@@ -20,7 +20,7 @@ struct FilteredSubredditsSettings: View {
 
   var body: some View {
     Group {
-      List {
+      SettingsPanelScrollRoot(topID: "settings-filtered-subreddits-top") {
         Section {
           ForEach(Array(filteredSubreddits.enumerated()), id: \.element) { index, subreddit in
             Text(subreddit)
@@ -38,7 +38,6 @@ struct FilteredSubredditsSettings: View {
           }
         }
       }
-      .nativeSettingsList()
       .navigationTitle("Filtered Subreddits")
       .toolbar {
         ToolbarItem(placement: .topBarTrailing) {

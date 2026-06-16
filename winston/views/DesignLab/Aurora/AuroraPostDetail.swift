@@ -18,9 +18,14 @@ import Defaults
 import MarkdownUI
 
 struct AuroraPostDetail: View {
+  private static let topID = "aurora-post-detail-top"
+
   @ObservedObject var post: Post
   var subreddit: Subreddit
   var highlightID: String?
+  var tabInteractionTab: Nav.TabIdentifier?
+  var tabInteractions: TabInteractionCenter?
+  var tabInteractionRequest: TabInteractionRequest?
 
   @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
@@ -30,6 +35,7 @@ struct AuroraPostDetail: View {
   @State private var pendingHighlight: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
+  @State private var hasConsumedTabScrollToTop = false
 
   /// Capped inline-media height + swipe-anywhere, read ONCE here (both are codable
   /// Defaults values → each access JSON-decodes the whole struct) and threaded down.
@@ -38,11 +44,36 @@ struct AuroraPostDetail: View {
 
   @Default(.CommentLinkDefSettings) private var commentDefSettings
   @Environment(\.auroraTheme) private var theme
+  @Environment(\.tabInteractionTab) private var environmentTabInteractionTab
+  @Environment(\.tabInteractionCenter) private var environmentTabInteractions
+  @Environment(\.tabInteractionRequest) private var environmentTabInteractionRequest
 
-  init(post: Post, subreddit: Subreddit, highlightID: String? = nil) {
+  private var effectiveTabInteractionTab: Nav.TabIdentifier? {
+    tabInteractionTab ?? environmentTabInteractionTab
+  }
+
+  private var effectiveTabInteractions: TabInteractionCenter? {
+    tabInteractions ?? environmentTabInteractions
+  }
+
+  private var effectiveTabInteractionRequest: TabInteractionRequest? {
+    tabInteractionRequest ?? environmentTabInteractionRequest
+  }
+
+  init(
+    post: Post,
+    subreddit: Subreddit,
+    highlightID: String? = nil,
+    tabInteractionTab: Nav.TabIdentifier? = nil,
+    tabInteractions: TabInteractionCenter? = nil,
+    tabInteractionRequest: TabInteractionRequest? = nil
+  ) {
     self.post = post
     self.subreddit = subreddit
     self.highlightID = highlightID
+    self.tabInteractionTab = tabInteractionTab
+    self.tabInteractions = tabInteractions
+    self.tabInteractionRequest = tabInteractionRequest
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
     self.swipeAnywhere = Defaults[.BehaviorDefSettings].enableSwipeAnywhere
 
@@ -62,6 +93,13 @@ struct AuroraPostDetail: View {
         let contentWidth = max(1, geometry.size.width)
 
         List {
+          Color.clear
+            .frame(height: 0)
+            .id(Self.topID)
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+
           Section {
             if let winstonData = post.winstonData {
               if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
@@ -108,7 +146,16 @@ struct AuroraPostDetail: View {
         .toolbar { sortToolbar }
         .safeAreaInset(edge: .bottom) { composer }
         .refreshable { await fetch(true) }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.contentOffset.y
+        } action: { _, newOffsetY in
+          updateTabInteractionTopState(newOffsetY <= 4)
+        }
         .onAppear {
+          hasConsumedTabScrollToTop = false
+          if let effectiveTabInteractionTab, let effectiveTabInteractions {
+            effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, false)
+          }
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
             Task { await fetch(post.data == nil) }
@@ -124,11 +171,27 @@ struct AuroraPostDetail: View {
             pendingHighlight = nil
           }
         }
+        .onChange(of: effectiveTabInteractionRequest) { _, request in
+          guard let request else { return }
+          guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
+          hasConsumedTabScrollToTop = true
+          withAnimation(.snappy) {
+            proxy.scrollTo(Self.topID, anchor: .top)
+          }
+          if let effectiveTabInteractionTab, let effectiveTabInteractions {
+            effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, true)
+          }
+        }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild() } }
         }
       }
     }
+  }
+
+  private func updateTabInteractionTopState(_ isAtTop: Bool) {
+    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
+    effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, hasConsumedTabScrollToTop ? isAtTop : false)
   }
 
   private var commentsHeaderTitle: String {

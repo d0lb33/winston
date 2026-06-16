@@ -156,13 +156,44 @@ struct TabInteractionRequest: Equatable {
   let kind: TabInteractionRequestKind
 }
 
+private struct TabInteractionTabKey: EnvironmentKey {
+  static let defaultValue: Nav.TabIdentifier? = nil
+}
+
+private struct TabInteractionCenterKey: EnvironmentKey {
+  static let defaultValue: TabInteractionCenter? = nil
+}
+
+private struct TabInteractionRequestKey: EnvironmentKey {
+  static let defaultValue: TabInteractionRequest? = nil
+}
+
+extension EnvironmentValues {
+  var tabInteractionTab: Nav.TabIdentifier? {
+    get { self[TabInteractionTabKey.self] }
+    set { self[TabInteractionTabKey.self] = newValue }
+  }
+
+  var tabInteractionCenter: TabInteractionCenter? {
+    get { self[TabInteractionCenterKey.self] }
+    set { self[TabInteractionCenterKey.self] = newValue }
+  }
+
+  var tabInteractionRequest: TabInteractionRequest? {
+    get { self[TabInteractionRequestKey.self] }
+    set { self[TabInteractionRequestKey.self] = newValue }
+  }
+}
+
 @MainActor
 final class TabInteractionCenter: ObservableObject {
   @Published private(set) var requests: [Nav.TabIdentifier: TabInteractionRequest] = [:]
 
   private var isAtTopByTab: [Nav.TabIdentifier: Bool] = [:]
   private var lastTap: (tab: Nav.TabIdentifier, date: Date)?
+  private var lastReselectEvent: (tab: Nav.TabIdentifier, date: Date)?
   private let doubleTapInterval: TimeInterval = 0.3
+  private let duplicateEventInterval: TimeInterval = 0.05
 
   func selectedTabChanged(to tab: Nav.TabIdentifier) {
     lastTap = nil
@@ -175,6 +206,14 @@ final class TabInteractionCenter: ObservableObject {
 
   func selectedTabTappedAgain(_ tab: Nav.TabIdentifier) {
     let now = Date()
+    if let lastReselectEvent,
+       lastReselectEvent.tab == tab,
+       now.timeIntervalSince(lastReselectEvent.date) <= duplicateEventInterval {
+      return
+    }
+
+    lastReselectEvent = (tab, now)
+
     if let lastTap,
        lastTap.tab == tab,
        now.timeIntervalSince(lastTap.date) <= doubleTapInterval {

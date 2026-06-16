@@ -22,6 +22,11 @@ enum PostRefreshResult {
   case failed(String)
 }
 
+private struct SeenPostSnapshot {
+  let count: Int
+  let comments: String?
+}
+
 @MainActor
 private final class PostRefreshCoordinator {
   static let shared = PostRefreshCoordinator()
@@ -221,15 +226,10 @@ extension Post {
   
   static func initMultiple(datas: [T], sub: Subreddit? = nil, contentWidth: CGFloat = 0) -> [Post] {
     let context = PersistenceController.shared.container.newBackgroundContext()
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
     let theme = getEnabledTheme()
+    let postIDs = Set(datas.map(\.id))
 
-    let seenPosts = context.performAndWait {
-      ((try? context.fetch(fetchRequest)) ?? []).reduce(into: [String: (count: Int, comments: String?)]()) { seenPosts, seenPost in
-        guard let postID = seenPost.postID else { return }
-        seenPosts[postID] = (Int(seenPost.numComments), seenPost.seenComments)
-      }
-    }
+    let seenPosts = seenPostSnapshots(for: postIDs, context: context)
 
     let posts = Array(datas.enumerated()).map { i, data in
       let seenPost = seenPosts[data.id]
@@ -305,6 +305,21 @@ extension Post {
     )
     Post.prefetcher.startPrefetching(with: imgRequests)
     return posts
+  }
+
+  private static func seenPostSnapshots(for postIDs: Set<String>, context: NSManagedObjectContext) -> [String: SeenPostSnapshot] {
+    let postIDs = postIDs.filter { !$0.isEmpty }
+    guard !postIDs.isEmpty else { return [:] }
+
+    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+    fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(postIDs))
+
+    return context.performAndWait {
+      ((try? context.fetch(fetchRequest)) ?? []).reduce(into: [String: SeenPostSnapshot]()) { seenPosts, seenPost in
+        guard let postID = seenPost.postID else { return }
+        seenPosts[postID] = SeenPostSnapshot(count: Int(seenPost.numComments), comments: seenPost.seenComments)
+      }
+    }
   }
   
   static func saveFlairsFromPosts(sub: Subreddit, posts: [Post]) {

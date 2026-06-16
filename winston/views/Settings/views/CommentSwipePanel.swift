@@ -11,7 +11,7 @@ import Defaults
 struct CommentSwipePanel: View {
   @Default(.CommentLinkDefSettings) private var commentLinkDefSettings
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-comment-swipe-top") {
       
       Section {
         Group {
@@ -55,7 +55,6 @@ struct CommentSwipePanel: View {
       }
       
     }
-    .nativeSettingsList()
     .navigationTitle("Comments Swipe Settings")
     .navigationBarTitleDisplayMode(.inline)
   }

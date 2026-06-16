@@ -101,6 +101,14 @@ struct AuroraRoot: View {
     return posts.detailPost
   }
 
+  private var isFeedRootVisibleForTabInteraction: Bool {
+    posts.contentPath.isEmpty && (hSize == .regular || posts.preferredColumn == .content)
+  }
+
+  private var isDetailVisibleForTabInteraction: Bool {
+    selectedPost != nil && hSize != .regular && posts.preferredColumn == .detail
+  }
+
   var body: some View {
     @Bindable var posts = posts
 
@@ -208,7 +216,22 @@ struct AuroraRoot: View {
     guard let request else { return }
     switch request.kind {
     case .scrollToTop:
-      break
+      guard isFeedRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
+        AppDiagnostics.asyncBreadcrumb(
+          "Posts tab scroll request routed to back",
+          metadata: [
+            "preferredColumn": "\(posts.preferredColumn)",
+            "contentPathCount": "\(posts.contentPath.count)",
+            "detailPathCount": "\(posts.detailPath.count)",
+            "hasSelectedPost": "\(posts.selectedPostID != nil)",
+            "hasDetailPost": "\(posts.detailPost != nil)"
+          ]
+        )
+        if posts.goBackOneStep(), posts.preferredColumn == .sidebar {
+          tabInteractions.setIsAtTop(.posts, true)
+        }
+        return
+      }
     case .goBack:
       if posts.goBackOneStep(), posts.preferredColumn == .sidebar {
         tabInteractions.setIsAtTop(.posts, true)
@@ -282,9 +305,9 @@ struct AuroraRoot: View {
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: selectedPostID, sort: $sort,
-                 tabInteractionTab: .posts,
-                 tabInteractions: tabInteractions,
-                 tabInteractionRequest: tabInteractions.requests[.posts]) { destination in
+                 tabInteractionTab: isFeedRootVisibleForTabInteraction ? .posts : nil,
+                 tabInteractions: isFeedRootVisibleForTabInteraction ? tabInteractions : nil,
+                 tabInteractionRequest: isFeedRootVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -301,11 +324,21 @@ struct AuroraRoot: View {
         }
         .toolbar { forwardToolbarItem }
     }
+    .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? Nav.TabIdentifier.posts : nil)
+    .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)
+    .environment(\.tabInteractionRequest, isDetailVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil)
   }
 
   @ViewBuilder private var detailContent: some View {
     if let selectedPost {
-      AuroraPostDetail(post: selectedPost, subreddit: detailSubreddit(for: selectedPost), highlightID: posts.detailHighlightID)
+      AuroraPostDetail(
+        post: selectedPost,
+        subreddit: detailSubreddit(for: selectedPost),
+        highlightID: posts.detailHighlightID,
+        tabInteractionTab: isDetailVisibleForTabInteraction ? .posts : nil,
+        tabInteractions: isDetailVisibleForTabInteraction ? tabInteractions : nil,
+        tabInteractionRequest: isDetailVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil
+      )
         .id("\(selectedPost.id)-\(posts.detailHighlightID ?? "root")")
         .diagnosticScreen("aurora.post.\(selectedPost.id)")
     } else {

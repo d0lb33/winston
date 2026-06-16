@@ -26,7 +26,7 @@ struct AppearancePanel: View {
   }
 
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-appearance-top") {
       Group {
         AuroraThemePickerSection(selection: $auroraThemeID)
 
@@ -112,7 +112,6 @@ struct AppearancePanel: View {
 
       }
     }
-    .nativeSettingsList()
     .navigationTitle("Appearance")
     .navigationBarTitleDisplayMode(.inline)
   }

@@ -41,7 +41,7 @@ struct AccountsList: View {
   var selectedID: UUID?
 
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-accounts-top") {
       Section {
         ForEach(accounts) { account in
           AccountItem(account: account, inUse: account.id == selectedID)
@@ -50,7 +50,6 @@ struct AccountsList: View {
         Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
       }
     }
-    .nativeSettingsList()
     .navigationBarTitleDisplayMode(.large)
   }
 }
@@ -105,6 +104,9 @@ struct AccountItem: View {
 }
 
 struct AccountsEmptyView: View {
+  @Environment(\.settingsPanelIsTabInteractionOwner) private var isTabInteractionOwner
+  @EnvironmentObject private var tabInteractions: TabInteractionCenter
+
   var body: some View {
     VStack(spacing: 20) {
       VStack(spacing: 16) {
@@ -129,5 +131,15 @@ struct AccountsEmptyView: View {
     .multilineTextAlignment(.center)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
+    .onAppear {
+      if isTabInteractionOwner {
+        tabInteractions.setIsAtTop(.settings, true)
+      }
+    }
+    .onChange(of: isTabInteractionOwner) { _, isOwner in
+      if isOwner {
+        tabInteractions.setIsAtTop(.settings, true)
+      }
+    }
   }
 }

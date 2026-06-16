@@ -22,7 +22,7 @@ struct BehaviorPanel: View {
   
   @State private var imageAnalyzerSupport: Bool = true
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-behavior-top") {
       
       Group {
         Section("General") {
@@ -231,7 +231,6 @@ struct BehaviorPanel: View {
         
       }
     }
-    .nativeSettingsList()
     .navigationTitle("Behavior")
     .navigationBarTitleDisplayMode(.inline)
   }

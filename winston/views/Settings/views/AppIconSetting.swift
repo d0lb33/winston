@@ -11,7 +11,7 @@ struct AppIconSetting: View {
   @State private var appIconManager = AppIconManger()
   @State private var appIcon: WinstonAppIcon = .standard
   var body: some View {
-    List {
+    SettingsPanelScrollRoot(topID: "settings-app-icon-top") {
       Section {
         ForEach(WinstonAppIcon.allCases) { icon in
           HStack(spacing: 12) {
@@ -46,7 +46,6 @@ struct AppIconSetting: View {
       }
       
     }
-    .nativeSettingsList()
     .onChange(of: appIcon) { _, icon in
       appIconManager.setIcon(icon) { x in
       }

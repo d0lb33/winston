@@ -20,11 +20,63 @@ struct AppContent: View {
   
   let biometrics = Biometrics()
   @State private var isAuthenticating = false
+  @State private var hasUnlockedCurrentActiveSession = false
   @State private var tabBarHeight: Double = 0
-  @State private var lockBlur: Int = 50 // Set initial startup blur
+  @State private var lockBlur: CGFloat = 0
 
   func setTabBarHeight(_ val: Double) {
     tabBarHeight = val
+  }
+
+  private var runningOnMac: Bool {
+    #if os(macOS)
+      true
+    #else
+      false
+    #endif
+  }
+
+  private func updateLockState(for phase: ScenePhase) {
+    let useAuth = generalDefSettings.useAuth
+
+    guard useAuth && !runningOnMac else {
+      lockBlur = 0
+      isAuthenticating = false
+      hasUnlockedCurrentActiveSession = true
+      return
+    }
+
+    switch phase {
+    case .active:
+      if hasUnlockedCurrentActiveSession {
+        lockBlur = 0
+        return
+      }
+
+      guard !isAuthenticating else { return }
+
+      lockBlur = 50
+      isAuthenticating = true
+      biometrics.authenticateUser { success in
+        Task { @MainActor in
+          if success {
+            lockBlur = 0
+            hasUnlockedCurrentActiveSession = true
+          } else {
+            lockBlur = 50
+            hasUnlockedCurrentActiveSession = false
+          }
+          isAuthenticating = false
+        }
+      }
+
+    case .inactive, .background:
+      hasUnlockedCurrentActiveSession = false
+      lockBlur = 50
+
+    @unknown default:
+      break
+    }
   }
   
   var body: some View {
@@ -39,38 +91,17 @@ struct AppContent: View {
     .environment(\.useTheme, selectedTheme)
     .environment(\.auroraTheme, auroraThemeID.theme)
     .preferredColorScheme(auroraThemeID.theme.colorScheme)
-    .onAppear { themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" } }
+    .onAppear {
+      themesDefSettings.themesPresets = themesDefSettings.themesPresets.filter { $0.id != "default" }
+      updateLockState(for: scenePhase)
+    }
+    .onChange(of: generalDefSettings.useAuth) {
+      hasUnlockedCurrentActiveSession = false
+      updateLockState(for: scenePhase)
+    }
     .onChange(of: scenePhase) { _, newPhase in
       AppDiagnostics.shared.breadcrumb("Scene phase changed", metadata: ["phase": "\(newPhase)"])
-      // No auth on MacOS
-      var runningOnMac = false
-      #if os(macOS)
-        runningOnMac = true
-      #endif
-
-      let useAuth = generalDefSettings.useAuth // Get fresh value
-      
-      if (useAuth && !runningOnMac) {
-        if (!isAuthenticating && newPhase == .active && lockBlur != 0){
-          // Not authing, active and blur visible = Need to auth
-          isAuthenticating = true
-          biometrics.authenticateUser { success in
-            Task { @MainActor in
-              if success {
-                lockBlur = 0
-              }
-              isAuthenticating = false
-            }
-          }
-        }
-        else if (newPhase != .active) {
-          // Auth enabled but not active = blur
-          lockBlur = 50
-        }
-      } else {
-          // Auth not enabled = No blur
-          lockBlur = 0
-      }
+      updateLockState(for: newPhase)
       
       switch newPhase {
       case .active :
@@ -99,7 +130,7 @@ struct AppContent: View {
         print("default")
       }
     }
-    .blur(radius: CGFloat(lockBlur)) // Set lockscreen blur
+    .blur(radius: lockBlur)
     .overlay {
       DiagnosticsHUD()
     }
