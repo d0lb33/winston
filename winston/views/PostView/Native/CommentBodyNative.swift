@@ -44,6 +44,7 @@ struct CommentBodyNative: View {
   let cornerRadius: Double
   let maxMediaHeightScreenPercentage: CGFloat
   let diagnosticContext: String
+  var onTextTap: (() -> Void)? = nil
 
   @State private var showSpoiler = false
   @State private var postDimensions = PostDimensions.zero
@@ -56,7 +57,7 @@ struct CommentBodyNative: View {
       ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
         switch part {
         case .text(let text):
-          markdownText(text)
+          tappableMarkdownText(text)
         case .media(let url):
           if availableWidth >= 1, let media = mediaExtractor(url: url, compact: false, contentWidth: availableWidth, diagnosticContext: diagnosticContext) {
             MediaPresenter(
@@ -98,6 +99,20 @@ struct CommentBodyNative: View {
     Markdown(MarkdownUtil.formatForMarkdown(text, showSpoiler: showSpoiler))
       .markdownTheme(.winstonMarkdown(fontSize: fontSize, lineSpacing: lineSpacing))
       .fixedSize(horizontal: false, vertical: true)
+  }
+
+  @ViewBuilder private func tappableMarkdownText(_ text: String) -> some View {
+    if let onTextTap {
+      markdownText(text)
+        .overlay {
+          Rectangle()
+            .fill(.clear)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: onTextTap)
+        }
+    } else {
+      markdownText(text)
+    }
   }
 
   private static func spoilerProcessedMarkdown(_ text: String, showSpoiler: Bool) -> String {

@@ -7,8 +7,9 @@
 //  The core architectural change vs. the legacy CommentLink: instead of
 //  recursing views inside the List (which made collapse a janky bulk
 //  insert/remove of nested rows), we flatten the comment tree into a single
-//  array of visible rows. Collapsing is one animated array assignment that the
-//  List diffs cleanly via stable ids. Depth drives a leading thread-line gutter.
+//  array of visible rows. Collapsing updates only the affected row slice, and
+//  List keeps identity stable via CommentRow.id. Depth drives a leading
+//  thread-line gutter.
 //
 //  The model OWNS the root comment container. It subscribes to the container's
 //  change stream but only reassigns `rows` when the STRUCTURE actually changes
@@ -61,6 +62,20 @@ struct CommentRow: Identifiable {
       && isLastChild == other.isLastChild
       && relativeTime == other.relativeTime
   }
+
+  func withCollapseState(_ isCollapsed: Bool, hiddenReplyCount: Int) -> CommentRow {
+    CommentRow(
+      id: id,
+      comment: comment,
+      depth: depth,
+      isCollapsed: isCollapsed,
+      hiddenReplyCount: hiddenReplyCount,
+      kind: kind,
+      isLastChild: isLastChild,
+      parent: parent,
+      relativeTime: relativeTime
+    )
+  }
 }
 
 @Observable
@@ -110,14 +125,73 @@ final class CommentTreeModel {
   func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
 
   func toggleCollapse(_ id: String) {
-    if collapsed.contains(id) {
-      collapsed.remove(id)
-    } else {
-      collapsed.insert(id)
+    setCollapse(id, collapsed: !collapsed.contains(id))
+  }
+
+  func setCollapse(_ id: String, collapsed target: Bool) {
+    guard collapsed.contains(id) != target else { return }
+    guard let rowIndex = rows.firstIndex(where: { $0.id == id }), rows[rowIndex].kind == .comment else {
+      setCollapseByRecomputingRows(id, collapsed: target)
+      return
     }
-    let out = computeRows()
-    withAnimation(.snappy(duration: 0.24)) { rows = out }
+    let row = rows[rowIndex]
+    setCollapsedState(id, target)
+
+    let out = target
+      ? rows(collapsing: row, at: rowIndex)
+      : rows(expanding: row, at: rowIndex)
+
+    setRowsWithoutAnimation(out)
     schedulePersistCollapse()
+  }
+
+  private func setCollapseByRecomputingRows(_ id: String, collapsed target: Bool) {
+    setCollapsedState(id, target)
+    let out = computeRows()
+    setRowsWithoutAnimation(out)
+    schedulePersistCollapse()
+  }
+
+  private func setCollapsedState(_ id: String, _ target: Bool) {
+    if target {
+      collapsed.insert(id)
+    } else {
+      collapsed.remove(id)
+    }
+  }
+
+  private func setRowsWithoutAnimation(_ rows: [CommentRow]) {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      self.rows = rows
+    }
+  }
+
+  private func rows(collapsing row: CommentRow, at index: Int) -> [CommentRow] {
+    var out = rows
+    out[index] = row.withCollapseState(true, hiddenReplyCount: descendantCount(for: row.comment))
+
+    let firstDescendantIndex = index + 1
+    guard firstDescendantIndex < out.endIndex else { return out }
+
+    let endIndex = out[firstDescendantIndex...].firstIndex { $0.depth <= row.depth } ?? out.endIndex
+    if firstDescendantIndex < endIndex {
+      out.removeSubrange(firstDescendantIndex..<endIndex)
+    }
+    return out
+  }
+
+  private func rows(expanding row: CommentRow, at index: Int) -> [CommentRow] {
+    var out = rows
+    out[index] = row.withCollapseState(false, hiddenReplyCount: 0)
+
+    var inserted: [CommentRow] = []
+    flatten(row.comment.childrenWinston.data, depth: row.depth + 1, parent: row.comment, into: &inserted)
+    if !inserted.isEmpty {
+      out.insert(contentsOf: inserted, at: index + 1)
+    }
+    return out
   }
 
   /// Recompute the flattened visible rows. With `force == false`, the result is

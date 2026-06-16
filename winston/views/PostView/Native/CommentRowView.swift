@@ -70,21 +70,20 @@ struct CommentRowView: View {
 
   private func toggleCollapse() {
     guard !swipePresented else { return }
-    // The model decides whether to animate (small deltas) or snap (large subtrees that would
-    // otherwise hang the main thread), so don't wrap it in withAnimation here.
     model.toggleCollapse(row.id)
   }
 
   @ViewBuilder private var commentRow: some View {
     if let data = comment.data {
+      let collapsed = row.isCollapsed
       // Collapse is attached per-region (header + body) rather than to the whole
       // row, so the author name's own tap (open profile) and inline media's tap
       // (fullscreen) reliably win — mirrors the legacy CommentLinkContent.
-      VStack(alignment: .leading, spacing: row.isCollapsed ? 0 : 6) {
-        header(data)
+      VStack(alignment: .leading, spacing: collapsed ? 0 : 6) {
+        header(data, isCollapsed: collapsed)
           .contentShape(Rectangle())
           .onTapGesture { toggleCollapse() }
-        if !row.isCollapsed, let body = data.body, !body.isEmpty {
+        if !collapsed, let body = data.body, !body.isEmpty {
           CommentBodyNative(
             markdown: body,
             availableWidth: bodyWidth,
@@ -95,16 +94,15 @@ struct CommentRowView: View {
             avatarImageRequest: comment.winstonData?.avatarImageRequest,
             cornerRadius: 12,
             maxMediaHeightScreenPercentage: maxMediaHeightPct,
-            diagnosticContext: "commentNative:\(data.id)"
+            diagnosticContext: "commentNative:\(data.id)",
+            onTextTap: toggleCollapse
           )
-          .contentShape(Rectangle())
-          .onTapGesture { toggleCollapse() }
         }
       }
-      .padding(.vertical, row.isCollapsed ? 8 : 10)
+      .padding(.vertical, collapsed ? 8 : 10)
       .frame(maxWidth: .infinity, alignment: .leading)
       .accessibilityElement(children: .contain)
-      .accessibilityAction(named: row.isCollapsed ? Text("Expand thread") : Text("Collapse thread")) {
+      .accessibilityAction(named: collapsed ? Text("Expand thread") : Text("Collapse thread")) {
         toggleCollapse()
       }
     }
@@ -116,7 +114,7 @@ struct CommentRowView: View {
   // not, has-time vs not). Previously each distinct shape was a distinct generic
   // specialization, so the Swift runtime had to instantiate fresh type metadata
   // (swift_getTypeByMangledName) for each as rows scrolled in — the dominant scroll hitch.
-  private func header(_ data: CommentData) -> some View {
+  private func header(_ data: CommentData, isCollapsed: Bool) -> some View {
     let isOP = (data.is_submitter ?? false) || (opAuthor != nil && data.author == opAuthor)
     return HStack(spacing: 6) {
       // Avatar + author share a single tap target (open profile / expand-when-collapsed). The avatar
@@ -126,29 +124,29 @@ struct CommentRowView: View {
         AuroraAvatar(name: displayAuthor, avatarRequest: comment.winstonData?.avatarImageRequest, size: 22)
         Text(displayAuthor)
           .font(.subheadline.weight(.semibold))
-          .foregroundStyle(isOP ? Color.accentColor : (row.isCollapsed ? Color.secondary : Color.primary))
+          .foregroundStyle(isOP ? Color.accentColor : (isCollapsed ? Color.secondary : Color.primary))
           .lineLimit(1)
           .truncationMode(.tail)
       }
       .contentShape(Rectangle())
       .onTapGesture {
         // Collapsed: behave like the rest of the header (expand). Expanded: open profile.
-        if row.isCollapsed {
+        if isCollapsed {
           toggleCollapse()
         } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
           navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
         }
       }
       .accessibilityAddTraits(.isButton)
-      .accessibilityHint(row.isCollapsed ? "" : "Opens profile")
+      .accessibilityHint(isCollapsed ? "" : "Opens profile")
 
-      ForEach(headerChips(data, isOP: isOP)) { chip in
+      ForEach(headerChips(data, isOP: isOP, isCollapsed: isCollapsed)) { chip in
         chipView(chip)
       }
 
       Spacer(minLength: 6)
 
-      trailingAccessory(data)
+      trailingAccessory(data, isCollapsed: isCollapsed)
         .fixedSize(horizontal: true, vertical: false)
         .layoutPriority(1)
     }
@@ -160,10 +158,10 @@ struct CommentRowView: View {
     let isOP: Bool
   }
 
-  private func headerChips(_ data: CommentData, isOP: Bool) -> [HeaderChip] {
+  private func headerChips(_ data: CommentData, isOP: Bool, isCollapsed: Bool) -> [HeaderChip] {
     var chips: [HeaderChip] = []
     if isOP { chips.append(HeaderChip(id: "op", text: "OP", isOP: true)) }
-    if !row.isCollapsed, let flair = data.author_flair_text, !flair.isEmpty {
+    if !isCollapsed, let flair = data.author_flair_text, !flair.isEmpty {
       chips.append(HeaderChip(id: "flair", text: flair, isOP: false))
     }
     return chips
@@ -178,8 +176,8 @@ struct CommentRowView: View {
       .background(chip.isOP ? AnyShapeStyle(Color.accentColor.opacity(0.15)) : AnyShapeStyle(.quaternary), in: Capsule())
   }
 
-  @ViewBuilder private func trailingAccessory(_ data: CommentData) -> some View {
-    if row.isCollapsed {
+  @ViewBuilder private func trailingAccessory(_ data: CommentData, isCollapsed: Bool) -> some View {
+    if isCollapsed {
       collapsedAccessory(data)
     } else {
       HStack(spacing: 6) {
