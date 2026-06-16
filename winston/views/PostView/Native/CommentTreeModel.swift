@@ -7,7 +7,7 @@
 //  The core architectural change vs. the legacy CommentLink: instead of
 //  recursing views inside the List (which made collapse a janky bulk
 //  insert/remove of nested rows), we flatten the comment tree into a single
-//  array of visible rows. Collapsing updates only the affected row slice, and
+//  array of visible rows. Collapsing animates only the affected row slice, and
 //  List keeps identity stable via CommentRow.id. Depth drives a leading
 //  thread-line gutter.
 //
@@ -122,13 +122,11 @@ final class CommentTreeModel {
     scheduleWarmCollapseMetrics()
   }
 
-  func isCollapsed(_ id: String) -> Bool { collapsed.contains(id) }
-
   func toggleCollapse(_ id: String) {
     setCollapse(id, collapsed: !collapsed.contains(id))
   }
 
-  func setCollapse(_ id: String, collapsed target: Bool) {
+  private func setCollapse(_ id: String, collapsed target: Bool) {
     guard collapsed.contains(id) != target else { return }
     guard let rowIndex = rows.firstIndex(where: { $0.id == id }), rows[rowIndex].kind == .comment else {
       setCollapseByRecomputingRows(id, collapsed: target)
@@ -141,14 +139,14 @@ final class CommentTreeModel {
       ? rows(collapsing: row, at: rowIndex)
       : rows(expanding: row, at: rowIndex)
 
-    setRowsWithoutAnimation(out)
+    setRowsWithCollapseAnimation(out)
     schedulePersistCollapse()
   }
 
   private func setCollapseByRecomputingRows(_ id: String, collapsed target: Bool) {
     setCollapsedState(id, target)
     let out = computeRows()
-    setRowsWithoutAnimation(out)
+    setRowsWithCollapseAnimation(out)
     schedulePersistCollapse()
   }
 
@@ -160,10 +158,8 @@ final class CommentTreeModel {
     }
   }
 
-  private func setRowsWithoutAnimation(_ rows: [CommentRow]) {
-    var transaction = Transaction()
-    transaction.disablesAnimations = true
-    withTransaction(transaction) {
+  private func setRowsWithCollapseAnimation(_ rows: [CommentRow]) {
+    withAnimation(.snappy(duration: 0.18)) {
       self.rows = rows
     }
   }

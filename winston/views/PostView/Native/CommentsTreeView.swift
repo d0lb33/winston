@@ -4,7 +4,7 @@
 //
 //  Drives a single ForEach over the flattened comment rows. Must be used inside
 //  a List — each row is a List row, so large threads stay virtualized and
-//  collapse applies as a direct diff.
+//  collapse animates as a direct diff.
 //
 //  IMPORTANT: do not apply an extra `.id()` to the rows. The ForEach already
 //  identifies by CommentRow.id; an additional `.id()` that disagrees makes List

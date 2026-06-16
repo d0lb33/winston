@@ -101,6 +101,13 @@ struct CommentRowView: View {
       }
       .padding(.vertical, collapsed ? 8 : 10)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .background {
+        // Covers row chrome and spacing without putting a gesture back on CommentBodyNative.
+        Rectangle()
+          .fill(.clear)
+          .contentShape(Rectangle())
+          .onTapGesture { toggleCollapse() }
+      }
       .accessibilityElement(children: .contain)
       .accessibilityAction(named: collapsed ? Text("Expand thread") : Text("Collapse thread")) {
         toggleCollapse()

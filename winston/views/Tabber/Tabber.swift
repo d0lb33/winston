@@ -91,8 +91,7 @@ struct Tabber: View, Equatable {
     }
     .tabViewStyle(.sidebarAdaptable)
     .tabBarMinimizeBehavior(.onScrollDown)
-    .overlay {
-      TabBarOverlay {
+    .overlay {      TabBarOverlay {
         handleMeTabTap()
       }
     }
