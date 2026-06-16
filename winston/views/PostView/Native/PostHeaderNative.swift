@@ -336,6 +336,7 @@ struct CrosspostCardNative: View {
               isMediaTappable: postLinkDefSettings.isMediaTappable,
               compact: false,
               columnWidth: constrainedMediaWidth,
+              compactThumbnailSize: postLinkDefSettings.compactMode.thumbnailSize,
               maxMediaHeightPct: postLinkDefSettings.maxMediaHeightScreenPercentage,
               cornerRadius: 12,
               marksSeenOnPreview: postLinkDefSettings.lightboxReadsPost,

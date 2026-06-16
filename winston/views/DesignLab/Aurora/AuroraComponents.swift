@@ -819,6 +819,7 @@ private struct AuroraPostCardSurface: View {
           isMediaTappable: cardSettings.isMediaTappable,
           compact: false,
           columnWidth: contentWidth,
+          compactThumbnailSize: cardSettings.compactThumbnailSize,
           maxMediaHeightPct: cardSettings.maxMediaHeightPct,
           cornerRadius: theme.mediaRadius,
           marksSeenOnPreview: cardSettings.lightboxReadsPost,

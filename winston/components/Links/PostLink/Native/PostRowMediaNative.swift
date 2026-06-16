@@ -17,7 +17,6 @@
 //
 
 import SwiftUI
-import Defaults
 import NukeUI
 
 struct PostRowMediaNative: View, Equatable {
@@ -41,6 +40,7 @@ struct PostRowMediaNative: View, Equatable {
   let compact: Bool
   /// Live, measured content width (column width minus the row's horizontal padding).
   let columnWidth: CGFloat
+  let compactThumbnailSize: ThumbnailSizeModifier
   /// Pre-decoded once upstream — never read a Codable Default in a row body.
   let maxMediaHeightPct: CGFloat
   let cornerRadius: CGFloat
@@ -66,6 +66,7 @@ struct PostRowMediaNative: View, Equatable {
     isMediaTappable: Bool,
     compact: Bool,
     columnWidth: CGFloat,
+    compactThumbnailSize: ThumbnailSizeModifier,
     maxMediaHeightPct: CGFloat,
     cornerRadius: CGFloat,
     marksSeenOnPreview: Bool,
@@ -84,6 +85,7 @@ struct PostRowMediaNative: View, Equatable {
     self.isMediaTappable = isMediaTappable
     self.compact = compact
     self.columnWidth = columnWidth
+    self.compactThumbnailSize = compactThumbnailSize
     self.maxMediaHeightPct = maxMediaHeightPct
     self.cornerRadius = cornerRadius
     self.marksSeenOnPreview = marksSeenOnPreview
@@ -131,7 +133,7 @@ struct PostRowMediaNative: View, Equatable {
   }
 
   private var presenterWidth: CGFloat {
-    compact ? scaledCompactModeThumbSize(compact: true, thumbnailSize: Defaults[.PostLinkDefSettings].compactMode.thumbnailSize) : max(1, columnWidth)
+    compact ? scaledCompactModeThumbSize(compact: true, thumbnailSize: compactThumbnailSize) : max(1, columnWidth)
   }
 
   var body: some View {

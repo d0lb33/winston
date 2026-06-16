@@ -131,7 +131,9 @@ extension Post {
               Caches.streamable.addKeyValue(key: shortCode, data: { streamableCached }, expires: Date().dateByAdding(1, .day).date)
 
               let video = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
-              withAnimation {
+              var transaction = Transaction()
+              transaction.disablesAnimations = true
+              withTransaction(transaction) {
                 self.winstonData?.extractedMedia = .video(video)
                 self.winstonData?.extractedMediaForcedNormal = .video(video)
 
