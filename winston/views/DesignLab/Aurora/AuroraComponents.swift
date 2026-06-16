@@ -469,6 +469,7 @@ struct AuroraCommunityHeader: View {
 struct AuroraCardSettings: Equatable {
   var blurNSFW: Bool = true
   var isMediaTappable: Bool = true
+  var compactThumbnailSize: ThumbnailSizeModifier = .medium
   var maxMediaHeightPct: Double = 100
   var lightboxReadsPost: Bool = false
   var readOnScroll: Bool = false
@@ -478,6 +479,7 @@ struct AuroraCardSettings: Equatable {
   init(_ s: PostLinkDefSettings) {
     blurNSFW = s.blurNSFW
     isMediaTappable = s.isMediaTappable
+    compactThumbnailSize = s.compactMode.thumbnailSize
     maxMediaHeightPct = s.maxMediaHeightScreenPercentage
     lightboxReadsPost = s.lightboxReadsPost
     readOnScroll = s.readOnScroll
