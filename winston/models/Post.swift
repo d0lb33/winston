@@ -9,7 +9,7 @@ import Foundation
 import Defaults
 import SwiftUI
 import Nuke
-import CoreData
+@preconcurrency import CoreData
 import YouTubePlayerKit
 import Alamofire
 
@@ -87,7 +87,7 @@ extension Post {
       let styleOverride = feedDefSettings.postStylePerSubreddit[feedStyleKey]
       let compact = Defaults[.PostLinkDefSettings].resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact
       if self.winstonData == nil { self.winstonData = .init() }
-      
+
       self.winstonData?.permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
       
       var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
@@ -120,11 +120,13 @@ extension Post {
           extractedMedia = .video(sharedVideo)
           extractedMediaForcedNormal = .video(sharedVideo)
         } else {
+          let shortCode = streamable.shortCode
           Task(priority: .background) {
-            if let video = await self.loadStreamableMedia(streamable: streamable) {
-              Caches.streamable.addKeyValue(key: streamable.shortCode, data: { StreamableCached(url: video.url, size: video.size) }, expires: Date().dateByAdding(1, .day).date)
+            if let streamableCached = await Self.loadStreamableMedia(shortCode: shortCode) {
+              Caches.streamable.addKeyValue(key: shortCode, data: { streamableCached }, expires: Date().dateByAdding(1, .day).date)
               
               DispatchQueue.main.async {
+                let video = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
                 withAnimation {
                   self.winstonData?.extractedMedia = .video(video)
                   self.winstonData?.extractedMediaForcedNormal = .video(video)
@@ -228,9 +230,13 @@ extension Post {
     let theme = getEnabledTheme()
 
     if let results = (context.performAndWait { try? context.fetch(fetchRequest) }) {
+      let seenPosts = results.reduce(into: [String: (count: Int, comments: String?)]()) { seenPosts, seenPost in
+        guard let postID = seenPost.postID else { return }
+        seenPosts[postID] = (Int(seenPost.numComments), seenPost.seenComments)
+      }
 
       let posts = Array(datas.enumerated()).concurrentMap { i, data in
-        let isSeen = context.performAndWait { results.contains(where: { $0.postID == data.id }) }
+        let seenPost = seenPosts[data.id]
         let priorityIMap: [Int:ImageRequest.Priority] = [
           4: .veryHigh,
           9: .high,
@@ -239,16 +245,11 @@ extension Post {
         ]
         let priority = i > 19 ? .veryLow : priorityIMap[priorityIMap.keys.first { $0 > i } ?? 19]!
         let newPost = Post(data: data, sub: sub, contentWidth: contentWidth, imgPriority: i > 7 ? .veryLow : priority, theme: theme, fetchAvatar: false)
-        newPost.data?.winstonSeen = isSeen
+        newPost.data?.winstonSeen = seenPost != nil
         
-        if (isSeen) {
-          Task {
-            await context.perform {
-              let foundPost =  results.first(where: { $0.postID == data.id })
-              newPost.winstonData?.seenCommentsCount = Int(foundPost?.numComments ?? 0)
-              newPost.winstonData?.seenComments = foundPost?.seenComments
-            }
-          }
+        if let seenPost {
+          newPost.winstonData?.seenCommentsCount = seenPost.count
+          newPost.winstonData?.seenComments = seenPost.comments
         }
         
         return newPost
@@ -360,9 +361,9 @@ extension Post {
     }
   }
   
-  func loadStreamableMedia(streamable: StreamableExtracted) async -> SharedVideo? {
+  static func loadStreamableMedia(shortCode: String) async -> StreamableCached? {
     let response = await AF.request(
-      "https://api.streamable.com/videos/\(streamable.shortCode)"
+      "https://api.streamable.com/videos/\(shortCode)"
     ).serializingDecodable(StreamableAPIResponse.self).response
     
     switch response.result {
@@ -370,7 +371,7 @@ extension Post {
       if let mp4 = data.files?.mp4Mobile ?? data.files?.mp4 {
         if let videoURL = URL(string: mp4.url) {
           let size =  CGSize(width: mp4.width, height: mp4.height)
-          return SharedVideo.get(url: videoURL, size: size, downloadURL: videoURL)
+          return StreamableCached(url: videoURL, size: size)
         }
       }
     case .failure:
@@ -470,64 +471,58 @@ extension Post {
   
   func saveCommentsCount(numComments: Int) async -> Void {
     let context = PersistenceController.shared.primaryBGContext
+    let postID = self.id
+    let didCreateSeenPost = await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      let results = (try? context.fetch(fetchRequest)) ?? []
+      let foundPost = results.first(where: { obj in obj.postID == postID })
+
+      if let seenPost = foundPost {
+        seenPost.numComments = Int32(numComments)
+        try? context.save()
+        return false
+      } else {
+        let newSeenPost = SeenPost(context: context)
+        newSeenPost.postID = postID
+        newSeenPost.numComments = Int32(numComments)
+        try? context.save()
+        return true
+      }
+    }
     
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    if let results = (await context.perform(schedule: .enqueued) { try? context.fetch(fetchRequest) }) {
-      await context.perform(schedule: .enqueued) {
-        let foundPost = results.first(where: { obj in obj.postID == self.id })
-        
-        if let seenPost = foundPost {
-          seenPost.numComments = Int32(numComments)
-          try? context.save()
-          
-          DispatchQueue.main.async {
-            withAnimation {
-              self.winstonData?.seenCommentsCount = numComments
-            }
-          }
-        } else {
-          let newSeenPost = SeenPost(context: context)
-          newSeenPost.postID = self.id
-          newSeenPost.numComments = Int32(numComments)
-          try? context.save()
-          
-          DispatchQueue.main.async {
-            withAnimation {
-              self.data?.winstonSeen = true
-              self.winstonData?.seenCommentsCount = numComments
-            }
-          }
+    DispatchQueue.main.async {
+      withAnimation {
+        if didCreateSeenPost {
+          self.data?.winstonSeen = true
         }
+        self.winstonData?.seenCommentsCount = numComments
       }
     }
   }
   
   func saveSeenComments(comments: ListingData<CommentData>?) async -> Void {
     let context = PersistenceController.shared.primaryBGContext
+    let postID = self.id
     let newComments = self.getCommentIds(comments: comments)
+    let finalSeen = await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      let results = (try? context.fetch(fetchRequest)) ?? []
+      guard let seenPost = results.first(where: { obj in obj.postID == postID }) else { return nil as String? }
+      var seenComments = seenPost.seenComments ?? ""
+      newComments.forEach { id in
+        if !seenComments.contains(id) {
+          seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
+        }
+      }
+      seenPost.seenComments = seenComments
+      try? context.save()
+      return seenComments
+    }
     
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    if let results = (await context.perform(schedule: .enqueued) { try? context.fetch(fetchRequest) }) {
-      await context.perform(schedule: .enqueued) {
-        let foundPost = results.first(where: { obj in obj.postID == self.id })
-        
-        if let seenPost = foundPost {
-          var seenComments = seenPost.seenComments ?? ""
-          newComments.forEach { id in
-            if (!seenComments.contains(id)) {
-              seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
-            }
-          }
-          
-          let finalSeen = seenComments
-          seenPost.seenComments = finalSeen
-          try? context.save()
-          
-          DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            withAnimation {
-              self.winstonData?.seenComments = finalSeen
-            }
-          }
+    if let finalSeen {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+        withAnimation {
+          self.winstonData?.seenComments = finalSeen
         }
       }
     }
@@ -535,31 +530,27 @@ extension Post {
   
   func saveMoreComments(comments: [Comment]) async -> Void {
     let context = PersistenceController.shared.primaryBGContext
+    let postID = self.id
+    let newComments: [String] = comments.map { $0.data?.id ?? "" }
+    let finalSeen = await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      let results = (try? context.fetch(fetchRequest)) ?? []
+      guard let seenPost = results.first(where: { obj in obj.postID == postID }) else { return nil as String? }
+      var seenComments = seenPost.seenComments ?? ""
+      newComments.forEach { id in
+        if !seenComments.contains(id) {
+          seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
+        }
+      }
+      seenPost.seenComments = seenComments
+      try? context.save()
+      return seenComments
+    }
     
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    if let results = (await context.perform(schedule: .enqueued) { try? context.fetch(fetchRequest) }) {
-      await context.perform(schedule: .enqueued) {
-        let foundPost = results.first(where: { obj in obj.postID == self.id })
-        
-        if let seenPost = foundPost {
-          var seenComments = seenPost.seenComments ?? ""
-          let newComments: [String] = comments.map { $0.data?.id ?? "" }
-          
-          newComments.forEach { id in
-            if (!seenComments.contains(id)) {
-              seenComments += "\(seenComments.isEmpty ? "" : ",")\(id)"
-            }
-          }
-          
-          let finalSeen = seenComments
-          seenPost.seenComments = finalSeen
-          try? context.save()
-          
-          DispatchQueue.main.async {
-            withAnimation {
-              self.winstonData?.seenComments = finalSeen
-            }
-          }
+    if let finalSeen {
+      DispatchQueue.main.async {
+        withAnimation {
+          self.winstonData?.seenComments = finalSeen
         }
       }
     }

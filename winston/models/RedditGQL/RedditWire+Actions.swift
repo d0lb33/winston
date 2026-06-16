@@ -11,7 +11,7 @@ import Foundation
 import RedditPOC
 import Defaults
 import SwiftUI
-import CoreData
+@preconcurrency import CoreData
 import Nuke
 import NukeUI
 
@@ -230,24 +230,28 @@ extension RedditWire {
       .map { ListingChild<SubredditData>(kind: "t5", data: $0) }
       .filter { $0.data?.subreddit_type != "user" }
     let context = PersistenceController.shared.container.viewContext
-    let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
-    fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
-    let results = (context.performAndWait { try? context.fetch(fetchRequest) }) ?? []
-    results.forEach { cachedSub in
-      context.performAndWait {
-        if !finalSubs.contains(where: { cachedSub.uuid == $0.data?.name }) { context.delete(cachedSub) }
-      }
-    }
     await context.perform(schedule: .enqueued) {
-      cleanSubs(finalSubs).compactMap { $0.data }.forEach { x in
+      let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
+      fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
+      let results = (try? context.fetch(fetchRequest)) ?? []
+      let cleanSubData = cleanSubs(finalSubs).compactMap { $0.data }
+      let cleanSubNames = Set(cleanSubData.map(\.name))
+
+      results.forEach { cachedSub in
+        if let uuid = cachedSub.uuid, !cleanSubNames.contains(uuid) {
+          context.delete(cachedSub)
+        }
+      }
+
+      cleanSubData.forEach { x in
         if let found = results.first(where: { $0.uuid == x.name }) {
           found.update(data: x, credentialID: accountID)
         } else {
           _ = CachedSub(data: x, context: context, credentialID: accountID)
         }
       }
+      try? context.save()
     }
-    await context.perform(schedule: .enqueued) { try? context.save() }
   }
 }
 
@@ -440,24 +444,25 @@ extension RedditWire {
       let multis = (resp.data?.rawData).map(Self.multiDatas(from:)) ?? []
       status = "multis → \(multis.count)"
       let context = PersistenceController.shared.container.newBackgroundContext()
-      let multisFetchRequest = NSFetchRequest<CachedMulti>(entityName: "CachedMulti")
-      multisFetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
-      let multisResults = (context.performAndWait { try? context.fetch(multisFetchRequest) }) ?? []
-      context.performAndWait {
+      await context.perform(schedule: .enqueued) {
+        let multisFetchRequest = NSFetchRequest<CachedMulti>(entityName: "CachedMulti")
+        multisFetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@", accountID as CVarArg)
+        let multisResults = (try? context.fetch(multisFetchRequest)) ?? []
+        let multiIDs = Set(multis.map(\.id))
         multisResults.forEach { cached in
-          if !multis.contains(where: { cached.uuid == $0.id }) { context.delete(cached) }
+          if let uuid = cached.uuid, !multiIDs.contains(uuid) {
+            context.delete(cached)
+          }
         }
-      }
-      multis.forEach { data in
-        context.performAndWait {
+        multis.forEach { data in
           if let found = multisResults.first(where: { $0.uuid == data.id }) {
             found.update(data, credentialID: accountID)
           } else {
             _ = CachedMulti(data: data, context: context, credentialID: accountID)
           }
         }
+        try? context.save()
       }
-      await context.perform(schedule: .enqueued) { try? context.save() }
     } catch {
       status = "multis failed: \(describeError(error))"
     }

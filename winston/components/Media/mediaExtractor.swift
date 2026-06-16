@@ -60,7 +60,7 @@ struct StreamableExtracted: Equatable {
   }
 }
 
-struct StreamableCached: Equatable {
+struct StreamableCached: Equatable, Sendable {
   static func == (lhs: StreamableCached, rhs: StreamableCached) -> Bool {
     lhs.url == rhs.url && lhs.size == rhs.size
   }

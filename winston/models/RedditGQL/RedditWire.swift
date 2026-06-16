@@ -232,7 +232,7 @@ final class RedditWire: ObservableObject {
   /// legacy unkeyed keychain blob) into the new keyed multi-account world.
   private func migrateLegacyAccountIfNeeded() async {
     guard Defaults[.graphQLAccounts].isEmpty, let legacy = Defaults[.graphQLAccount] else { return }
-    try? await store.migrateLegacy(to: legacy.id)
+    _ = try? await store.migrateLegacy(to: legacy.id)
     Defaults[.graphQLAccounts] = [legacy]
   }
 

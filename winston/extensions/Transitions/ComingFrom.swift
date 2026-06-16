@@ -38,7 +38,6 @@ struct ComeFromBotTrans: ViewModifier {
   }
   
   func body(content: Content) -> some View {
-    let hor = side == .leading || side == .trailing
     content
       .scaleEffect(isActive ? 1 : 0.01, anchor: edgeToUnit(side))
       .opacity(isActive ? 1 : 0)

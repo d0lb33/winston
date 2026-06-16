@@ -157,9 +157,9 @@ struct MultiPostsView: View {
         let filteredPosts = visiblePosts(posts.data)
 
         ForEach(filteredPosts) { post in
-          AuroraPostCardRow(post: post, availableRowWidth: rowWidth) {
+          AuroraPostCardRow(post: post, availableRowWidth: rowWidth, onSelect: {
             navigateRedditDestination(.reddit(.post(post)), model: redditNavigationModel, origin: redditNavigationOrigin)
-          }
+          })
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))

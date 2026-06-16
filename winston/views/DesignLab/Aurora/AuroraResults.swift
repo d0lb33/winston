@@ -58,9 +58,9 @@ struct AuroraPostResultRow: View {
   let select: (Post) -> Void
 
   var body: some View {
-    AuroraPostCardRow(post: post, availableRowWidth: availableRowWidth) {
+    AuroraPostCardRow(post: post, availableRowWidth: availableRowWidth, onSelect: {
       select(post)
-    }
+    })
   }
 }
 

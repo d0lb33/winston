@@ -88,8 +88,13 @@ private struct InboxNotificationRow: View {
         }
         
         HStack(spacing: 8) {
+          let displaySource: String = if let source = notification.displaySource {
+            source
+          } else {
+            "Reddit"
+          }
           Label {
-            Text(notification.displaySource ?? "Reddit")
+            Text(verbatim: displaySource)
               .lineLimit(1)
           } icon: {
             Image(systemName: notification.kindIcon)

@@ -8,6 +8,7 @@
 import SpriteKit
 import SwiftUI
 import UIKit
+import Combine
 
 let startColor = UIColor(hex: "#E9CBFB")
 let endColor = UIColor(hex: "#D9A4F9")
@@ -107,7 +108,7 @@ struct AccountSwitcherFlatennedBG: View, Equatable {
 struct AccountSwitcherGradientBackground: View, Equatable {
   static func == (lhs: AccountSwitcherGradientBackground, rhs: AccountSwitcherGradientBackground) -> Bool { true }
   
-  @State private var timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
+  private let timer = Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()
   @State private var opacities: [Double] = [1,1,1,1]
   
   var body: some View {

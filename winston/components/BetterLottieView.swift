@@ -129,7 +129,7 @@ struct BetterLottieView: View {
         }
       }
       .onReceive(NotificationCenter.default.publisher(for: UIScene.willEnterForegroundNotification)) { _ in
-        if let loopDelay {
+        if loopDelay != nil {
           playbackMode = .paused(at: .time(0))
           doThisAfter(initialDelay) { playbackMode = .playing(.fromProgress(0, toProgress: 1, loopMode: .playOnce)) }
         }

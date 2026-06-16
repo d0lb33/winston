@@ -82,15 +82,7 @@ class Nav: ObservableObject, Identifiable, Equatable {
   var activeRouter: Router { Nav.shared[activeTab] }
   private var cancellables = Set<AnyCancellable>()
 
-  
   private init(activeTab: TabIdentifier = .posts) {
-    let newSwipeAnywhereGesture: UIPanGestureRecognizer = {
-      let gesture = UIPanGestureRecognizer()
-      gesture.name = Self.swipeAnywhereGestureName
-      gesture.isEnabled = true
-      return gesture
-    }()
-    
     let id = UUID()
     self.id = id
     self.activeTab = activeTab

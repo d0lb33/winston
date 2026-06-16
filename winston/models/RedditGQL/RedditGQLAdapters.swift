@@ -129,7 +129,7 @@ extension PostData {
 
       if preview == nil, let still = p.media?.still {
         applyPreview(still: still, video: video)
-      } else if var existing = preview {
+      } else if let existing = preview {
         preview = Preview(
           images: existing.images,
           reddit_video_preview: RedditVideoPreview(
@@ -289,7 +289,7 @@ extension CommentData {
   private static func markdownBody(from content: RedditContent?) -> String? {
     guard let content else { return nil }
     let media = content.richtextMedia ?? []
-    var markdown = content.markdown ?? content.preview
+    let markdown = content.markdown ?? content.preview
 
     if var markdown, !media.isEmpty {
       for item in media {

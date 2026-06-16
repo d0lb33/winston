@@ -87,7 +87,7 @@ final class SavedListsStore {
     if let limit {
       request.fetchLimit = limit
     }
-    return ((try? context.fetch(request)) as? [SavedList] ?? []).compactMap(Self.summary)
+    return (try? context.fetch(request))?.compactMap(Self.summary) ?? []
   }
 
   func listSummary(id: UUID) -> SavedListSummary? {
@@ -113,7 +113,7 @@ final class SavedListsStore {
     if let limit {
       request.fetchLimit = limit
     }
-    return ((try? context.fetch(request)) as? [SavedList] ?? []).compactMap(Self.summary)
+    return (try? context.fetch(request))?.compactMap(Self.summary) ?? []
   }
 
   func createList(named rawName: String) -> SavedListSummary? {
@@ -175,7 +175,7 @@ final class SavedListsStore {
       accountID as CVarArg,
       listID as CVarArg
     )
-    return ((try? context.fetch(request)) as? [SavedListItem] ?? []).compactMap(Self.itemSummary)
+    return (try? context.fetch(request))?.compactMap(Self.itemSummary) ?? []
   }
 
   func contains(fullname: String, in listID: UUID) -> Bool {
@@ -199,7 +199,7 @@ final class SavedListsStore {
       accountID as CVarArg,
       fullname
     )
-    let items = (try? context.fetch(request)) as? [SavedListItem] ?? []
+    let items = (try? context.fetch(request)) ?? []
     return Set(items.compactMap { $0.list?.uuid })
   }
 
@@ -332,7 +332,7 @@ final class SavedListsStore {
       accountID as CVarArg,
       id as CVarArg
     )
-    return ((try? context.fetch(request)) as? [SavedList])?.first
+    return (try? context.fetch(request))?.first
   }
 
   private func fetchList(named name: String, accountID: UUID) -> SavedList? {
@@ -343,7 +343,7 @@ final class SavedListsStore {
       accountID as CVarArg,
       name
     )
-    return ((try? context.fetch(request)) as? [SavedList])?.first
+    return (try? context.fetch(request))?.first
   }
 
   private func fetchItem(id: UUID) -> SavedListItem? {
@@ -355,7 +355,7 @@ final class SavedListsStore {
       accountID as CVarArg,
       id as CVarArg
     )
-    return ((try? context.fetch(request)) as? [SavedListItem])?.first
+    return (try? context.fetch(request))?.first
   }
 
   private func fetchItem(fullname: String, listID: UUID) -> SavedListItem? {
@@ -368,7 +368,7 @@ final class SavedListsStore {
       listID as CVarArg,
       fullname
     )
-    return ((try? context.fetch(request)) as? [SavedListItem])?.first
+    return (try? context.fetch(request))?.first
   }
 
   private func touchList(id: UUID) {

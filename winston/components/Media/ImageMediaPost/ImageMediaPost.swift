@@ -44,7 +44,7 @@ struct ImageMediaPost: View, Equatable {
   var maxMediaHeightScreenPercentage: CGFloat
   var diagnosticContext: String? = nil
 
-  @State private var fullscreenIndex: Int?
+  @State private var fullscreenSelection: ImageMediaFullscreenSelection?
   @Namespace private var mediaNS
 
   var body: some View {
@@ -62,7 +62,7 @@ struct ImageMediaPost: View, Equatable {
           maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
           diagnosticContext: diagnosticContext,
           namespace: mediaNS,
-          open: { fullscreenIndex = 0 }
+          open: { fullscreenSelection = ImageMediaFullscreenSelection(index: 0) }
         )
       } else {
         ImageMediaGalleryPreview(
@@ -71,24 +71,30 @@ struct ImageMediaPost: View, Equatable {
           contentWidth: contentWidth,
           diagnosticContext: diagnosticContext,
           namespace: mediaNS,
-          open: { fullscreenIndex = $0 }
+          open: { fullscreenSelection = ImageMediaFullscreenSelection(index: $0) }
         )
       }
     }
     .frame(maxWidth: compact ? nil : .infinity)
-    .fullScreenCover(item: $fullscreenIndex) { i in
+    .fullScreenCover(item: $fullscreenSelection) { selection in
+      let index = min(max(selection.index, 0), max(images.count - 1, 0))
       LightBoxImage(
         postTitle: postTitle,
         badgeKit: badgeKit,
         avatarImageRequest: avatarImageRequest,
         markAsSeen: markAsSeen,
-        i: min(max(i, 0), max(images.count - 1, 0)),
+        i: index,
         imagesArr: images,
         doLiveText: Defaults[.BehaviorDefSettings].doLiveText
       )
-      .navigationTransition(.zoom(sourceID: i, in: mediaNS))
+      .navigationTransition(.zoom(sourceID: selection.index, in: mediaNS))
     }
   }
+}
+
+private struct ImageMediaFullscreenSelection: Identifiable {
+  let index: Int
+  var id: Int { index }
 }
 
 private struct ImageMediaSinglePreview: View {
@@ -283,8 +289,4 @@ func scaledCompactModeThumbSize(compact: Bool = Defaults[.PostLinkDefSettings].c
   } else {
     return compactModeThumbSize
   }
-}
-
-extension Int: Identifiable {
-    public var id: Int { self }
 }

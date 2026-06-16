@@ -15,8 +15,7 @@ class WinstonAPI: ObservableObject {
 //  static let bearerToken = "2cYk@dXT!ZjXagF_-h6x"
   
   func getRequestHeaders(includeAuth: Bool = true) -> HTTPHeaders? {
-    var headers: HTTPHeaders = []
+    let headers: HTTPHeaders = []
     return headers
   }
 }
-

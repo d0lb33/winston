@@ -139,7 +139,14 @@ struct AccountSwitcherTarget: View, Equatable {
     .changeEffect(.shake(rate: .fast), value: jump)
     .background(alignment: .top) {
       VStack(spacing: 2) {
-        Text(isAddBtn ? "Add new" : account.map { "u/\($0.username)" } ?? "Unknown")
+        let label: String = if isAddBtn {
+          "Add new"
+        } else if let account {
+          "u/\(account.username)"
+        } else {
+          "Unknown"
+        }
+        Text(verbatim: label)
           .fixedSize(horizontal: true, vertical: false)
           .foregroundStyle(.primary)
           .fontSize(Self.fontSize, .semibold)

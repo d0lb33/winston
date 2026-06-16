@@ -32,7 +32,7 @@ extension Text {
                 symbolText = symbolText.foregroundColor(color)
             }
         
-            strText = symbolText + Text(" ") + strText
+            strText = Text("\(symbolText) \(strText)")
         }
         return strText
     }

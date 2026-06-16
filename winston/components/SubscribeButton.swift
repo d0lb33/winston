@@ -7,6 +7,7 @@
 
 import SwiftUI
 import Defaults
+@preconcurrency import CoreData
 
 struct SubscribeButton: View {
   @ObservedObject private var wire = RedditWire.shared

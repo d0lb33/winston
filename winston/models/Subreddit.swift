@@ -6,7 +6,7 @@
 //
 
 import Foundation
-import CoreData
+@preconcurrency import CoreData
 import Defaults
 import SwiftUI
 
@@ -78,11 +78,12 @@ extension Subreddit {
       return context.performAndWait { (try? context.fetch(fetchRequest))?.first }
     }
 
-    var cachedSub = entity ?? cachedSub(named: data.name)
+    let cachedSub = entity ?? cachedSub(named: data.name)
+    let cachedSubObjectID = cachedSub?.objectID
     let initiallyFavorited = cachedSub?.user_has_favorited ?? data.user_has_favorited ?? false
     let targetFavorited = !initiallyFavorited
 
-    func applyFavoriteState(_ favorited: Bool) {
+    @Sendable func applyFavoriteState(_ favorited: Bool) {
       var cacheData = data
       cacheData.user_has_favorited = favorited
       withAnimation {
@@ -90,10 +91,21 @@ extension Subreddit {
       }
 
       context.performAndWait {
-        if let cachedSub {
-          cachedSub.user_has_favorited = favorited
+        let existingCachedSub: CachedSub?
+        if let cachedSubObjectID {
+          existingCachedSub = try? context.existingObject(with: cachedSubObjectID) as? CachedSub
+        } else if let currentCredentialID {
+          let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
+          fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@ AND name == %@", currentCredentialID as CVarArg, cacheData.name)
+          existingCachedSub = (try? context.fetch(fetchRequest))?.first
+        } else {
+          existingCachedSub = nil
+        }
+
+        if let existingCachedSub {
+          existingCachedSub.user_has_favorited = favorited
         } else if favorited, let currentCredentialID, cacheData.user_is_subscriber == true {
-          cachedSub = CachedSub(data: cacheData, context: context, credentialID: currentCredentialID)
+          _ = CachedSub(data: cacheData, context: context, credentialID: currentCredentialID)
         }
         try? context.save()
       }
@@ -129,22 +141,22 @@ extension Subreddit {
       @Sendable func applySubscriptionState(_ subscribed: Bool, data stateData: SubredditData) {
         var cacheData = stateData
         cacheData.user_is_subscriber = subscribed
-        let foundSub = cachedSub(named: stateData.name)
-        
         withAnimation {
           self.data = cacheData
         }
 
-        if subscribed {
-          context.performAndWait {
+        context.performAndWait {
+          let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
+          fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@ AND name == %@", currentCredentialID as CVarArg, stateData.name)
+          let foundSub = (try? context.fetch(fetchRequest))?.first
+
+          if subscribed {
             if let foundSub {
               foundSub.update(data: cacheData, credentialID: currentCredentialID)
             } else {
               _ = CachedSub(data: cacheData, context: context, credentialID: currentCredentialID)
             }
-          }
-        } else if let foundSub {
-          context.performAndWait {
+          } else if let foundSub {
             context.delete(foundSub)
           }
         }

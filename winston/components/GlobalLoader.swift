@@ -11,8 +11,14 @@ import SwiftUI
 struct GlobalLoaderView: View {
   var loader: GlobalLoader?
   var body: some View {
+    let loadingText = loader?.loadingText
+    let displayText: String = if let loadingText {
+      loadingText
+    } else {
+      "Done!"
+    }
     HStack(spacing: 8) {
-      if loader?.loadingText == nil {
+      if loadingText == nil {
         Image(systemName: "checkmark.circle.fill")
           .transition(.scaleAndBlur)
           .foregroundColor(.green)
@@ -22,11 +28,11 @@ struct GlobalLoaderView: View {
           .transition(.scaleAndBlur)
       }
       
-      Text(loader?.loadingText ?? "Done!")
-        .foregroundColor(loader?.loadingText == nil ? .green : .teal)
+      Text(verbatim: displayText)
+        .foregroundColor(loadingText == nil ? .green : .teal)
         .fontSize(15, .semibold)
         .transition(.asymmetric(insertion: .move(edge: .bottom), removal: .move(edge: .top)).combined(with: .opacity))
-        .id(loader?.loadingText ?? "Done!")
+        .id(displayText)
       
     }
     .padding(.horizontal, 12)

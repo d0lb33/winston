@@ -8,7 +8,7 @@
 import Foundation
 import Defaults
 import SwiftUI
-import CoreData
+@preconcurrency import CoreData
 
 func updatePostsInBox(force: Bool = false) async {
   let postsInBox = Defaults[.postsInBox]
@@ -35,19 +35,21 @@ func updatePostsInBox(force: Bool = false) async {
     })
     
     let context = PersistenceController.shared.container.newBackgroundContext()
-    let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
-    if let results = (await context.perform(schedule: .enqueued) { try? context.fetch(fetchRequest) }) {
-      await context.perform(schedule: .enqueued) {
-        newPostsInBox = postsInBox.map({ post in
-          var newPost = post
-          
-          if let foundPost = results.first(where: { obj in obj.postID == post.id }), let numComments = post.commentsCount {
-            newPost.newCommentsCount = numComments - Int(foundPost.numComments)
-          }
-          
-          return newPost
-        })
+    let seenCommentCounts = await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+      let results = (try? context.fetch(fetchRequest)) ?? []
+      return results.reduce(into: [String: Int32]()) { counts, seenPost in
+        guard let postID = seenPost.postID else { return }
+        counts[postID] = seenPost.numComments
       }
+    }
+
+    newPostsInBox = newPostsInBox.map { post in
+      var newPost = post
+      if let seenCount = seenCommentCounts[post.id], let numComments = post.commentsCount {
+        newPost.newCommentsCount = numComments - Int(seenCount)
+      }
+      return newPost
     }
     
     await MainActor.run { [newPostsInBox] in
