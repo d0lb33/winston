@@ -9,9 +9,10 @@ import Foundation
 import SwiftUI
 
 struct GlobalLoaderView: View {
-  var loader: GlobalLoader?
+  var loader: GlobalLoaderModel
+
   var body: some View {
-    let loadingText = loader?.loadingText
+    let loadingText = loader.loadingText
     let displayText: String = if let loadingText {
       loadingText
     } else {
@@ -42,49 +43,53 @@ struct GlobalLoaderView: View {
     .frame(maxWidth: .infinity)
     .compositingGroup()
     .scaleEffect(1)
-    .offset(y: !(loader?.showing ?? false) ? 75 : -62)
+    .offset(y: !loader.showing ? 75 : -62)
   }
 }
 
-struct GlobalLoader {
+@MainActor
+@Observable
+final class GlobalLoaderModel {
   var loadingText: String?
   var showing = false
-}
+  private var generation = 0
 
-struct GlobalLoaderProviderModifier: ViewModifier {
-  @State private var loader: GlobalLoader? = nil
-  
-  func enable(_ str: String) {
-    self.loader = GlobalLoader(loadingText: str, showing: true)
-    //    doThisAfter(0.0) {
-    //      withAnimation(spring) {
-    //        self.showing = true
-    //      }
-    //    }
+  func start(_ str: String) {
+    generation += 1
+    loadingText = str
+    showing = true
   }
-  
+
   func dismiss() {
+    let dismissGeneration = generation
     let heavy = UIImpactFeedbackGenerator(style: .heavy)
     let soft = UIImpactFeedbackGenerator(style: .rigid)
     heavy.prepare()
     soft.prepare()
     withAnimation(.easeOut) {
-      self.loader?.loadingText = nil
+      loadingText = nil
     }
     heavy.impactOccurred()
     doThisAfter(0.2) {
       soft.impactOccurred()
     }
     doThisAfter(0.75) {
-      withAnimation(spring) {
-        self.loader?.showing = false
+      Task { @MainActor in
+        guard self.generation == dismissGeneration else { return }
+        withAnimation(spring) {
+          self.showing = false
+        }
       }
     }
   }
+}
+
+struct GlobalLoaderProviderModifier: ViewModifier {
+  @State private var loader = GlobalLoaderModel()
+
   func body(content: Content) -> some View {
     content
-      .environment(\.globalLoaderStart, enable)
-      .environment(\.globalLoaderDismiss, dismiss)
+      .environment(loader)
       .overlay(
         GeometryReader { geo in
           GlobalLoaderView(loader: loader)
@@ -100,24 +105,5 @@ extension View {
   func globalLoaderProvider() -> some View {
     self
       .modifier(GlobalLoaderProviderModifier())
-  }
-}
-
-private struct GlobalLoaderDismissLoadingKey: EnvironmentKey {
-  static let defaultValue = {}
-}
-
-private struct GlobalLoaderStartLoadingKey: EnvironmentKey {
-  static let defaultValue: (String) -> () = { _ in }
-}
-
-extension EnvironmentValues {
-  var globalLoaderStart: (String) -> () {
-    get { self[GlobalLoaderStartLoadingKey.self] }
-    set { self[GlobalLoaderStartLoadingKey.self] = newValue }
-  }
-  var globalLoaderDismiss: () -> () {
-    get { self[GlobalLoaderDismissLoadingKey.self] }
-    set { self[GlobalLoaderDismissLoadingKey.self] = newValue }
   }
 }

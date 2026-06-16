@@ -21,12 +21,8 @@ struct AppContent: View {
   let biometrics = Biometrics()
   @State private var isAuthenticating = false
   @State private var hasUnlockedCurrentActiveSession = false
-  @State private var tabBarHeight: Double = 0
+  @State private var tabBarMetrics = TabBarMetrics()
   @State private var lockBlur: CGFloat = 0
-
-  func setTabBarHeight(_ val: Double) {
-    tabBarHeight = val
-  }
 
   private var runningOnMac: Bool {
     #if os(macOS)
@@ -86,8 +82,8 @@ struct AppContent: View {
       }
     }
     .whatsNewSheet()
-    .environment(\.tabBarHeight, tabBarHeight)
-    .environment(\.setTabBarHeight, setTabBarHeight)
+    .globalLoaderProvider()
+    .environment(tabBarMetrics)
     .environment(\.useTheme, selectedTheme)
     .environment(\.auroraTheme, auroraThemeID.theme)
     .preferredColorScheme(auroraThemeID.theme.colorScheme)

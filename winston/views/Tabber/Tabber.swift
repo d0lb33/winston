@@ -16,12 +16,11 @@ struct Tabber: View, Equatable {
   @ObservedObject private var wire = RedditWire.shared
   @StateObject private var tabInteractions = TabInteractionCenter()
   
-  @State private var tabBarHeight: Double? = nil
   @State private var tabReselectDetectionEnabled = false
   
   @Environment(\.useTheme) private var currentTheme
   @Environment(\.colorScheme) private var colorScheme
-  @Environment(\.setTabBarHeight) private var setTabBarHeight
+  @Environment(TabBarMetrics.self) private var tabBarMetrics
   @Default(.AppearanceDefSettings) private var appearanceDefSettings
   
   init(theme: WinstonTheme) {
@@ -64,7 +63,7 @@ struct Tabber: View, Equatable {
         SubredditsStack(router: nav[.posts])
       }
       .id("posts-\(accountScopeKey)")
-      .measureTabBar(setTabBarHeight)
+      .measureTabBar(tabBarMetrics)
       .tag(Nav.TabIdentifier.posts)
       .tabItem { Label("Posts", systemImage: "doc.text.image") }
       
@@ -72,7 +71,7 @@ struct Tabber: View, Equatable {
         Inbox(router: nav[.inbox])
       }
       .id("inbox-\(accountScopeKey)")
-      .measureTabBar(setTabBarHeight)
+      .measureTabBar(tabBarMetrics)
       .tag(Nav.TabIdentifier.inbox)
       .tabItem { Label("Inbox", systemImage: "bell.fill") }
       
@@ -80,7 +79,7 @@ struct Tabber: View, Equatable {
         Me(router: nav[.me])
       }
       .id("me-\(accountScopeKey)")
-      .measureTabBar(setTabBarHeight)
+      .measureTabBar(tabBarMetrics)
       .tag(Nav.TabIdentifier.me)
       .tabItem { Label(appearanceDefSettings.showUsernameInTabBar ? wire.me?.data?.name ?? "Me" : "Me", systemImage: "person.fill") }
 //      
@@ -88,12 +87,12 @@ struct Tabber: View, Equatable {
         Search(router: nav[.search])
       }
       .id("search-\(accountScopeKey)")
-      .measureTabBar(setTabBarHeight)
+      .measureTabBar(tabBarMetrics)
       .tag(Nav.TabIdentifier.search)
       .tabItem { Label("Search", systemImage: "magnifyingglass") }
       
       Settings(router: nav[.settings])
-        .measureTabBar(setTabBarHeight)
+        .measureTabBar(tabBarMetrics)
         .tag(Nav.TabIdentifier.settings)
         .tabItem { Label("Settings", systemImage: "gearshape.fill") }
       
@@ -111,7 +110,6 @@ struct Tabber: View, Equatable {
     }
     .openFromWebListener()
     .clipboardRedditLinkListener()
-    .globalLoaderProvider()
     .task(priority: .background) {
       migrateOldDefaults()
       cleanCredentialOrphanEntities()

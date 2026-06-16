@@ -117,8 +117,7 @@ struct ReplyModal<Content: View>: View {
   @State private var selection: PresentationDetent = .medium
   @Environment(\.useTheme) private var selectedTheme
   @FetchRequest(sortDescriptors: []) var drafts: FetchedResults<ReplyDraft>
-  @Environment(\.globalLoaderStart) private var globalLoaderStart
-  @Environment(\.globalLoaderDismiss) private var globalLoaderDismiss
+  @Environment(GlobalLoaderModel.self) private var globalLoader
   @ObservedObject var wire = RedditWire.shared
   
   init(title: String = "Replying", loadingLabel: String = "Commenting...", submitBtnLabel: String = "Send", thingFullname: String, action: @escaping (@escaping (Bool) -> Void, String) -> Void, text: String? = nil, content: (() -> Content)?) {
@@ -169,9 +168,9 @@ struct ReplyModal<Content: View>: View {
           withAnimation(spring) {
             dismiss()
           }
-          globalLoaderStart(loadingLabel)
+          globalLoader.start(loadingLabel)
           action({ result in
-            globalLoaderDismiss()
+            globalLoader.dismiss()
             if result {
               if let currentDraft = currentDraft {
                 viewContext.delete(currentDraft)

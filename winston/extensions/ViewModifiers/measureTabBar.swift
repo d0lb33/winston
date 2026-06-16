@@ -8,20 +8,22 @@
 import SwiftUI
 
 struct TabBarMeasurerAccessor: UIViewControllerRepresentable {
-  var setTabBarHeight: (Double) -> Void
+  var tabBarMetrics: TabBarMetrics
   private let proxyController = ViewController()
   
   func makeUIViewController(context: UIViewControllerRepresentableContext<TabBarMeasurerAccessor>) -> UIViewController {
-    proxyController.callback = setTabBarHeight
+    proxyController.tabBarMetrics = tabBarMetrics
     return proxyController
   }
   
-  func updateUIViewController(_ uiViewController: UIViewController, context: UIViewControllerRepresentableContext<TabBarMeasurerAccessor>) { }
+  func updateUIViewController(_ uiViewController: UIViewController, context: UIViewControllerRepresentableContext<TabBarMeasurerAccessor>) {
+    proxyController.tabBarMetrics = tabBarMetrics
+  }
   
   typealias UIViewControllerType = UIViewController
   
   private class ViewController: UIViewController {
-    var callback: (Double) -> Void = { _ in }
+    var tabBarMetrics: TabBarMetrics?
     private var lastHeight: Double?
     
     override func viewWillAppear(_ animated: Bool) {
@@ -43,7 +45,7 @@ struct TabBarMeasurerAccessor: UIViewControllerRepresentable {
         }
         lastHeight = height
         DispatchQueue.main.async {
-          self.callback(height)
+          self.tabBarMetrics?.setHeight(height)
         }
       }
     }
@@ -51,8 +53,8 @@ struct TabBarMeasurerAccessor: UIViewControllerRepresentable {
 }
 
 extension View {
-  func measureTabBar(_ setTabBarHeight: @escaping (Double) -> Void) -> some View {
+  func measureTabBar(_ tabBarMetrics: TabBarMetrics) -> some View {
     self
-      .background(TabBarMeasurerAccessor(setTabBarHeight: setTabBarHeight).allowsHitTesting(false))
+      .background(TabBarMeasurerAccessor(tabBarMetrics: tabBarMetrics).allowsHitTesting(false))
   }
 }

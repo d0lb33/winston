@@ -22,8 +22,7 @@ struct PostView: View, Equatable {
   @Default(.PostPageDefSettings) private var defSettings
   @Default(.CommentsSectionDefSettings) var commentsSectionDefSettings
   @Environment(\.useTheme) private var selectedTheme
-  @Environment(\.globalLoaderStart) private var globalLoaderStart
-  @Environment(\.globalLoaderDismiss) private var globalLoaderDismiss
+  @Environment(GlobalLoaderModel.self) private var globalLoader
   @State private var ignoreSpecificComment = false
   @State private var hideElements = true
   @State private var sort: CommentSortOption
@@ -204,7 +203,7 @@ struct PostView: View, Equatable {
             if !ignoreSpecificComment && highlightID != nil {
               Section {
                 Button {
-                  globalLoaderStart("Loading full post...")
+                  globalLoader.start("Loading full post...")
                   withAnimation {
                     ignoreSpecificComment = true
                   }
@@ -260,7 +259,7 @@ struct PostView: View, Equatable {
           )
           Task {
             await asyncFetch(post.data == nil)
-            globalLoaderDismiss()
+            globalLoader.dismiss()
           }
           if val {
             withAnimation(spring) {

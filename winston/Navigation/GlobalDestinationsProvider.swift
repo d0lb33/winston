@@ -10,8 +10,6 @@ import Defaults
 
 struct GlobalDestinationsProvider<C: View>: View {
   @ObservedObject private var nav = Nav.shared
-  
-  @Environment(\.tabBarHeight) private var tabBarHeight
 
   @ViewBuilder var content: () -> C
   var body: some View {
@@ -27,7 +25,6 @@ struct GlobalDestinationsProvider<C: View>: View {
             case .onboarding: OnboardingGraphQL()
             }
           }
-          .environment(\.tabBarHeight, tabBarHeight)
           .environment(\.sheetHeight, geo.size.height)
         }
         .coordinateSpace(name: "sheet")

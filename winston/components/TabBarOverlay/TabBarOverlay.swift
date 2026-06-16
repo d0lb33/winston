@@ -12,9 +12,9 @@ import SwiftUI
 struct TabBarOverlay: View {
   var meTabTap: () -> ()
   
-  @Environment(\.tabBarHeight) private var tabBarHeight
+  @Environment(TabBarMetrics.self) private var tabBarMetrics
   var body: some View {
-    if let tabBarHeight {
+    if let tabBarHeight = tabBarMetrics.height {
       GeometryReader { geo in
         let overlaySize = CGSize(width: geo.size.width, height: max(0, (tabBarHeight)))
         let tabs = Nav.TabIdentifier.allCases

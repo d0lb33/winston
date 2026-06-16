@@ -9,13 +9,13 @@
 import SwiftUI
 
 struct NativeSettingsListModifier: ViewModifier {
-  @Environment(\.tabBarHeight) private var tabBarHeight
+  @Environment(TabBarMetrics.self) private var tabBarMetrics
 
   func body(content: Content) -> some View {
     content
       .listStyle(.insetGrouped)
       .tint(.accentColor)
-      .contentMargins(.bottom, (tabBarHeight ?? 0) + 20, for: .scrollContent)
+      .contentMargins(.bottom, (tabBarMetrics.height ?? 0) + 20, for: .scrollContent)
   }
 }
 
