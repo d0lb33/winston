@@ -427,8 +427,8 @@ final class InlineVideoCoordinator {
 
   private let warmAheadCount = 1
   private let fastScrollVelocityThreshold: CGFloat = 2_200
-  private let playVisibleThreshold: CGFloat = 0.55
-  private let pauseVisibleThreshold: CGFloat = 0.15
+  private let playVisibleThreshold: CGFloat = 0.01
+  private let pauseVisibleThreshold: CGFloat = 0.01
 
   private init() {}
 
@@ -494,8 +494,8 @@ final class InlineVideoCoordinator {
     )
   }
 
-  /// Cheap per-frame sink for row visibility. Slow scrolls may elect a mostly visible
-  /// video immediately; fast scrolls pause offscreen media but defer new mounts.
+  /// Cheap per-frame sink for row visibility. Any actually visible video is eligible;
+  /// when multiple videos are visible, the one nearest the viewport center plays.
   @discardableResult
   func updateVisibilities(_ visibilities: [InlineVideoVisibility]) -> [InlineVideoVisibility] {
     ScrollPerfProbe.shared.bump("inlineCenterUpdate")
@@ -505,11 +505,10 @@ final class InlineVideoCoordinator {
     pauseActiveIfNeeded()
 
     if isScrolling {
-      // Keep the currently active player alive until it falls below the pause threshold,
-      // but do not elect a new active row while the list is moving. Even "slow" scroll
-      // geometry can flip to fast in the same one-second window; electing here was still
-      // creating AVPlayerLayers during scroll (`playerLayerMake` in perf.scrollactivity).
-      // The scroll driver schedules election as soon as the phase returns to idle.
+      // A video that is visible to the user should play immediately, even during scroll.
+      // Keep this to the single active row: warm neighbors are still mounted only after
+      // idle, so we do not create extra off-center AVPlayerLayers while the list moves.
+      electCenteredVideo(updateWarmSet: false)
       return latestVisibilities
     }
 
