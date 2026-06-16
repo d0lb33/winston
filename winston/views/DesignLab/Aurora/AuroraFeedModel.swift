@@ -188,9 +188,7 @@ final class AuroraFeedModel {
 
     // Author avatars are fetched lazily in the background, exactly like the legacy feed.
     let avatarSize = AuroraPostPresentation.avatarSize
-    Task(priority: .background) {
-      await RedditWire.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: avatarSize)
-    }
+    RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: avatarSize)
 
     if shouldRetryEmptyInitialPage(more: more, received: newPosts.count, nextAfter: result.1) {
       retriedEmptyInitialPage = true

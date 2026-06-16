@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 
+@MainActor
 class ObservableArray<T: ObservableObject>: ObservableObject {
   @Published var data:[T] = [] {
     didSet { observeChildrenChanges() }
@@ -42,6 +43,7 @@ class ObservableArray<T: ObservableObject>: ObservableObject {
   }
 }
 
+@MainActor
 class NonObservableArray<T: ObservableObject>: ObservableObject {
   @Published var data:[T] = []
 }

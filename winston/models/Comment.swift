@@ -102,20 +102,18 @@ extension Comment {
   static func initMultiple(datas: [ListingChild<T>], parent: ObservableArray<GenericRedditEntity<T, B>>? = nil) -> [Comment] {
     let context = PersistenceController.shared.primaryBGContext
     let fetchRequest = NSFetchRequest<CollapsedComment>(entityName: "CollapsedComment")
-    if let results = (context.performAndWait { try? context.fetch(fetchRequest) }) {
-      return datas.compactMap { x in
-        context.performAndWait {
-          if let data = x.data {
-            let isCollapsed = results.contains(where: { $0.commentID == data.id })
-            let newComment = Comment.init(data: data, kind: x.kind, parent: parent)
-            newComment.data?.collapsed = isCollapsed
-            return newComment
-          }
-          return nil
-        }
-      }
+    let collapsedIDs = context.performAndWait {
+      Set(((try? context.fetch(fetchRequest)) ?? []).compactMap(\.commentID))
     }
-    return []
+    return datas.compactMap { x in
+      if let data = x.data {
+        let isCollapsed = collapsedIDs.contains(data.id)
+        let newComment = Comment.init(data: data, kind: x.kind, parent: parent)
+        newComment.data?.collapsed = isCollapsed
+        return newComment
+      }
+      return nil
+    }
   }
   
   func toggleCollapsed(_ collapsed: Bool? = nil, optimistic: Bool = false) {
@@ -233,8 +231,8 @@ extension Comment {
       )
     )
 
-    Task(priority: .background) { [loadedComments] in
-      await RedditWire.shared.updateCommentsWithAvatar(comments: loadedComments, avatarSize: avatarSize)
+    Task { @MainActor [loadedComments] in
+      RedditWire.shared.applyAvatars(toComments: loadedComments, avatarSize: avatarSize)
       await post?.saveMoreComments(comments: loadedComments)
     }
 
@@ -430,8 +428,9 @@ extension Comment {
   }
 }
 
+@MainActor
 class CommentWinstonData: Hashable, ObservableObject {
-  static func == (lhs: CommentWinstonData, rhs: CommentWinstonData) -> Bool { lhs.avatarImageRequest?.url == rhs.avatarImageRequest?.url }
+  nonisolated static func == (lhs: CommentWinstonData, rhs: CommentWinstonData) -> Bool { lhs === rhs }
   
   //  var permaURL: URL? = nil
   //  @Published var extractedMedia: MediaExtractedType? = nil
@@ -441,9 +440,8 @@ class CommentWinstonData: Hashable, ObservableObject {
   @Published var commentBodySize: CGSize = .zero
   @Published var bodyAttr: NSAttributedString?
   
-  func hash(into hasher: inout Hasher) {
-    hasher.combine(avatarImageRequest?.description)
-    hasher.combine(commentBodySize)
+  nonisolated func hash(into hasher: inout Hasher) {
+    hasher.combine(ObjectIdentifier(self))
   }
 }
 

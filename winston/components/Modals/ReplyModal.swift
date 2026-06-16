@@ -30,7 +30,7 @@ struct EditReplyModalComment: View {
   
   func action(_ endLoading: (@escaping (Bool) -> ()), text: String) {
     if let _ = comment.typePrefix {
-      Task(priority: .background) {
+      Task {
         let result = (await comment.edit(text)) ?? false
         await MainActor.run {
           withAnimation(spring) {
@@ -53,7 +53,7 @@ struct ReplyModalComment: View {
   
   func action(_ endLoading: (@escaping (Bool) -> ()), text: String) {
     if let _ = comment.typePrefix {
-      Task(priority: .background) {
+      Task {
         let result = await comment.reply(text)
         await MainActor.run {
           withAnimation(spring) {
@@ -81,7 +81,7 @@ struct ReplyModalPost: View {
   var updateComments: ((Comment)->())?
   
   func action(_ endLoading: (@escaping (Bool) -> ()), text: String) {
-    Task(priority: .background) {
+    Task {
       let result = await post.reply(text, updateComments: updateComments)
       await MainActor.run {
         withAnimation(spring) {

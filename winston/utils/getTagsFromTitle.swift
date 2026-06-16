@@ -9,6 +9,7 @@ import Foundation
 import UIKit
 import SwiftUI
 
+@MainActor
 func getTagsFromTitle(_ post: Post) -> [PrependTag] {
   var tags: [PrependTag] = []
   if let data = post.data { tags = getTagsFromTitleRaw(data) }

@@ -10,6 +10,7 @@ import Combine
 import UIKit
 import SwiftUI
 
+@MainActor
 class Nav: ObservableObject, Identifiable, Equatable {
   static let shared = Nav()
   static let router = Nav.shared.activeRouter

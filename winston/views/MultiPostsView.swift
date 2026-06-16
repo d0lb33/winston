@@ -114,9 +114,7 @@ struct MultiPostsView: View {
         lastPostAfter = result.1
         reachedEndOfFeed = newPosts.count == 0
       }
-      Task(priority: .background) {
-        await RedditWire.shared.updatePostsWithAvatar(posts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
-      }
+      RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
     }
   }
   
@@ -125,12 +123,10 @@ struct MultiPostsView: View {
 
     feedRequestInFlight = true
     loading = true
-    Task(priority: .background) {
+    Task { @MainActor in
       await asyncFetch(loadMore: loadMore)
-      await MainActor.run {
-        feedRequestInFlight = false
-        continueHidingReadPostsUntilUnread()
-      }
+      feedRequestInFlight = false
+      continueHidingReadPostsUntilUnread()
     }
   }
   
@@ -146,7 +142,7 @@ struct MultiPostsView: View {
   }
   
   func updatePostsCalcs(_ newTheme: WinstonTheme) {
-    Task(priority: .background) { posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: $0.winstonData?.subreddit, styleKey: multi.id, fetchAvatar: false) } }
+    posts.data.forEach { $0.setupWinstonData(data: $0.data, winstonData: $0.winstonData, contentWidth: contentWidth, secondary: false, theme: selectedTheme, sub: $0.winstonData?.subreddit, styleKey: multi.id, fetchAvatar: false) }
   }
   
   var body: some View {

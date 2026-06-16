@@ -300,7 +300,7 @@ struct LightBoxImage: View {
         xPos = -CGFloat(activeIndex) * (pageWidth + SPACING)
       }
       .onAppear {
-        if let markAsSeen { Task(priority: .background) { await markAsSeen() } }
+        if let markAsSeen { Task { await markAsSeen() } }
         let safeIndex = min(max(i, 0), max(imagesArr.count - 1, 0))
         xPos = -CGFloat(safeIndex) * (pageWidth + SPACING)
         activeIndex = safeIndex

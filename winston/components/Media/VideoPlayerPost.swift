@@ -303,7 +303,7 @@ struct VideoPlayerPost: View, Equatable {
 
   private func openFullscreen(_ sharedVideo: SharedVideo, branch: String) {
     recordVideoEvent(.debug, message: "Inline video tapped", sharedVideo: sharedVideo, extra: ["branch": branch])
-    if markAsSeen != nil { Task(priority: .background) { await markAsSeen?() } }
+    if markAsSeen != nil { Task { await markAsSeen?() } }
     withAnimation { fullscreen = true }
   }
 

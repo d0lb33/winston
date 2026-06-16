@@ -8,6 +8,7 @@
 import Foundation
 import Defaults
 
+@MainActor
 func checkForOnboardingStatus() {
   // Onboarding is just the reddit.com login — present it whenever there's no
   // connected account (fresh install or after a full logout).

@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import Combine
 
+@MainActor
 class ViewControllerHolder {
   let globalGesture: UIPanGestureRecognizer
   let tabBarGesture: UIPanGestureRecognizer
@@ -49,6 +50,7 @@ class ViewControllerHolder {
   }
 }
 
+@MainActor
 class Router: ObservableObject, Hashable, Equatable, Identifiable {
   let id: String
   
@@ -131,6 +133,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
   }
   
   enum NavDest: Hashable, Codable, Identifiable {
+    @MainActor
     var id: String {
       switch self {
       case .reddit(let reddit): return reddit.id
@@ -141,6 +144,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
     case setting(Setting)
     
     enum Reddit: Hashable, Codable, Identifiable {
+      @MainActor
       var id: String {
         switch self {
         case .post(let post): return post.id
@@ -182,6 +186,7 @@ class Router: ObservableObject, Hashable, Equatable, Identifiable {
 }
 
 extension Router.NavDest {
+  @MainActor
   var diagnosticsName: String {
     switch self {
     case .setting(let setting):
@@ -193,6 +198,7 @@ extension Router.NavDest {
 }
 
 extension Router.NavDest.Reddit {
+  @MainActor
   var diagnosticsName: String {
     switch self {
     case .post(let post): return "reddit.post.\(post.id)"

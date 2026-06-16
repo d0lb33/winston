@@ -9,6 +9,7 @@ import SwiftUI
 import Defaults
 
 @discardableResult
+@MainActor
 func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
   switch parsed {
   case .post(let postID, let subID):
@@ -29,6 +30,7 @@ func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
   return true
 }
 
+@MainActor
 private func openRedditDestination(_ destination: Router.NavDest) {
   if Nav.shared.activeTab != .posts {
     Nav.shared.activeTab = .posts

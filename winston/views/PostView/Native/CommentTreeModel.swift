@@ -64,6 +64,7 @@ struct CommentRow: Identifiable {
 }
 
 @Observable
+@MainActor
 final class CommentTreeModel {
   private(set) var rows: [CommentRow] = []
 

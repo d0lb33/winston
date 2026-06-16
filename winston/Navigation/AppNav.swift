@@ -49,6 +49,7 @@ enum DefaultLaunchFeed: Equatable {
     }
   }
 
+  @MainActor
   var initialSubreddit: Subreddit {
     Subreddit(id: selection ?? "popular")
   }

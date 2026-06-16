@@ -30,6 +30,7 @@ extension View {
   }
 }
 
+@MainActor
 class ReplyModalInstance: ObservableObject {
   static var shared = ReplyModalInstance()
   static private let placeholderPost = Post.placeholder()

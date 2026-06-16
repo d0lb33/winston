@@ -39,14 +39,14 @@ struct VotesCluster: View, Equatable {
   }
   
   nonisolated func upvote() {
-    Task(priority: .background) {
+    Task {
       haptic()
       _ = await voteAction(.up)
     }
   }
   
   nonisolated func downvote() {
-    Task(priority: .background) {
+    Task {
       haptic()
       _ = await voteAction(.down)
     }

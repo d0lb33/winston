@@ -27,4 +27,4 @@ func getCommentSampleData(_ withChild: Bool = true) -> CommentData {
   return commentSampleData
 }
 
-let commentSample = Comment(data: getCommentSampleData())
+@MainActor let commentSample = Comment(data: getCommentSampleData())

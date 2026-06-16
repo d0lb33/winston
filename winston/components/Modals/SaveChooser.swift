@@ -25,6 +25,7 @@ extension View {
   }
 }
 
+@MainActor
 class SaveChooserInstance: ObservableObject {
   static let shared = SaveChooserInstance()
   private static let placeholderPost = Post.placeholder()
@@ -77,6 +78,7 @@ class SaveChooserInstance: ObservableObject {
   }
 }
 
+@MainActor
 private enum SaveChooserSubject {
   case post(Post)
   case comment(Comment)

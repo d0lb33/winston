@@ -14,21 +14,18 @@ protocol GenericRedditEntityDataType: Codable, Hashable, Identifiable {
   var id: String { get }
 }
 
-class GenericRedditEntity<T: GenericRedditEntityDataType, B: Hashable>: Identifiable, Hashable, ObservableObject, Observable, Codable, _DefaultsSerializable, @unchecked Sendable {
-  func hash(into hasher: inout Hasher) {
-//    hasher.combine(data)
-//    hasher.combine(childrenWinston.data)
-    hasher.combine(id)
-    hasher.combine(typePrefix)
-//    hasher.combine(data)
+@MainActor
+class GenericRedditEntity<T: GenericRedditEntityDataType, B: Hashable>: Identifiable, Hashable, ObservableObject, Observable, Codable, _DefaultsSerializable {
+  nonisolated func hash(into hasher: inout Hasher) {
+    hasher.combine(ObjectIdentifier(self))
   }
   
   static func placeholder() -> GenericRedditEntity<T, B> {
     GenericRedditEntity<T, B>(id: "none", typePrefix: nil)
   }
   
-  static func == (lhs: GenericRedditEntity<T, B>, rhs: GenericRedditEntity<T, B>) -> Bool {
-    return lhs.id == rhs.id && lhs.kind == rhs.kind && lhs.data?.id == rhs.data?.id
+  nonisolated static func == (lhs: GenericRedditEntity<T, B>, rhs: GenericRedditEntity<T, B>) -> Bool {
+    lhs === rhs
   }
   
   @Published var data: T? {

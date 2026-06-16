@@ -19,7 +19,11 @@ extension WinstonAPI {
         .serializingDecodable(Announcement.self).response
       switch response.result {
       case .success(let data):
-        if present { Nav.present(.announcement(data)) }
+        if present {
+          await MainActor.run {
+            Nav.present(.announcement(data))
+          }
+        }
         return data
       case .failure(let error):
         print(error)

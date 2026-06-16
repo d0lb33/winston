@@ -7,6 +7,7 @@
 
 import Foundation
 
+@MainActor
 func nestComments(_ inputComments: [ListingChild<CommentData>], parentID: String) -> [Comment] {
   var rootComments: [Comment] = []
   var commentsMap: [String:Comment] = [:]

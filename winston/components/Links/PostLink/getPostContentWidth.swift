@@ -60,6 +60,7 @@ struct PostDimensions: Hashable, Equatable {
   }
 }
 
+@MainActor
 func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWidth: Double = Double(defaultContentWidth), secondary: Bool = false, rawTheme: WinstonTheme? = nil, compact: Bool? = nil, subId: String? = nil) -> PostDimensions {
   ScrollPerfProbe.shared.bump("dimensions")
   if let data = post.data {

@@ -229,7 +229,7 @@ struct UserView: View {
           feeds[tab] = state
         }
       }
-      await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: result, avatarSize: AuroraPostPresentation.avatarSize)
+      await RedditWire.shared.applyAvatars(toOverviewSubjects: result, avatarSize: AuroraPostPresentation.avatarSize)
     } else {
       await MainActor.run {
         withAnimation {
@@ -266,7 +266,7 @@ struct UserView: View {
           }
         }
         if !result.isEmpty {
-          await RedditWire.shared.updateOverviewSubjectsWithAvatar(subjects: result, avatarSize: AuroraPostPresentation.avatarSize)
+          await RedditWire.shared.applyAvatars(toOverviewSubjects: result, avatarSize: AuroraPostPresentation.avatarSize)
         }
       } else {
         await MainActor.run {
@@ -1298,6 +1298,7 @@ private func processPickedImage(_ data: Data, maxDimension: CGFloat) -> (jpeg: D
 }
 
 #if DEBUG
+@MainActor
 private func previewProfileUser() -> User {
   let dict: [String: Any] = [
     "id": "winston_dev",

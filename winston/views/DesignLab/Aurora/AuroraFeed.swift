@@ -119,7 +119,7 @@ struct AuroraFeed: View {
               }
               .onAppear {
                 if post.id == visiblePosts.last?.id {
-                  Task { await model.loadMore(sort: sort, contentWidth: contentWidth) }
+                  Task { @MainActor in await model.loadMore(sort: sort, contentWidth: contentWidth) }
                 }
               }
           }
@@ -143,17 +143,17 @@ struct AuroraFeed: View {
     .navigationBarTitleDisplayMode(.inline)
     .overlay(alignment: .bottomTrailing) {
       FeedFloatingToolbar {
-        Task { await model.hideReadPosts(sort: sort, contentWidth: contentWidth) }
+        Task { @MainActor in await model.hideReadPosts(sort: sort, contentWidth: contentWidth) }
       }
       .equatable()
       .padding(.trailing, 12)
       .padding(.bottom, 12)
     }
-    .task(id: model.feedIdentity) {
+    .task(id: model.feedIdentity) { @MainActor in
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onChange(of: sort) { _, newSort in
-      Task { await model.reload(sort: newSort, contentWidth: contentWidth) }
+      Task { @MainActor in await model.reload(sort: newSort, contentWidth: contentWidth) }
     }
     .toolbar { sortToolbar }
   }

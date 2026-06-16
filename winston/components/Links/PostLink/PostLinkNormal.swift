@@ -50,7 +50,7 @@ struct PostLinkClean: View, Equatable, Identifiable {
   var inlineVideoFeedKey: String { inlineVideoKeyOverride ?? id }
 
   func markAsRead() async {
-    Task(priority: .background) { await post.toggleSeen(true) }
+    await post.toggleSeen(true)
   }
 
   func openPost() {
@@ -239,7 +239,7 @@ struct PostLinkNormal: View, Equatable, Identifiable {
   var inlineVideoFeedKey: String { inlineVideoKeyOverride ?? id }
 
   func markAsRead() async {
-    Task(priority: .background) { await post.toggleSeen(true) }
+    await post.toggleSeen(true)
   }
 
   func openPost() {

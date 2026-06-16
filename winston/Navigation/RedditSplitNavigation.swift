@@ -19,6 +19,7 @@ enum RedditForwardRoute: Hashable {
   case detail(Router.NavDest)
   case destination(Router.NavDest)
 
+  @MainActor
   var diagnosticsName: String {
     switch self {
     case .contentColumn:

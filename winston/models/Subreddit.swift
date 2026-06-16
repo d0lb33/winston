@@ -83,7 +83,7 @@ extension Subreddit {
     let initiallyFavorited = cachedSub?.user_has_favorited ?? data.user_has_favorited ?? false
     let targetFavorited = !initiallyFavorited
 
-    @Sendable func applyFavoriteState(_ favorited: Bool) {
+    @MainActor func applyFavoriteState(_ favorited: Bool) {
       var cacheData = data
       cacheData.user_has_favorited = favorited
       withAnimation {
@@ -132,13 +132,13 @@ extension Subreddit {
     let context = PersistenceController.shared.container.viewContext
     
     if let data = data {
-      @Sendable func cachedSub(named name: String) -> CachedSub? {
+      func cachedSub(named name: String) -> CachedSub? {
         let fetchRequest = NSFetchRequest<CachedSub>(entityName: "CachedSub")
         fetchRequest.predicate = NSPredicate(format: "winstonCredentialID == %@ AND name == %@", currentCredentialID as CVarArg, name)
         return context.performAndWait { (try? context.fetch(fetchRequest))?.first }
       }
 
-      @Sendable func applySubscriptionState(_ subscribed: Bool, data stateData: SubredditData) {
+      @MainActor func applySubscriptionState(_ subscribed: Bool, data stateData: SubredditData) {
         var cacheData = stateData
         cacheData.user_is_subscriber = subscribed
         withAnimation {
@@ -271,9 +271,7 @@ extension Subreddit {
 
     let comments = savedCommentData.map { Comment(data: $0) }
     let selectedTheme = getEnabledTheme()
-    Task(priority: .background) { [comments] in
-      await RedditWire.shared.updateCommentsWithAvatar(comments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
-    }
+    RedditWire.shared.applyAvatars(toComments: comments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
 
     return (comments, nextAfter)
   }
@@ -307,13 +305,14 @@ extension Subreddit {
 //
 //}
 
+@MainActor
 class SubredditWinstonData: Hashable, ObservableObject {
-  static func == (lhs: SubredditWinstonData, rhs: SubredditWinstonData) -> Bool { lhs.flairs == rhs.flairs }
+  nonisolated static func == (lhs: SubredditWinstonData, rhs: SubredditWinstonData) -> Bool { lhs === rhs }
   
   @Published var flairs: [FilterData] = []
   
-  func hash(into hasher: inout Hasher) {
-    hasher.combine(flairs)
+  nonisolated func hash(into hasher: inout Hasher) {
+    hasher.combine(ObjectIdentifier(self))
   }
 }
 

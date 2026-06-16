@@ -88,6 +88,7 @@ enum MediaExtractedType: Equatable {
 }
 
 extension MediaExtractedType {
+  @MainActor
   var alwaysAllowsInlineNavigation: Bool {
     switch self {
     case .post, .comment, .subreddit, .user, .repost:
@@ -102,6 +103,7 @@ extension MediaExtractedType {
   /// A crosspost reports inline-video when the embedded original post has one, so the
   /// feed registers the outer row for center election (the embedded player keys off the
   /// outer post id — see PostLinkNormal's inlineVideoKeyOverride).
+  @MainActor
   var isInlineVideo: Bool {
     switch self {
     case .video, .streamable:
@@ -123,6 +125,7 @@ func isDirectMediaURL(_ rawURL: URL) -> Bool {
     || redditHostedVideoURL(from: url.absoluteString) != nil
 }
 
+@MainActor
 func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = Double(defaultContentWidth), diagnosticContext: String? = nil) -> MediaExtractedType? {
   let typeURL = rootURL(rawURL) ?? rawURL
   let url = loadableMediaURL(rawURL)
@@ -157,6 +160,7 @@ func mediaExtractor(url rawURL: URL, compact: Bool, contentWidth: Double = Doubl
 
 
 // ORDER MATTERS!
+@MainActor
 func mediaExtractor(compact: Bool, contentWidth: Double = Double(defaultContentWidth), _ data: PostData, theme: WinstonTheme? = nil) -> MediaExtractedType? {
   ScrollPerfProbe.shared.bump("mediaExtract")
   guard !data.is_self else { return nil }

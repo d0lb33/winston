@@ -19,8 +19,8 @@ import NukeUI
 
 /// GraphQL responses carry each author's icon inline (RedditAuthorInfo), so the
 /// app no longer needs a REST batch user lookup. The adapters register icons
-/// here while decoding; `RedditWire.update*WithAvatar` turns them into
-/// prefetched ImageRequests on the entities' winstonData.
+/// here while decoding; `RedditWire.applyAvatars` turns them into prefetched
+/// ImageRequests on the entities' winstonData.
 final class AvatarRegistry: @unchecked Sendable {
   static let shared = AvatarRegistry()
   private let lock = NSLock()
@@ -101,6 +101,7 @@ final class SubredditMetadataRegistry: @unchecked Sendable {
   }
 }
 
+@MainActor
 func getNamesFromComments(_ comments: [Comment]) -> [String] {
   var namesArr: [String] = []
   comments.forEach { comment in
@@ -135,7 +136,7 @@ extension RedditWire {
     return dict
   }
 
-  func updatePostsWithAvatar(posts: [Post], avatarSize: Double) async {
+  func applyAvatars(toPosts posts: [Post], avatarSize: Double) {
     let names = posts.compactMap { $0.data?.author_fullname }
     let dict = avatarRequests(names: names, avatarSize: avatarSize)
     for post in posts {
@@ -145,7 +146,7 @@ extension RedditWire {
     }
   }
 
-  func updateCommentsWithAvatar(comments: [Comment], avatarSize: Double) async {
+  func applyAvatars(toComments comments: [Comment], avatarSize: Double) {
     let names = getNamesFromComments(comments)
     let dict = avatarRequests(names: names, avatarSize: avatarSize)
     applyAvatars(dict, to: comments)
@@ -160,7 +161,7 @@ extension RedditWire {
     }
   }
 
-  func updateOverviewSubjectsWithAvatar(subjects: [Either<Post, Comment>], avatarSize: Double) async {
+  func applyAvatars(toOverviewSubjects subjects: [Either<Post, Comment>], avatarSize: Double) {
     let names: [String] = subjects.compactMap { subject in
       switch subject {
       case .first(let post): return post.data?.author_fullname

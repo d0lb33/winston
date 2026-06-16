@@ -88,9 +88,7 @@ struct PostView: View, Equatable {
           ]
         )
       )
-      Task(priority: .background) {
-        await RedditWire.shared.updateCommentsWithAvatar(comments: newComments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
-      }
+      RedditWire.shared.applyAvatars(toComments: newComments, avatarSize: selectedTheme.comments.theme.badge.avatar.size)
 
       newComments.forEach { $0.parentWinston = comments }
       withAnimation {
@@ -98,7 +96,7 @@ struct PostView: View, Equatable {
         loadingComments = false
       }
 
-      Task(priority: .background) {
+      Task {
         if let numComments = post.data?.num_comments {
           await post.saveCommentsCount(numComments: numComments)
         }
@@ -295,13 +293,13 @@ struct PostView: View, Equatable {
           }
 
 
-          Task(priority: .background) {
+          Task {
             if let numComments = post.data?.num_comments {
               await post.saveCommentsCount(numComments: numComments)
             }
           }
           
-          Task(priority: .background) {
+          Task {
             if subreddit.data == nil && subreddit.id != "home" {
               await subreddit.refreshSubreddit()
             }

@@ -53,7 +53,9 @@ final class PreviewModel: ObservableObject, Equatable {
         let image = og[.image]?.escape
         if let image, let imgURL = URL(string: image) {
           let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
-          Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: CGSize(width: imageSize, height: imageSize))], priority: .veryLow)])
+          await MainActor.run {
+            Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: CGSize(width: imageSize, height: imageSize))], priority: .veryLow)])
+          }
         }
         await MainActor.run {
           withAnimation {

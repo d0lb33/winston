@@ -58,9 +58,9 @@ struct AnySwipeAction: Codable, Defaults.Serializable, Identifiable, Hashable, E
   var color: SwipeActionItem { return base.color }
   var bgColor: SwipeActionItem { return base.bgColor }
   
-  let actionClosure: (Any) async -> Void
-  let activeClosure: (Any) -> Bool
-  let enabledClosure: (Any) -> Bool
+  let actionClosure: @MainActor (Any) async -> Void
+  let activeClosure: @MainActor (Any) -> Bool
+  let enabledClosure: @MainActor (Any) -> Bool
   
   private let base: Base
   
@@ -102,14 +102,17 @@ struct AnySwipeAction: Codable, Defaults.Serializable, Identifiable, Hashable, E
     try container.encode(base, forKey: .base)
   }
   
+  @MainActor
   func action(_ entity: Any) async {
     await actionClosure(entity)
   }
   
+  @MainActor
   func active(_ entity: Any) -> Bool {
     return activeClosure(entity)
   }
   
+  @MainActor
   func enabled(_ entity: Any) -> Bool {
     return enabledClosure(entity)
   }
@@ -143,9 +146,9 @@ protocol SwipeAction: Codable, Identifiable, Defaults.Serializable {
   var bgColor: SwipeActionItem { get }
   associatedtype EntityType: GenericRedditEntityDataType
   associatedtype EntityWinstonDataType: Hashable
-  func action(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) async
-  func active(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) -> Bool
-  func enabled(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) -> Bool
+  @MainActor func action(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) async
+  @MainActor func active(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) -> Bool
+  @MainActor func enabled(_ entity: GenericRedditEntity<EntityType, EntityWinstonDataType>) -> Bool
 }
 
 struct UpvotePostAction: SwipeAction {
@@ -213,9 +216,7 @@ struct FilterSubredditAction: SwipeAction {
   var bgColor = SwipeActionItem(normal: "353439")
   func action(_ entity: Post) async {
     if let subreddit = entity.data?.subreddit {
-      Task(priority: .background) {
-        await entity.toggleFilterSubreddit(subreddit)
-      }
+      await entity.toggleFilterSubreddit(subreddit)
     }
   }
   func active(_ entity: Post) -> Bool {

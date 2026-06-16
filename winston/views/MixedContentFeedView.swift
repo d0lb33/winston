@@ -29,6 +29,7 @@ struct MixedContentFeedView: View {
 
   /// The inline-video gating key (post id) for a row, or nil if the row has no inline
   /// video. Matches the feedItemKey that PostLink threads into VideoPlayerPost.
+  @MainActor
   private func inlineVideoKey(for item: Either<Post, Comment>) -> String? {
     if case .first(let post) = item, post.winstonData?.extractedMedia?.isInlineVideo == true {
       return post.id
@@ -36,16 +37,15 @@ struct MixedContentFeedView: View {
     return nil
   }
 
+  @MainActor
   func updateContentsCalcs(_ newTheme: WinstonTheme) {
-    Task(priority: .background) {
-      mixedMediaLinks.forEach {
-        switch $0 {
-        case .first(let post):
-          post.setupWinstonData(data: post.data, winstonData: post.winstonData, theme: newTheme, sub: subreddit, styleKey: subreddit?.id, fetchAvatar: false)
-        case .second(let comment):
-          comment.setupWinstonData()
-          break
-        }
+    mixedMediaLinks.forEach {
+      switch $0 {
+      case .first(let post):
+        post.setupWinstonData(data: post.data, winstonData: post.winstonData, theme: newTheme, sub: subreddit, styleKey: subreddit?.id, fetchAvatar: false)
+      case .second(let comment):
+        comment.setupWinstonData()
+        break
       }
     }
   }
@@ -97,6 +97,7 @@ struct MixedContentFeedView: View {
 }
 
 private extension Either where A == Post, B == Comment {
+  @MainActor
   var stableMixedContentID: String {
     getItemId(for: self)
   }

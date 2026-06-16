@@ -282,7 +282,7 @@ struct CommentRowView: View {
       if action.enabled(comment) {
         let active = action.active(comment)
         Button {
-          Task(priority: .background) { await action.action(comment) }
+          Task { await action.action(comment) }
         } label: {
           Label(active ? "Undo \(action.label.lowercased())" : action.label,
                 systemImage: active ? action.icon.active : action.icon.normal)

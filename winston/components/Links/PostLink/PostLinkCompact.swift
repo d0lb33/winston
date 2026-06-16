@@ -50,7 +50,7 @@ struct PostLinkCompact: View, Equatable, Identifiable {
     
   
   func markAsRead() async {
-    Task(priority: .background) { await post.toggleSeen(true) }
+    await post.toggleSeen(true)
   }
   
   func openPost() {
