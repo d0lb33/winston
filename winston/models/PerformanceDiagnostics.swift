@@ -114,9 +114,24 @@ final class FrameHitchMonitor: ObservableObject {
   private var hitchTimestamps: [CFTimeInterval] = []
   private var lastPublish: CFTimeInterval = 0
 
+  // Per-second scroll-activity accumulation. The sim's display link usually runs at
+  // 60Hz, so the 2.5x-budget hitch test (~42ms) misses 120fps jank entirely. This
+  // window aggregates ScrollPerfProbe work + budget-relative frame buckets every
+  // second of activity, independent of whether any single frame crossed the hitch
+  // threshold — so attribution survives even on a fast host that never drops a frame.
+  private var lastActivityDump: CFTimeInterval = 0
+  private var activityCounts: [String: Int] = [:]
+  private var activityNanos: [String: UInt64] = [:]
+  private var windowFrames = 0
+  private var windowMildJank = 0   // frames > 1.5x budget
+  private var windowHitches = 0    // frames > 2.5x budget
+  private var windowMaxFrameMs: Double = 0
+
   func start() {
     guard displayLink == nil else { return }
     lastTimestamp = 0
+    lastActivityDump = 0
+    resetActivityWindow()
     ScrollPerfProbe.shared.enabled = true
     MainThreadSampler.shared.start()
     let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
@@ -131,6 +146,7 @@ final class FrameHitchMonitor: ObservableObject {
     displayLink?.invalidate()
     displayLink = nil
     hitchTimestamps.removeAll()
+    resetActivityWindow()
     hitchesPerMinute = 0
   }
 
@@ -139,16 +155,29 @@ final class FrameHitchMonitor: ObservableObject {
     // Let the stall sampler know the main thread is alive (it samples when this
     // heartbeat goes stale, i.e. the main thread is blocked).
     MainThreadSampler.shared.heartbeat()
-    // Reset the per-frame attribution window every tick; capture what happened
-    // during the frame we just finished (it's drained whether or not it hitched).
-    let activity = ScrollPerfProbe.shared.drain()
-    guard lastTimestamp > 0 else { return }
+    // Drain this frame's attribution. Accumulate it into the 1s window AND keep this
+    // frame's slice for a per-frame hitch record below.
+    let frameRaw = ScrollPerfProbe.shared.drainRaw()
+    if let frameRaw {
+      for (key, count) in frameRaw.counts { activityCounts[key, default: 0] += count }
+      for (key, ns) in frameRaw.nanos { activityNanos[key, default: 0] += ns }
+    }
+    guard lastTimestamp > 0 else {
+      lastActivityDump = link.timestamp
+      return
+    }
     let actual = link.timestamp - lastTimestamp
+    if actual < 2 {  // ignore background/breakpoint gaps
+      windowFrames += 1
+      if actual > link.duration * 1.5 { windowMildJank += 1 }
+      windowMaxFrameMs = max(windowMaxFrameMs, actual * 1000)
+    }
     // A hitch = a frame that took at least 2.5x its budget (and isn't just
     // the app coming back from the background).
     if actual > link.duration * 2.5, actual < 2 {
+      windowHitches += 1
       hitchTimestamps.append(link.timestamp)
-      var metadata = activity ?? [:]
+      var metadata = frameRaw.map { ScrollPerfProbe.format(counts: $0.counts, nanos: $0.nanos) } ?? [:]
       InlineVideoCoordinator.shared.diagnosticMetadata().forEach { key, value in
         metadata[key] = value
       }
@@ -164,6 +193,10 @@ final class FrameHitchMonitor: ObservableObject {
         metadata: metadata
       )
     }
+    if link.timestamp - lastActivityDump >= 1 {
+      lastActivityDump = link.timestamp
+      emitScrollActivity(budget: link.duration)
+    }
     if link.timestamp - lastPublish >= 1 {
       lastPublish = link.timestamp
       let cutoff = link.timestamp - 60
@@ -173,6 +206,42 @@ final class FrameHitchMonitor: ObservableObject {
         hitchesPerMinute = value
       }
     }
+  }
+
+  /// Emit one `perf.scrollactivity` record summarizing the last second — but only if
+  /// real work happened (so an idle feed stays silent). Carries per-category work
+  /// counts/ms, frame-jank buckets relative to the live display budget, and any
+  /// main-thread stall stacks sampled during the window.
+  private func emitScrollActivity(budget: CFTimeInterval) {
+    defer { resetActivityWindow() }
+    guard !activityCounts.isEmpty else { return }
+    var metadata = ScrollPerfProbe.format(counts: activityCounts, nanos: activityNanos)
+    metadata["windowFrames"] = "\(windowFrames)"
+    metadata["mildJank"] = "\(windowMildJank)"      // > 1.5x budget
+    metadata["hitches"] = "\(windowHitches)"        // > 2.5x budget
+    metadata["maxFrameMs"] = String(format: "%.1f", windowMaxFrameMs)
+    metadata["budgetMs"] = String(format: "%.1f", budget * 1000)
+    InlineVideoCoordinator.shared.diagnosticMetadata().forEach { key, value in
+      metadata[key] = value
+    }
+    if let stack = MainThreadSampler.shared.drainTopSamples() {
+      metadata["stack"] = stack
+    }
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "perf.scrollactivity",
+      message: "Scroll activity (1s): \(windowFrames) frames, \(windowMildJank) mild, \(windowHitches) hitch, max \(Int(windowMaxFrameMs))ms",
+      metadata: metadata
+    )
+  }
+
+  private func resetActivityWindow() {
+    activityCounts.removeAll(keepingCapacity: true)
+    activityNanos.removeAll(keepingCapacity: true)
+    windowFrames = 0
+    windowMildJank = 0
+    windowHitches = 0
+    windowMaxFrameMs = 0
   }
 }
 
@@ -210,6 +279,13 @@ final class ScrollPerfProbe {
 
   /// Snapshot and clear the window. Returns "count×" or "count×/ms" per category.
   func drain() -> [String: String]? {
+    guard let raw = drainRaw() else { return nil }
+    return Self.format(counts: raw.counts, nanos: raw.nanos)
+  }
+
+  /// Snapshot and clear the window as raw numbers, so callers can accumulate across
+  /// frames (the per-second scroll-activity dump) without losing precision to formatting.
+  func drainRaw() -> (counts: [String: Int], nanos: [String: UInt64])? {
     os_unfair_lock_lock(&lock)
     defer {
       counts.removeAll(keepingCapacity: true)
@@ -217,6 +293,11 @@ final class ScrollPerfProbe {
       os_unfair_lock_unlock(&lock)
     }
     guard !counts.isEmpty else { return nil }
+    return (counts, nanos)
+  }
+
+  /// Render accumulated counts/nanos into "count×" / "count×/ms" strings.
+  static func format(counts: [String: Int], nanos: [String: UInt64]) -> [String: String] {
     var result: [String: String] = [:]
     for (key, count) in counts {
       let ms = Double(nanos[key] ?? 0) / 1_000_000
@@ -312,7 +393,11 @@ final class MainThreadSampler {
     thread_resume(mainThread)
     guard !addresses.isEmpty else { return }
 
-    var frames: [String] = []
+    // Symbolicate deeper than the displayed depth: demangle/metadata-cache storms can
+    // fill 4-6 consecutive frames of pure Swift-runtime internals, hiding the SwiftUI /
+    // app caller that actually triggered the work. We collapse runs of those internals
+    // into one "«swiftrt»" token so the informative caller still surfaces in 6 slots.
+    var rawFrames: [String] = []
     for addr in addresses {
       var info = Dl_info()
       var label = "0x\(String(addr, radix: 16))"
@@ -320,12 +405,35 @@ final class MainThreadSampler {
         let image = info.dli_fname.map { (String(cString: $0) as NSString).lastPathComponent } ?? "?"
         label = info.dli_sname.map { "\(image)`\(String(cString: $0))" } ?? image
       }
-      frames.append(label)
+      rawFrames.append(label)
+      if rawFrames.count >= 16 { break }
+    }
+    var frames: [String] = []
+    var lastWasRuntime = false
+    for label in rawFrames {
+      if Self.isSwiftRuntimeNoise(label) {
+        if !lastWasRuntime { frames.append("«swiftrt»") }
+        lastWasRuntime = true
+      } else {
+        frames.append(label)
+        lastWasRuntime = false
+      }
       if frames.count >= 6 { break }
     }
     let signature = frames.joined(separator: " < ")
     lock.lock(); samples[signature, default: 0] += 1; lock.unlock()
     #endif
+  }
+
+  /// True for Swift-runtime internals that recur in metadata-instantiation / demangle /
+  /// refcount storms — collapsed in the stack signature so the real caller is visible.
+  private static func isSwiftRuntimeNoise(_ s: String) -> Bool {
+    s.contains("Demangle") || s.contains("MetadataCache") || s.contains("getTypeByMangledName")
+      || s.contains("GenericCacheEntry") || s.contains("ConcurrentReadableHashMap")
+      || s.contains("LockingConcurrentMap") || s.contains("WitnessTable")
+      || s.contains("swift_slowAlloc") || s.contains("_xzm_") || s.contains("RefCounts")
+      || s.contains("swift_release") || s.contains("swift_retain") || s.contains("swift_bridgeObjectRelease")
+      || s.contains("swift_getType") || s.contains("swift_checkMetadataState")
   }
 
   /// Bounds-checked single-word read of this process's memory (won't crash on a bad pointer).

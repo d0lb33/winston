@@ -461,12 +461,43 @@ struct AuroraCommunityHeader: View {
 
 // MARK: - Feed card
 
+/// Plain snapshot of the PostLink settings the Aurora card needs. `PostLinkDefSettings`
+/// is a Codable `Defaults.Serializable` with a custom decoder, so every `@Default` read
+/// JSON-decodes the whole struct (it showed up in scroll-hitch stacks as a per-frame /
+/// per-card decode). The feed decodes it ONCE per body eval and threads this value down
+/// (via `.environment(\.auroraCardSettings)`); the hot card/feed bodies never decode.
+struct AuroraCardSettings: Equatable {
+  var blurNSFW: Bool = true
+  var isMediaTappable: Bool = true
+  var maxMediaHeightPct: Double = 100
+  var lightboxReadsPost: Bool = false
+  var readOnScroll: Bool = false
+
+  init() {}
+
+  init(_ s: PostLinkDefSettings) {
+    blurNSFW = s.blurNSFW
+    isMediaTappable = s.isMediaTappable
+    maxMediaHeightPct = s.maxMediaHeightScreenPercentage
+    lightboxReadsPost = s.lightboxReadsPost
+    readOnScroll = s.readOnScroll
+  }
+}
+
+extension EnvironmentValues {
+  @Entry var auroraCardSettings = AuroraCardSettings()
+}
+
 struct AuroraPostCardRow: View {
   @ObservedObject var post: Post
   var availableRowWidth: CGFloat? = nil
   var isSelected: Bool = false
   var onCompactNavigate: ((NavDest) -> Void)? = nil
   var onSelect: (() -> Void)? = nil
+  /// Decoded once by the owning feed and threaded down. When nil (non-feed surfaces
+  /// like Search / MultiPosts / MixedContent), it's decoded once here per row body —
+  /// same cost and behavior as before, but the value still flows to the card via env.
+  var settings: AuroraCardSettings? = nil
 
   @State private var measuredCardWidth: CGFloat = 0
 
@@ -517,6 +548,7 @@ struct AuroraPostCardRow: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
     .modifier(AuroraPostCardRowTapModifier(onSelect: onSelect))
+    .environment(\.auroraCardSettings, settings ?? AuroraCardSettings(Defaults[.PostLinkDefSettings]))
   }
 }
 
@@ -587,7 +619,7 @@ private struct AuroraPostCardSurface: View {
   @Environment(\.horizontalSizeClass) private var hSize
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
-  @Default(.PostLinkDefSettings) private var defSettings
+  @Environment(\.auroraCardSettings) private var cardSettings
 
   /// Media is sized from the row-owned card width. The card never measures itself,
   /// so media cannot feed back into the width used to lay out the row.
@@ -783,13 +815,13 @@ private struct AuroraPostCardSurface: View {
           avatarImageRequest: winstonData.avatarImageRequest,
           media: media,
           over18: data.over_18 ?? false,
-          blurNSFW: defSettings.blurNSFW,
-          isMediaTappable: defSettings.isMediaTappable,
+          blurNSFW: cardSettings.blurNSFW,
+          isMediaTappable: cardSettings.isMediaTappable,
           compact: false,
           columnWidth: contentWidth,
-          maxMediaHeightPct: defSettings.maxMediaHeightScreenPercentage,
+          maxMediaHeightPct: cardSettings.maxMediaHeightPct,
           cornerRadius: theme.mediaRadius,
-          marksSeenOnPreview: defSettings.lightboxReadsPost,
+          marksSeenOnPreview: cardSettings.lightboxReadsPost,
           markAsSeen: markAsRead,
           dimsTheme: AuroraPostPresentation.mediaTheme,
           feedItemKey: inlineVideoFeedKey,

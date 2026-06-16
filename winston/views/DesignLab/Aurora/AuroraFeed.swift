@@ -69,6 +69,10 @@ struct AuroraFeed: View {
 
   var body: some View {
     let visiblePosts = model.visiblePosts
+    // Decode the Codable PostLink settings ONCE per body eval (not per scroll frame in
+    // onOffsetChange, nor per card in the ForEach background / card body). The plain
+    // value is threaded into each row via `settings:` → `.environment(\.auroraCardSettings)`.
+    let cardSettings = AuroraCardSettings(postLinkDefSettings)
 
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
@@ -80,7 +84,7 @@ struct AuroraFeed: View {
         request: tabInteractionRequest,
         selection: $selectedPostID,
         onOffsetChange: { offsetY in
-          markReadCandidatesIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts)
+          markReadCandidatesIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
         }
       ) {
           if let community {
@@ -90,10 +94,10 @@ struct AuroraFeed: View {
               .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
           }
           ForEach(visiblePosts) { post in
-            AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate)
+            AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate, settings: cardSettings)
               .tag(post.id)
               .background {
-                if postLinkDefSettings.readOnScroll {
+                if cardSettings.readOnScroll {
                   GeometryReader { proxy in
                     Color.clear.preference(
                       key: AuroraReadCandidatePreferenceKey.self,
@@ -123,12 +127,12 @@ struct AuroraFeed: View {
                 }
               }
           }
-          if model.loading && !visiblePosts.isEmpty {
-            HStack { Spacer(); ProgressView(); Spacer() }
-              .padding(.vertical, 16)
-              .listRowBackground(Color.clear)
-              .listRowSeparator(.hidden)
-          }
+          // Isolated so a pagination `loading` toggle re-renders ONLY this footer, not
+          // the whole feed body (which reads model.visiblePosts and would otherwise
+          // re-evaluate every ForEach row on each load — a per-page scroll hitch).
+          AuroraFeedLoadingFooter(model: model)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
@@ -158,13 +162,13 @@ struct AuroraFeed: View {
     .toolbar { sortToolbar }
   }
 
-  private func markReadCandidatesIfNeeded(offsetY: CGFloat, visiblePosts: [Post]) {
+  private func markReadCandidatesIfNeeded(offsetY: CGFloat, visiblePosts: [Post], readOnScroll: Bool) {
     defer {
       previousScrollOffsetY = offsetY
       previousReadCandidateMaxYByID = latestReadCandidateMaxYByID
     }
 
-    guard postLinkDefSettings.readOnScroll, let previousScrollOffsetY, offsetY > previousScrollOffsetY else { return }
+    guard readOnScroll, let previousScrollOffsetY, offsetY > previousScrollOffsetY else { return }
 
     let crossedIDs: Set<String> = Set(latestReadCandidateMaxYByID.compactMap { id, maxY in
       guard let previousMaxY = previousReadCandidateMaxYByID[id] else { return nil }
@@ -196,6 +200,20 @@ struct AuroraFeed: View {
   @ToolbarContentBuilder private var sortToolbar: some ToolbarContent {
     ToolbarItem(placement: .topBarTrailing) {
       PostSortMenu(selection: $sort)
+    }
+  }
+}
+
+/// The bottom load-more spinner, split out so `AuroraFeedModel.loading` is observed here
+/// instead of in `AuroraFeed.body`. A `loading` flip then re-renders only this tiny row,
+/// not the feed's whole `ForEach` — which is what made each pagination load hitch.
+private struct AuroraFeedLoadingFooter: View {
+  let model: AuroraFeedModel
+
+  var body: some View {
+    if model.loading && !model.visiblePosts.isEmpty {
+      HStack { Spacer(); ProgressView(); Spacer() }
+        .padding(.vertical, 16)
     }
   }
 }

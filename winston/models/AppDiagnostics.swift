@@ -177,7 +177,7 @@ final class AppDiagnostics: ObservableObject {
     // High-frequency perf entries stay in the JSONL only; mirroring each one into the
     // Pulse store on the main thread adds lock/IO contention that would distort the very
     // hitch measurements they carry.
-    if entry.category != "perf.hitch" {
+    if entry.category != "perf.hitch", entry.category != "perf.scrollactivity" {
       mirrorToPulse(entry)
     }
   }
