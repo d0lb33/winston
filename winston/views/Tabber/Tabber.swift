@@ -52,7 +52,10 @@ struct Tabber: View, Equatable {
       set: { tab in
         if tab == nav.activeTab {
           guard tabReselectDetectionEnabled else { return }
-          AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": tab.rawValue, "source": "selectionBinding"])
+          AppDiagnostics.asyncBreadcrumb(
+            "Selected tab tapped again",
+            metadata: tabInteractions.diagnosticsMetadata(for: tab).merging(["source": "selectionBinding"]) { current, _ in current }
+          )
           tabInteractions.selectedTabTappedAgain(tab)
         } else {
           nav.activeTab = tab
@@ -124,7 +127,10 @@ struct Tabber: View, Equatable {
 
   private func handleMeTabTap() {
     if nav.activeTab == .me {
-      AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": Nav.TabIdentifier.me.rawValue, "source": "meTabOverlay"])
+      AppDiagnostics.asyncBreadcrumb(
+        "Selected tab tapped again",
+        metadata: tabInteractions.diagnosticsMetadata(for: .me).merging(["source": "meTabOverlay"]) { current, _ in current }
+      )
       tabInteractions.selectedTabTappedAgain(.me)
     } else {
       nav.activeTab = .me
@@ -362,7 +368,9 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
       guard pendingSelectedControl === sender else { return }
       pendingSelectedControl = nil
       let tab = Nav.shared.activeTab
-      AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: ["tab": tab.rawValue, "source": "tabButtonControl"])
+      var metadata = tabInteractions?.diagnosticsMetadata(for: tab) ?? ["tab": tab.rawValue]
+      metadata["source"] = "tabButtonControl"
+      AppDiagnostics.asyncBreadcrumb("Selected tab tapped again", metadata: metadata)
       tabInteractions?.selectedTabTappedAgain(tab)
     }
 

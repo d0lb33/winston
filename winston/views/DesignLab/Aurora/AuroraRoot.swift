@@ -194,37 +194,79 @@ struct AuroraRoot: View {
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.postsHandleRequest",
+      metadata: postsTabInteractionMetadata(request: request, branch: "start")
+    )
     switch request.kind {
     case .scrollToTop:
       guard isFeedRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
         AppDiagnostics.asyncBreadcrumb(
           "Posts tab scroll request routed to back",
-          metadata: [
-            "preferredColumn": "\(posts.preferredColumn)",
-            "contentPathCount": "\(posts.contentPath.count)",
-            "detailPathCount": "\(posts.detailPath.count)",
-            "hasSelectedPost": "\(posts.selectedPostID != nil)",
-            "hasDetailPost": "\(posts.detailPost != nil)"
-          ]
+          metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
         )
-        if posts.goBackOneStep() {
+        let didGoBack = posts.goBackOneStep()
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.postsGoBackResult",
+          metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack.result")
+            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+        )
+        if didGoBack {
           synchronizePostsTabInteractionOwner()
         }
         return
       }
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.postsScrollHandledByVisibleOwner",
+        metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
+      )
     case .goBack:
-      if posts.goBackOneStep() {
+      let didGoBack = posts.goBackOneStep()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.postsGoBackResult",
+        metadata: postsTabInteractionMetadata(request: request, branch: "goBack")
+          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+      )
+      if didGoBack {
         synchronizePostsTabInteractionOwner()
       }
     case .resetToRoot:
       posts.resetToSidebarRoot()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.postsResetToRoot",
+        metadata: postsTabInteractionMetadata(request: request, branch: "resetToRoot")
+      )
       synchronizePostsTabInteractionOwner()
     }
   }
 
   private func synchronizePostsTabInteractionOwner() {
-    guard isFeedRootVisibleForTabInteraction else { return }
+    guard isFeedRootVisibleForTabInteraction else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.postsSyncOwnerSkipped",
+        metadata: postsTabInteractionMetadata(branch: "syncOwner.notFeedRootVisible")
+      )
+      return
+    }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.postsSyncOwner",
+      metadata: postsTabInteractionMetadata(branch: "syncOwner.feedRoot")
+    )
     tabInteractions.activateScrollOwner(.postsFeed, for: .posts, initialIsAtTop: false)
+  }
+
+  private func postsTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
+    tabInteractions.diagnosticsMetadata(for: .posts).merging([
+      "requestKind": request.map { "\($0.kind)" } ?? "none",
+      "branch": branch,
+      "preferredColumn": "\(posts.preferredColumn)",
+      "contentPathCount": "\(posts.contentPath.count)",
+      "detailPathCount": "\(posts.detailPath.count)",
+      "hasSelectedPost": "\(posts.selectedPostID != nil)",
+      "hasDetailPost": "\(posts.detailPost != nil)",
+      "isFeedRootVisible": "\(isFeedRootVisibleForTabInteraction)",
+      "isDetailVisible": "\(isDetailVisibleForTabInteraction)"
+    ]) { current, _ in current }
   }
 
   // MARK: - Columns

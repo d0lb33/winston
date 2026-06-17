@@ -133,12 +133,25 @@ struct AccountsEmptyView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
     .onAppear {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.accountsEmptyAppear",
+        metadata: accountsEmptyTabInteractionMetadata(branch: "appear")
+      )
       activateOwnerIfNeeded()
     }
     .onDisappear {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.accountsEmptyDisappear",
+        metadata: accountsEmptyTabInteractionMetadata(branch: "disappear")
+      )
       tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
     }
     .onChange(of: isTabInteractionOwner) { _, isOwner in
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.accountsEmptyOwnerFlagChanged",
+        metadata: accountsEmptyTabInteractionMetadata(branch: "ownerFlagChanged")
+          .merging(["isOwner": "\(isOwner)"]) { current, _ in current }
+      )
       if isOwner {
         activateOwnerIfNeeded()
       } else {
@@ -149,6 +162,18 @@ struct AccountsEmptyView: View {
 
   private func activateOwnerIfNeeded() {
     guard isTabInteractionOwner else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.accountsEmptyActivateOwner",
+      metadata: accountsEmptyTabInteractionMetadata(branch: "activateOwner")
+    )
     tabInteractions.activateScrollOwner(ownerID, for: .settings, initialIsAtTop: true)
+  }
+
+  private func accountsEmptyTabInteractionMetadata(branch: String) -> [String: String] {
+    tabInteractions.diagnosticsMetadata(for: .settings).merging([
+      "branch": branch,
+      "owner": ownerID.rawValue,
+      "isTabInteractionOwner": "\(isTabInteractionOwner)"
+    ]) { current, _ in current }
   }
 }

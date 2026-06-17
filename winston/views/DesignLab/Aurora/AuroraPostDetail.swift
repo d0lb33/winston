@@ -159,6 +159,10 @@ struct AuroraPostDetail: View {
           recordTabInteractionScrollOffset(newOffsetY)
         }
         .onAppear {
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.postDetailAppear",
+            metadata: postDetailTabInteractionMetadata(branch: "appear")
+          )
           activateTabInteractionOwner()
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
@@ -166,9 +170,18 @@ struct AuroraPostDetail: View {
           }
         }
         .onDisappear {
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.postDetailDisappear",
+            metadata: postDetailTabInteractionMetadata(branch: "disappear")
+          )
           deactivateTabInteractionOwner()
         }
         .onChange(of: effectiveTabInteractionTab) { oldTab, newTab in
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.postDetailTabChanged",
+            metadata: postDetailTabInteractionMetadata(branch: "tabChanged")
+              .merging(["oldTab": oldTab?.rawValue ?? "none", "newTab": newTab?.rawValue ?? "none"]) { current, _ in current }
+          )
           if let oldTab, let effectiveTabInteractions {
             effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: oldTab)
           }
@@ -188,12 +201,32 @@ struct AuroraPostDetail: View {
         }
         .onChange(of: effectiveTabInteractionRequest) { _, request in
           guard let request else { return }
+          let isActive = effectiveTabInteractionTab.map {
+            effectiveTabInteractions?.isActiveOwner(effectiveTabInteractionOwnerID, for: $0) == true
+          } ?? false
+          let canHandle = effectiveTabInteractionTab.map {
+            effectiveTabInteractions?.canOwnerHandleRequest(request, ownerID: effectiveTabInteractionOwnerID, for: $0) == true
+          } ?? false
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.postDetailRequest",
+            metadata: postDetailTabInteractionMetadata(request: request, branch: "request")
+              .merging(["isActiveOwner": "\(isActive)", "canHandle": "\(canHandle)"]) { current, _ in current }
+          )
           guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-          guard let effectiveTabInteractionTab,
-                effectiveTabInteractions?.isActiveOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab) == true else { return }
+          guard canHandle else {
+            AppDiagnostics.asyncBreadcrumb(
+              "tabInteraction.postDetailRequestIgnored",
+              metadata: postDetailTabInteractionMetadata(request: request, branch: isActive ? "ignored.staleBeforeOwnerActivation" : "ignored.inactiveOwner")
+            )
+            return
+          }
           withAnimation(.snappy) {
             proxy.scrollTo(Self.topID, anchor: .top)
           }
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.postDetailScrollToTop",
+            metadata: postDetailTabInteractionMetadata(request: request, branch: "scrollToTop")
+          )
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
@@ -209,12 +242,34 @@ struct AuroraPostDetail: View {
 
   private func activateTabInteractionOwner() {
     guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.postDetailActivateOwner",
+      metadata: postDetailTabInteractionMetadata(branch: "activateOwner")
+    )
     effectiveTabInteractions.activateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab, initialIsAtTop: false)
   }
 
   private func deactivateTabInteractionOwner() {
     guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.postDetailDeactivateOwner",
+      metadata: postDetailTabInteractionMetadata(branch: "deactivateOwner")
+    )
     effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab)
+  }
+
+  private func postDetailTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
+    let tabMetadata = effectiveTabInteractionTab.flatMap { effectiveTabInteractions?.diagnosticsMetadata(for: $0) } ?? ["tab": "none"]
+    return tabMetadata.merging([
+      "requestKind": request.map { "\($0.kind)" } ?? "none",
+      "requestID": request?.id.uuidString ?? "none",
+      "branch": branch,
+      "owner": effectiveTabInteractionOwnerID.rawValue,
+      "postID": post.id,
+      "highlightID": highlightID ?? "nil",
+      "showingAllComments": "\(showingAllComments)",
+      "rowsCount": "\(model.rows.count)"
+    ]) { current, _ in current }
   }
 
   private var commentsHeaderTitle: String {

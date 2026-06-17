@@ -108,27 +108,74 @@ struct Settings: View {
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.settingsHandleRequest",
+      metadata: settingsTabInteractionMetadata(request: request, branch: "start")
+    )
     switch request.kind {
     case .scrollToTop:
       guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction else {
-        if nav.goBackOneStep() {
+        let didGoBack = nav.goBackOneStep()
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.settingsGoBackResult",
+          metadata: settingsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
+            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+        )
+        if didGoBack {
           synchronizeSettingsTabInteractionOwner()
         }
         return
       }
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.settingsScrollHandledByVisibleOwner",
+        metadata: settingsTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
+      )
     case .goBack:
-      if nav.goBackOneStep() {
+      let didGoBack = nav.goBackOneStep()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.settingsGoBackResult",
+        metadata: settingsTabInteractionMetadata(request: request, branch: "goBack")
+          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+      )
+      if didGoBack {
         synchronizeSettingsTabInteractionOwner()
       }
     case .resetToRoot:
       nav.reset()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.settingsResetToRoot",
+        metadata: settingsTabInteractionMetadata(request: request, branch: "resetToRoot")
+      )
       synchronizeSettingsTabInteractionOwner()
     }
   }
 
   private func synchronizeSettingsTabInteractionOwner() {
-    guard isSidebarVisibleForTabInteraction else { return }
+    guard isSidebarVisibleForTabInteraction else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.settingsSyncOwnerSkipped",
+        metadata: settingsTabInteractionMetadata(branch: "syncOwner.sidebarNotVisible")
+      )
+      return
+    }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.settingsSyncOwner",
+      metadata: settingsTabInteractionMetadata(branch: "syncOwner.sidebar")
+    )
     tabInteractions.activateScrollOwner(.settingsRoot, for: .settings, initialIsAtTop: false)
+  }
+
+  private func settingsTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
+    tabInteractions.diagnosticsMetadata(for: .settings).merging([
+      "requestKind": request.map { "\($0.kind)" } ?? "none",
+      "branch": branch,
+      "preferredColumn": "\(nav.preferredColumn)",
+      "selection": nav.selection.map { "\($0)" } ?? "nil",
+      "detailPathCount": "\(nav.detailPath.count)",
+      "isSidebarVisible": "\(isSidebarVisibleForTabInteraction)",
+      "isDetailVisible": "\(isDetailVisibleForTabInteraction)",
+      "isDetailScrollOwner": "\(isDetailScrollOwnerForTabInteraction)"
+    ]) { current, _ in current }
   }
 
 }

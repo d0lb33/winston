@@ -151,26 +151,72 @@ struct Inbox: View {
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.inboxHandleRequest",
+      metadata: inboxTabInteractionMetadata(request: request, branch: "start")
+    )
     switch request.kind {
     case .scrollToTop:
       if !nav.path.isEmpty && !isPostDestinationVisible {
-        if nav.goBackOneStep() {
+        let didGoBack = nav.goBackOneStep()
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.inboxGoBackResult",
+          metadata: inboxTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
+            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+        )
+        if didGoBack {
           synchronizeTabInteractionOwner()
         }
+      } else {
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.inboxScrollHandledByVisibleOwner",
+          metadata: inboxTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
+        )
       }
     case .goBack:
-      if nav.goBackOneStep() {
+      let didGoBack = nav.goBackOneStep()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.inboxGoBackResult",
+        metadata: inboxTabInteractionMetadata(request: request, branch: "goBack")
+          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+      )
+      if didGoBack {
         synchronizeTabInteractionOwner()
       }
     case .resetToRoot:
       nav.reset()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.inboxResetToRoot",
+        metadata: inboxTabInteractionMetadata(request: request, branch: "resetToRoot")
+      )
       synchronizeTabInteractionOwner()
     }
   }
 
   private func synchronizeTabInteractionOwner() {
-    guard isRootVisibleForTabInteraction else { return }
+    guard isRootVisibleForTabInteraction else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.inboxSyncOwnerSkipped",
+        metadata: inboxTabInteractionMetadata(branch: "syncOwner.rootNotVisible")
+      )
+      return
+    }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.inboxSyncOwner",
+      metadata: inboxTabInteractionMetadata(branch: "syncOwner.root")
+    )
     tabInteractions.activateScrollOwner(.inboxRoot, for: .inbox, initialIsAtTop: false)
+  }
+
+  private func inboxTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
+    tabInteractions.diagnosticsMetadata(for: .inbox).merging([
+      "requestKind": request.map { "\($0.kind)" } ?? "none",
+      "branch": branch,
+      "pathCount": "\(nav.path.count)",
+      "isRootVisible": "\(isRootVisibleForTabInteraction)",
+      "isPostDestinationVisible": "\(isPostDestinationVisible)",
+      "notificationsCount": "\(notifications.count)"
+    ]) { current, _ in current }
   }
 }
 

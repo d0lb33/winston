@@ -104,37 +104,80 @@ struct RedditTwoColumnShell<Source: View>: View {
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
     guard let request else { return }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.splitHandleRequest",
+      metadata: splitTabInteractionMetadata(request: request, branch: "start")
+    )
     switch request.kind {
     case .scrollToTop:
       guard isSourceRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
         AppDiagnostics.asyncBreadcrumb(
           "Split tab scroll request routed to back",
-          metadata: [
-            "tab": tab?.rawValue ?? "none",
-            "preferredColumn": "\(nav.preferredColumn)",
-            "contentPathCount": "\(nav.contentPath.count)",
-            "detailPathCount": "\(nav.detailPath.count)",
-            "hasDetailPost": "\(nav.detailPost != nil)"
-          ]
+          metadata: splitTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
         )
-        if nav.goBackOneStep() {
+        let didGoBack = nav.goBackOneStep()
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.splitGoBackResult",
+          metadata: splitTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack.result")
+            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+        )
+        if didGoBack {
           synchronizeTabInteractionOwner()
         }
         return
       }
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.splitScrollHandledByVisibleOwner",
+        metadata: splitTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
+      )
     case .goBack:
-      if nav.goBackOneStep() {
+      let didGoBack = nav.goBackOneStep()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.splitGoBackResult",
+        metadata: splitTabInteractionMetadata(request: request, branch: "goBack")
+          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
+      )
+      if didGoBack {
         synchronizeTabInteractionOwner()
       }
     case .resetToRoot:
       nav.reset()
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.splitResetToRoot",
+        metadata: splitTabInteractionMetadata(request: request, branch: "resetToRoot")
+      )
       synchronizeTabInteractionOwner()
     }
   }
 
   private func synchronizeTabInteractionOwner() {
-    guard let tab, isSourceRootVisibleForTabInteraction, let sourceRootOwnerID else { return }
+    guard let tab, isSourceRootVisibleForTabInteraction, let sourceRootOwnerID else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.splitSyncOwnerSkipped",
+        metadata: splitTabInteractionMetadata(branch: "syncOwner.notSourceRootVisible")
+      )
+      return
+    }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.splitSyncOwner",
+      metadata: splitTabInteractionMetadata(branch: "syncOwner.sourceRoot")
+    )
     tabInteractions.activateScrollOwner(sourceRootOwnerID, for: tab, initialIsAtTop: false)
+  }
+
+  private func splitTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
+    let tabMetadata = tab.map { tabInteractions.diagnosticsMetadata(for: $0) } ?? ["tab": "none"]
+    return tabMetadata.merging([
+      "requestKind": request.map { "\($0.kind)" } ?? "none",
+      "branch": branch,
+      "preferredColumn": "\(nav.preferredColumn)",
+      "contentPathCount": "\(nav.contentPath.count)",
+      "detailPathCount": "\(nav.detailPath.count)",
+      "hasDetailPost": "\(nav.detailPost != nil)",
+      "isSourceRootVisible": "\(isSourceRootVisibleForTabInteraction)",
+      "isDetailVisible": "\(isDetailVisibleForTabInteraction)",
+      "sourceRootOwnerID": sourceRootOwnerID?.rawValue ?? "none"
+    ]) { current, _ in current }
   }
 
 }

@@ -151,6 +151,7 @@ enum TabInteractionRequestKind: Equatable {
 
 struct TabInteractionRequest: Equatable {
   let id = UUID()
+  let issuedAt = Date()
   let kind: TabInteractionRequestKind
 }
 
@@ -232,6 +233,9 @@ final class TabInteractionCenter: ObservableObject {
 
   private var scrollOwnerStateByTab: [Nav.TabIdentifier: ScrollOwnerState] = [:]
   private var lastScrollOffsetByOwner: [TabInteractionOwnerID: CGFloat] = [:]
+  private var lastTopStateByOwner: [TabInteractionOwnerID: Bool] = [:]
+  private var ownerActivationDateByOwner: [TabInteractionOwnerID: Date] = [:]
+  private var lastIgnoredScrollLogDateByOwner: [TabInteractionOwnerID: Date] = [:]
   private var lastTabBarRevealDateByTab: [Nav.TabIdentifier: Date] = [:]
   private var lastTap: (tab: Nav.TabIdentifier, date: Date)?
   private var lastReselectEvent: (tab: Nav.TabIdentifier, date: Date)?
@@ -239,56 +243,166 @@ final class TabInteractionCenter: ObservableObject {
   private let duplicateEventInterval: TimeInterval = 0.05
   private let scrollUpRevealThreshold: CGFloat = 1.5
   private let tabBarRevealThrottleInterval: TimeInterval = 0.18
+  private let ignoredScrollLogThrottleInterval: TimeInterval = 1.0
 
   func selectedTabChanged(to tab: Nav.TabIdentifier) {
+    let previousOwner = scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
+    let previousIsAtTop = scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
     lastTap = nil
     if scrollOwnerStateByTab[tab] == nil {
       scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: legacyOwnerID(for: tab), isAtTop: false)
     }
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.selectedTabChanged",
+      metadata: [
+        "tab": tab.rawValue,
+        "previousOwner": previousOwner,
+        "previousIsAtTop": previousIsAtTop,
+        "currentOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+        "currentIsAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+      ]
+    )
   }
 
   func activateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier, initialIsAtTop: Bool = false) {
-    guard scrollOwnerStateByTab[tab]?.ownerID != ownerID else { return }
+    let previousOwner = scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
+    let previousIsAtTop = scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+    guard scrollOwnerStateByTab[tab]?.ownerID != ownerID else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.ownerActivateSkipped",
+        metadata: [
+          "tab": tab.rawValue,
+          "owner": ownerID.rawValue,
+          "reason": "alreadyActive",
+          "isAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+        ]
+      )
+      return
+    }
     scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: ownerID, isAtTop: initialIsAtTop)
+    ownerActivationDateByOwner[ownerID] = Date()
     lastScrollOffsetByOwner.removeValue(forKey: ownerID)
+    lastTopStateByOwner[ownerID] = initialIsAtTop
     AppDiagnostics.asyncBreadcrumb(
-      "Tab interaction owner activated",
-      metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue, "isAtTop": "\(initialIsAtTop)"]
+      "tabInteraction.ownerActivated",
+      metadata: [
+        "tab": tab.rawValue,
+        "owner": ownerID.rawValue,
+        "isAtTop": "\(initialIsAtTop)",
+        "previousOwner": previousOwner,
+        "previousIsAtTop": previousIsAtTop
+      ]
     )
   }
 
   func deactivateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) {
-    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
+    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.ownerDeactivateSkipped",
+        metadata: [
+          "tab": tab.rawValue,
+          "owner": ownerID.rawValue,
+          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+          "reason": "notActive"
+        ]
+      )
+      return
+    }
+    let previousIsAtTop = scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
     scrollOwnerStateByTab.removeValue(forKey: tab)
     lastScrollOffsetByOwner.removeValue(forKey: ownerID)
+    lastTopStateByOwner.removeValue(forKey: ownerID)
+    ownerActivationDateByOwner.removeValue(forKey: ownerID)
     AppDiagnostics.asyncBreadcrumb(
-      "Tab interaction owner deactivated",
-      metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue]
+      "tabInteraction.ownerDeactivated",
+      metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue, "previousIsAtTop": previousIsAtTop]
     )
   }
 
   func setIsAtTop(_ tab: Nav.TabIdentifier, _ isAtTop: Bool) {
     let ownerID = scrollOwnerStateByTab[tab]?.ownerID ?? legacyOwnerID(for: tab)
     scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: ownerID, isAtTop: isAtTop)
+    lastTopStateByOwner[ownerID] = isAtTop
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.topStateSetLegacy",
+      metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue, "isAtTop": "\(isAtTop)"]
+    )
   }
 
   func setIsAtTop(_ tab: Nav.TabIdentifier, _ isAtTop: Bool, ownerID: TabInteractionOwnerID) {
-    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
+    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.topStateIgnored",
+        metadata: [
+          "tab": tab.rawValue,
+          "owner": ownerID.rawValue,
+          "isAtTop": "\(isAtTop)",
+          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
+        ]
+      )
+      return
+    }
     scrollOwnerStateByTab[tab]?.isAtTop = isAtTop
+    if lastTopStateByOwner[ownerID] != isAtTop {
+      lastTopStateByOwner[ownerID] = isAtTop
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.topStateChanged",
+        metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue, "isAtTop": "\(isAtTop)", "source": "explicit"]
+      )
+    }
   }
 
   func recordScrollOffset(_ offsetY: CGFloat, for tab: Nav.TabIdentifier, ownerID: TabInteractionOwnerID) {
-    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
-    if let previousOffset = lastScrollOffsetByOwner[ownerID],
+    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else {
+      logIgnoredScrollOffsetIfNeeded(offsetY, for: tab, ownerID: ownerID)
+      return
+    }
+    let previousOffset = lastScrollOffsetByOwner[ownerID]
+    if let previousOffset,
        offsetY < previousOffset - scrollUpRevealThreshold {
       revealTabBar(for: tab)
     }
     lastScrollOffsetByOwner[ownerID] = offsetY
-    scrollOwnerStateByTab[tab]?.isAtTop = offsetY <= 4
+    let isAtTop = offsetY <= 4
+    scrollOwnerStateByTab[tab]?.isAtTop = isAtTop
+    if lastTopStateByOwner[ownerID] != isAtTop {
+      lastTopStateByOwner[ownerID] = isAtTop
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.scrollTopStateChanged",
+        metadata: [
+          "tab": tab.rawValue,
+          "owner": ownerID.rawValue,
+          "isAtTop": "\(isAtTop)",
+          "offsetY": formatOffset(offsetY),
+          "previousOffsetY": previousOffset.map(formatOffset) ?? "nil"
+        ]
+      )
+    }
   }
 
   func isActiveOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) -> Bool {
     scrollOwnerStateByTab[tab]?.ownerID == ownerID
+  }
+
+  func canOwnerHandleRequest(_ request: TabInteractionRequest, ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) -> Bool {
+    guard isActiveOwner(ownerID, for: tab) else { return false }
+    guard let activationDate = ownerActivationDateByOwner[ownerID] else { return true }
+    return request.issuedAt >= activationDate
+  }
+
+  func diagnosticsMetadata(for tab: Nav.TabIdentifier, prefix: String = "") -> [String: String] {
+    let state = scrollOwnerStateByTab[tab]
+    let lastOffset = state.flatMap { lastScrollOffsetByOwner[$0.ownerID] }
+    let ownerActivationAge = state.flatMap { ownerActivationDateByOwner[$0.ownerID] }.map { Date().timeIntervalSince($0) }
+    return [
+      "\(prefix)tab": tab.rawValue,
+      "\(prefix)activeOwner": state?.ownerID.rawValue ?? "none",
+      "\(prefix)activeIsAtTop": state.map { "\($0.isAtTop)" } ?? "nil",
+      "\(prefix)lastOffsetY": lastOffset.map(formatOffset) ?? "nil",
+      "\(prefix)activeOwnerAge": ownerActivationAge.map(formatInterval) ?? "nil",
+      "\(prefix)lastTapTab": lastTap?.tab.rawValue ?? "none",
+      "\(prefix)lastReselectTab": lastReselectEvent?.tab.rawValue ?? "none"
+    ]
   }
 
   func selectedTabTappedAgain(_ tab: Nav.TabIdentifier) {
@@ -296,6 +410,16 @@ final class TabInteractionCenter: ObservableObject {
     if let lastReselectEvent,
        lastReselectEvent.tab == tab,
        now.timeIntervalSince(lastReselectEvent.date) <= duplicateEventInterval {
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.reselectSuppressed",
+        metadata: [
+          "tab": tab.rawValue,
+          "reason": "duplicateEvent",
+          "interval": formatInterval(now.timeIntervalSince(lastReselectEvent.date)),
+          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+          "activeIsAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+        ]
+      )
       return
     }
 
@@ -305,6 +429,16 @@ final class TabInteractionCenter: ObservableObject {
        lastTap.tab == tab,
        now.timeIntervalSince(lastTap.date) <= doubleTapInterval {
       self.lastTap = nil
+      AppDiagnostics.asyncBreadcrumb(
+        "tabInteraction.reselectDecision",
+        metadata: [
+          "tab": tab.rawValue,
+          "decision": "resetToRoot",
+          "tapInterval": formatInterval(now.timeIntervalSince(lastTap.date)),
+          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+          "activeIsAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+        ]
+      )
       publish(.resetToRoot, for: tab)
       return
     }
@@ -313,7 +447,19 @@ final class TabInteractionCenter: ObservableObject {
     // During split-view transitions SwiftUI can briefly unmount the current scroll
     // owner before the returning owner appears. Treat that gap as scrollable so a
     // tab reselect never accidentally navigates back.
-    publish((scrollOwnerStateByTab[tab]?.isAtTop ?? false) ? .goBack : .scrollToTop, for: tab)
+    let activeState = scrollOwnerStateByTab[tab]
+    let decision: TabInteractionRequestKind = (activeState?.isAtTop ?? false) ? .goBack : .scrollToTop
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.reselectDecision",
+      metadata: [
+        "tab": tab.rawValue,
+        "decision": "\(decision)",
+        "activeOwner": activeState?.ownerID.rawValue ?? "none",
+        "activeIsAtTop": activeState.map { "\($0.isAtTop)" } ?? "nil",
+        "hasLastOffset": activeState.flatMap { lastScrollOffsetByOwner[$0.ownerID] }.map { "true:\(formatOffset($0))" } ?? "false"
+      ]
+    )
+    publish(decision, for: tab)
   }
 
   private func legacyOwnerID(for tab: Nav.TabIdentifier) -> TabInteractionOwnerID {
@@ -324,7 +470,13 @@ final class TabInteractionCenter: ObservableObject {
     requests[tab] = TabInteractionRequest(kind: kind)
     AppDiagnostics.asyncBreadcrumb(
       "Tab interaction request",
-      metadata: ["tab": tab.rawValue, "kind": "\(kind)"]
+        metadata: [
+          "tab": tab.rawValue,
+          "kind": "\(kind)",
+          "requestID": requests[tab]?.id.uuidString ?? "none",
+          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+          "activeIsAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
+        ]
     )
   }
 
@@ -336,7 +488,39 @@ final class TabInteractionCenter: ObservableObject {
     }
     lastTabBarRevealDateByTab[tab] = now
     tabBarRevealRequest = TabBarRevealRequest(tab: tab)
-    AppDiagnostics.asyncBreadcrumb("Tab bar reveal requested", metadata: ["tab": tab.rawValue])
+    AppDiagnostics.asyncBreadcrumb(
+      "Tab bar reveal requested",
+      metadata: [
+        "tab": tab.rawValue,
+        "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
+      ]
+    )
+  }
+
+  private func logIgnoredScrollOffsetIfNeeded(_ offsetY: CGFloat, for tab: Nav.TabIdentifier, ownerID: TabInteractionOwnerID) {
+    let now = Date()
+    if let lastDate = lastIgnoredScrollLogDateByOwner[ownerID],
+       now.timeIntervalSince(lastDate) < ignoredScrollLogThrottleInterval {
+      return
+    }
+    lastIgnoredScrollLogDateByOwner[ownerID] = now
+    AppDiagnostics.asyncBreadcrumb(
+      "tabInteraction.scrollOffsetIgnored",
+      metadata: [
+        "tab": tab.rawValue,
+        "owner": ownerID.rawValue,
+        "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
+        "offsetY": formatOffset(offsetY)
+      ]
+    )
+  }
+
+  private func formatOffset(_ value: CGFloat) -> String {
+    String(format: "%.1f", Double(value))
+  }
+
+  private func formatInterval(_ value: TimeInterval) -> String {
+    String(format: "%.3f", value)
   }
 }
 
@@ -400,12 +584,28 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
         onOffsetChange(newOffsetY)
       }
       .onAppear {
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootAppear",
+          metadata: ["tab": tab?.rawValue ?? "none", "owner": ownerID.rawValue, "topID": topID]
+        )
         activateOwner()
       }
       .onDisappear {
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootDisappear",
+          metadata: ["tab": tab?.rawValue ?? "none", "owner": ownerID.rawValue, "topID": topID]
+        )
         deactivateOwner()
       }
       .onChange(of: tab) { oldTab, newTab in
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootTabChanged",
+          metadata: [
+            "owner": ownerID.rawValue,
+            "oldTab": oldTab?.rawValue ?? "none",
+            "newTab": newTab?.rawValue ?? "none"
+          ]
+        )
         if let oldTab, let tabInteractions {
           tabInteractions.deactivateScrollOwner(ownerID, for: oldTab)
         }
@@ -414,6 +614,10 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
         }
       }
       .onChange(of: ownerID) { oldOwnerID, _ in
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootOwnerChanged",
+          metadata: ["tab": tab?.rawValue ?? "none", "oldOwner": oldOwnerID.rawValue, "newOwner": ownerID.rawValue]
+        )
         if let tab, let tabInteractions {
           tabInteractions.deactivateScrollOwner(oldOwnerID, for: tab)
         }
@@ -421,14 +625,45 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
       }
       .onChange(of: request) { _, request in
         guard let request else { return }
+        let active = tab.map { tabInteractions?.isActiveOwner(ownerID, for: $0) == true } ?? false
+        let canHandle = tab.map { tabInteractions?.canOwnerHandleRequest(request, ownerID: ownerID, for: $0) == true } ?? false
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootRequest",
+          metadata: [
+            "tab": tab?.rawValue ?? "none",
+            "owner": ownerID.rawValue,
+            "kind": "\(request.kind)",
+            "requestID": request.id.uuidString,
+            "isActiveOwner": "\(active)",
+            "canHandle": "\(canHandle)",
+            "topID": topID
+          ]
+        )
+        guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
+        guard canHandle else {
+          AppDiagnostics.asyncBreadcrumb(
+            "tabInteraction.scrollRootRequestIgnored",
+            metadata: [
+              "tab": tab?.rawValue ?? "none",
+              "owner": ownerID.rawValue,
+              "kind": "\(request.kind)",
+              "requestID": request.id.uuidString,
+              "reason": active ? "staleBeforeOwnerActivation" : "inactiveOwner",
+              "topID": topID
+            ]
+          )
+          return
+        }
         if request.kind == .resetToRoot {
           onResetToRoot?()
         }
-        guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-        guard tab.map({ tabInteractions?.isActiveOwner(ownerID, for: $0) == true }) ?? false else { return }
         withAnimation(.snappy) {
           proxy.scrollTo(topID, anchor: .top)
         }
+        AppDiagnostics.asyncBreadcrumb(
+          "tabInteraction.scrollRootScrollToTop",
+          metadata: ["tab": tab?.rawValue ?? "none", "owner": ownerID.rawValue, "kind": "\(request.kind)", "requestID": request.id.uuidString, "topID": topID]
+        )
       }
     }
   }

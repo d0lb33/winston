@@ -385,6 +385,19 @@ struct TabInteractionCenterTests {
     #expect(center.requests[.posts]?.kind == .scrollToTop)
   }
 
+  @Test("owner ignores request issued before it became active")
+  func ownerIgnoresRequestIssuedBeforeActivation() async throws {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.posts)
+    let request = try #require(center.requests[.posts])
+    try await Task.sleep(for: .milliseconds(10))
+    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    #expect(!center.canOwnerHandleRequest(request, ownerID: "posts.feed", for: .posts))
+  }
+
   @Test("missing active owner requests scroll instead of back")
   func missingActiveOwnerRequestsScrollInsteadOfBack() {
     let center = TabInteractionCenter()
