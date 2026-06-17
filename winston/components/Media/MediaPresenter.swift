@@ -37,7 +37,7 @@ struct OnlyURL: View {
 
 struct MediaPresenter: View, Equatable {
   static func == (lhs: MediaPresenter, rhs: MediaPresenter) -> Bool {
-    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
+    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.blurPostLinkNSFW == rhs.blurPostLinkNSFW && lhs.over18 == rhs.over18 && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
   }
   
   @Binding var postDimensions: PostDimensions
@@ -78,7 +78,7 @@ struct MediaPresenter: View, Equatable {
     case .video(let sharedVideo):
       let _ = ScrollPerfProbe.shared.bump("mediaPresenter.video")
       if !showURLInstead {
-        VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext, feedItemKey: feedItemKey)
+        VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext, feedItemKey: feedItemKey, inlineBlurNSFW: over18 && blurPostLinkNSFW, inlineCornerRadius: cornerRadius)
           .nsfw(over18 && blurPostLinkNSFW, smallIcon: compact, size: postDimensions.mediaSize)
       }
       

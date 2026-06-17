@@ -11,6 +11,7 @@ import NukeUI
 import Nuke
 import YouTubePlayerKit
 import Alamofire
+import Defaults
 
 struct ImgExtracted: Equatable, Identifiable {
   static func == (lhs: ImgExtracted, rhs: ImgExtracted) -> Bool {
@@ -85,6 +86,88 @@ enum MediaExtractedType: Equatable {
   case comment(EntityExtracted<CommentData, CommentWinstonData>?)
   case subreddit(EntityExtracted<SubredditData, SubredditWinstonData>?)
   case user(EntityExtracted<UserData, AnyHashable>?)
+}
+
+@MainActor
+final class MediaDescriptorCache {
+  static let shared = MediaDescriptorCache()
+
+  private let media = ObjectCache<MediaExtractedType>(cacheLimit: 500, diagnosticsPrefix: "mediaDescriptor")
+  private let dimensions = ObjectCache<PostDimensions>(cacheLimit: 500, diagnosticsPrefix: "mediaLayout")
+
+  private init() {}
+
+  func extractedMedia(key: String, build: () -> MediaExtractedType?) -> MediaExtractedType? {
+    if let cached = media.get(key: key) {
+      return cached
+    }
+    guard let value = build() else { return nil }
+    media.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
+    return value
+  }
+
+  func setExtractedMedia(_ value: MediaExtractedType, key: String) {
+    media.removeValue(forKey: key)
+    media.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
+  }
+
+  func postDimensions(key: String, build: () -> PostDimensions) -> PostDimensions {
+    if let cached = dimensions.get(key: key) {
+      return cached
+    }
+    let value = build()
+    dimensions.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
+    return value
+  }
+
+  func setPostDimensions(_ value: PostDimensions, key: String) {
+    dimensions.removeValue(forKey: key)
+    dimensions.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
+  }
+
+  func mediaKey(
+    data: PostData,
+    compact: Bool,
+    contentWidth: Double,
+    theme: WinstonTheme,
+    variant: String
+  ) -> String {
+    [
+      data.name,
+      variant,
+      compact ? "compact" : "normal",
+      "\(Int(contentWidth.rounded()))",
+      "\(theme.postLinks.theme.innerPadding.horizontal)",
+      "\(theme.postLinks.theme.outerHPadding)",
+      data.url,
+      data.post_hint ?? "nil",
+      "\(data.is_gallery ?? false)",
+      data.media?.reddit_video?.hls_url ?? "nil",
+      data.preview?.reddit_video_preview?.hls_url ?? "nil"
+    ].joined(separator: "|")
+  }
+
+  func dimensionsKey(
+    data: PostData,
+    compact: Bool,
+    columnWidth: Double,
+    secondary: Bool,
+    theme: WinstonTheme,
+    subID: String?,
+    variant: String
+  ) -> String {
+    [
+      mediaKey(data: data, compact: compact, contentWidth: columnWidth, theme: theme, variant: variant),
+      secondary ? "secondary" : "primary",
+      subID ?? data.subreddit,
+      "\(theme.postLinks.theme.titleText.size)",
+      "\(theme.postLinks.theme.bodyText.size)",
+      "\(theme.postLinks.theme.badge.avatar.size)",
+      "\(theme.postLinks.theme.verticalElementsSpacing)",
+      "\(theme.postLinks.theme.linespacing)",
+      "\(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage)"
+    ].joined(separator: "|")
+  }
 }
 
 extension MediaExtractedType {

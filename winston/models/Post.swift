@@ -101,8 +101,20 @@ extension Post {
         self.winstonData?.postDimensions = .zero
         self.winstonData?.postDimensionsForcedNormal = .zero
       } else {
-        var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
-        var extractedMediaForcedNormal = compact ? mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme) : extractedMedia
+        let descriptorCache = MediaDescriptorCache.shared
+        let mediaKey = descriptorCache.mediaKey(data: data, compact: compact, contentWidth: contentWidth, theme: theme, variant: "feed")
+        let forcedNormalMediaKey = descriptorCache.mediaKey(data: data, compact: false, contentWidth: contentWidth, theme: theme, variant: "forcedNormal")
+        var extractedMedia = descriptorCache.extractedMedia(key: mediaKey) {
+          mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
+        }
+        var extractedMediaForcedNormal: MediaExtractedType?
+        if compact {
+          extractedMediaForcedNormal = descriptorCache.extractedMedia(key: forcedNormalMediaKey) {
+            mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme)
+          }
+        } else {
+          extractedMediaForcedNormal = extractedMedia
+        }
         if AppDiagnostics.isEnabled(.debug, category: "ui.media.setup") {
           AppDiagnostics.asyncRecord(
             .debug,
@@ -123,6 +135,9 @@ extension Post {
           )
         }
 
+        let dimensionsKey = descriptorCache.dimensionsKey(data: data, compact: compact, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "feed")
+        let forcedNormalDimensionsKey = descriptorCache.dimensionsKey(data: data, compact: false, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "forcedNormal")
+
         switch extractedMedia {
         case .streamable(let streamable):
           if let streamableCached = Caches.streamable.get(key: streamable.shortCode) {
@@ -130,6 +145,8 @@ extension Post {
 
             extractedMedia = .video(sharedVideo)
             extractedMediaForcedNormal = .video(sharedVideo)
+            descriptorCache.setExtractedMedia(.video(sharedVideo), key: mediaKey)
+            descriptorCache.setExtractedMedia(.video(sharedVideo), key: forcedNormalMediaKey)
           } else {
             let shortCode = streamable.shortCode
             Task { @MainActor in
@@ -137,14 +154,20 @@ extension Post {
                 Caches.streamable.addKeyValue(key: shortCode, data: { streamableCached }, expires: Date().dateByAdding(1, .day).date)
 
                 let video = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
+                descriptorCache.setExtractedMedia(.video(video), key: mediaKey)
+                descriptorCache.setExtractedMedia(.video(video), key: forcedNormalMediaKey)
                 var transaction = Transaction()
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
                   self.winstonData?.extractedMedia = .video(video)
                   self.winstonData?.extractedMediaForcedNormal = .video(video)
 
-                  self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
-                  self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+                  let dimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+                  let forcedNormalDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+                  descriptorCache.setPostDimensions(dimensions, key: dimensionsKey)
+                  descriptorCache.setPostDimensions(forcedNormalDimensions, key: forcedNormalDimensionsKey)
+                  self.winstonData?.postDimensions = dimensions
+                  self.winstonData?.postDimensionsForcedNormal = forcedNormalDimensions
                 }
               }
             }
@@ -156,8 +179,12 @@ extension Post {
         self.winstonData?.extractedMedia = extractedMedia
         self.winstonData?.extractedMediaForcedNormal = extractedMediaForcedNormal
 
-        self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
-        self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+        self.winstonData?.postDimensions = descriptorCache.postDimensions(key: dimensionsKey) {
+          getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+        }
+        self.winstonData?.postDimensionsForcedNormal = descriptorCache.postDimensions(key: forcedNormalDimensionsKey) {
+          getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+        }
       }
 
       self.winstonData?.titleAttr = createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())

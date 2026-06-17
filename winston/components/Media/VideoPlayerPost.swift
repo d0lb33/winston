@@ -123,6 +123,8 @@ struct VideoPlayerPost: View, Equatable {
   var maxMediaHeightScreenPercentage: CGFloat
   var diagnosticContext: String? = nil
   var feedItemKey: String? = nil
+  var inlineBlurNSFW = false
+  var inlineCornerRadius: CGFloat = 12
   @State private var firstFullscreen = false
   @State private var fullscreen = false
   @State private var preparedInlineVideoKey: String?
@@ -151,6 +153,7 @@ struct VideoPlayerPost: View, Equatable {
   private var loopVideos: Bool { videoDefSettings.loop }
   private var muteVideos: Bool { videoDefSettings.mute }
   private var pauseBackgroundAudioOnFullscreen: Bool { videoDefSettings.pauseBGAudioOnFullscreen }
+  private var usesGlobalInlinePlayback: Bool { feedItemKey != nil }
 
   /// Whether this inline player should be actively playing right now. In a gated feed
   /// (feedItemKey != nil) only the current active video plays. Scrolling does not pause
@@ -168,7 +171,8 @@ struct VideoPlayerPost: View, Equatable {
   /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
   /// video, the fullscreen one, and non-feed usages mount as before.
   private var shouldMountPlayer: Bool {
-    fullscreen || feedItemKey == nil || mountPlayer || hasRenderedInlineFrame
+    guard !usesGlobalInlinePlayback else { return false }
+    return fullscreen || mountPlayer || hasRenderedInlineFrame
   }
 
   private var inlinePlaybackState: InlineVideoPlaybackState? {
@@ -182,7 +186,7 @@ struct VideoPlayerPost: View, Equatable {
     sharedVideo?.isPlayerLoaded == true && !showInlinePoster
   }
 
-  init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil, feedItemKey: String? = nil) {
+  init(controller: UIViewController?, cachedVideo: SharedVideo?, markAsSeen: (() async -> ())?, compact: Bool = false, contentWidth: CGFloat, url: URL, resetVideo: ((SharedVideo) -> ())?, maxMediaHeightScreenPercentage: CGFloat, diagnosticContext: String? = nil, feedItemKey: String? = nil, inlineBlurNSFW: Bool = false, inlineCornerRadius: CGFloat = 12) {
     self.controller = controller
     self.sharedVideo = cachedVideo
     self.markAsSeen = markAsSeen
@@ -194,6 +198,8 @@ struct VideoPlayerPost: View, Equatable {
     self.maxMediaHeightScreenPercentage = maxMediaHeightScreenPercentage
     self.diagnosticContext = diagnosticContext
     self.feedItemKey = feedItemKey
+    self.inlineBlurNSFW = inlineBlurNSFW
+    self.inlineCornerRadius = inlineCornerRadius
   }
   
   private var renderedVideoSize: CGSize {
@@ -308,6 +314,7 @@ struct VideoPlayerPost: View, Equatable {
     let desiredPlay = feedItemKey == nil ? autoPlayVideos : (state?.shouldPlay ?? false)
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
     if playInline != desiredPlay { playInline = desiredPlay }
+    if usesGlobalInlinePlayback { return }
     applyInlinePlaybackState(sharedVideo)
   }
 
@@ -324,7 +331,7 @@ struct VideoPlayerPost: View, Equatable {
   @ViewBuilder
   func inlineVideoLayer(sharedVideo: SharedVideo, videoSize: CGSize) -> some View {
     Group {
-      if mountPlayer && !fullscreen {
+      if !usesGlobalInlinePlayback && mountPlayer && !fullscreen {
         InlineAVPlayerLayerRepresentable(
           player: sharedVideo.player,
           videoGravity: .resizeAspectFill,
@@ -452,6 +459,16 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   func prepareForInlineDisplay(_ sharedVideo: SharedVideo) {
+    if let feedItemKey {
+      InlineVideoCoordinator.shared.registerVideo(
+        sharedVideo,
+        for: feedItemKey,
+        blurNSFW: inlineBlurNSFW,
+        smallNSFWIcon: compact,
+        cornerRadius: inlineCornerRadius
+      )
+    }
+
     let cacheKey = SharedVideo.cacheKey(url: sharedVideo.url, size: sharedVideo.size, downloadURL: sharedVideo.downloadURL, posterURL: sharedVideo.posterURL)
     recordVideoEvent(.debug, message: "Preparing inline video", sharedVideo: sharedVideo, extra: ["cacheKeyHash": "\(cacheKey.hashValue)"])
     let identityChanged = activeInlineVideoKey != cacheKey
@@ -468,6 +485,10 @@ struct VideoPlayerPost: View, Equatable {
     // Seed the body's cached mount flag (off-center videos stay false → poster-only).
     let desiredMount = shouldMountPlayer
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
+
+    // Feed rows are passive poster/static surfaces. The single live AVPlayerLayer is
+    // mounted by InlinePlaybackHost above the feed, using the registered SharedVideo.
+    guard !usesGlobalInlinePlayback else { return }
 
     // Off-center feed videos are poster-only: do NOT touch sharedVideo.player here, since
     // accessing it would create an AVPlayer (and load its HLS asset). Only the mounted
@@ -503,6 +524,7 @@ struct VideoPlayerPost: View, Equatable {
   /// Re-evaluate playback against the current coordinator state. Called when the
   /// active video or warm set changes. The poster only returns on disappear.
   func applyInlinePlaybackState(_ sharedVideo: SharedVideo) {
+    guard !usesGlobalInlinePlayback else { return }
     guard !fullscreen else { return }
     guard shouldMountPlayer else {
       if sharedVideo.isPlayerLoaded {
@@ -630,6 +652,9 @@ struct VideoPlayerPost: View, Equatable {
     if InlineVideoCoordinator.shared.isActive(feedItemKey) {
       InlineVideoCoordinator.shared.setActive(nil)
     }
+    if let feedItemKey {
+      InlineVideoCoordinator.shared.unregisterVideo(for: feedItemKey, sharedVideo: sharedVideo)
+    }
   }
 
   func hideUnavailablePoster(reason: String, url: URL, sharedVideo: SharedVideo) {
@@ -713,6 +738,7 @@ struct VideoPlayerPost: View, Equatable {
   }
 
   func handleFullscreenChange(_ val: Bool, sharedVideo: SharedVideo) {
+    InlineVideoCoordinator.shared.setFullscreenOwner(feedItemKey, active: val)
     // Player is mounted by the time fullscreen toggles, so this access is safe and cheap.
     let hasAudio = sharedVideo.player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio })
     recordVideoEvent(.debug, message: "Fullscreen state changed", sharedVideo: sharedVideo, extra: ["fullscreen": "\(val)", "hasAudio": hasAudio.map { "\($0)" } ?? "nil"])
