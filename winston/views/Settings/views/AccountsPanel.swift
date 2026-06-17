@@ -47,7 +47,7 @@ struct AccountsList: View {
           AccountItem(account: account, inUse: account.id == selectedID)
         }
       } footer: {
-        Text("Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar.")
+        Text("Tap an account to switch to it, or use the account switcher in the Me tab.")
       }
     }
     .navigationBarTitleDisplayMode(.large)
@@ -104,10 +104,6 @@ struct AccountItem: View {
 }
 
 struct AccountsEmptyView: View {
-  @Environment(\.settingsPanelIsTabInteractionOwner) private var isTabInteractionOwner
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
-  private let ownerID = TabInteractionOwnerID("settings.accounts-empty")
-
   var body: some View {
     VStack(spacing: 20) {
       VStack(spacing: 16) {
@@ -132,48 +128,5 @@ struct AccountsEmptyView: View {
     .multilineTextAlignment(.center)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
-    .onAppear {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.accountsEmptyAppear",
-        metadata: accountsEmptyTabInteractionMetadata(branch: "appear")
-      )
-      activateOwnerIfNeeded()
-    }
-    .onDisappear {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.accountsEmptyDisappear",
-        metadata: accountsEmptyTabInteractionMetadata(branch: "disappear")
-      )
-      tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
-    }
-    .onChange(of: isTabInteractionOwner) { _, isOwner in
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.accountsEmptyOwnerFlagChanged",
-        metadata: accountsEmptyTabInteractionMetadata(branch: "ownerFlagChanged")
-          .merging(["isOwner": "\(isOwner)"]) { current, _ in current }
-      )
-      if isOwner {
-        activateOwnerIfNeeded()
-      } else {
-        tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
-      }
-    }
-  }
-
-  private func activateOwnerIfNeeded() {
-    guard isTabInteractionOwner else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.accountsEmptyActivateOwner",
-      metadata: accountsEmptyTabInteractionMetadata(branch: "activateOwner")
-    )
-    tabInteractions.activateScrollOwner(ownerID, for: .settings, initialIsAtTop: true)
-  }
-
-  private func accountsEmptyTabInteractionMetadata(branch: String) -> [String: String] {
-    tabInteractions.diagnosticsMetadata(for: .settings).merging([
-      "branch": branch,
-      "owner": ownerID.rawValue,
-      "isTabInteractionOwner": "\(isTabInteractionOwner)"
-    ]) { current, _ in current }
   }
 }

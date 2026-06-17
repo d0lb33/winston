@@ -826,39 +826,28 @@ private struct SearchAllButtonSection: View {
 }
 
 struct Search: View {
-  @ObservedObject var router: Router
+  let nav: ColumnNav
   @State private var searchScope: SearchScope = .all
   @StateObject private var model = SearchViewModel()
   @StateObject private var searchQuery = DebouncedText(delay: 0.25)
   
   @State private var searchViewLoaded: Bool = false
   @State private var listWidth: CGFloat = 0
-  @State private var splitNavigation: ColumnNav?
   @State private var isSearchPresented = false
   @State private var suppressEmptyQueryReload = false
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.isSearching) private var isSearching
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   var body: some View {
-    RedditTwoColumnShell(router: router, tab: .search) { navigation in
+    RedditTwoColumnShell(nav: nav) { _ in
       searchRoot
-        .onAppear {
-          splitNavigation = navigation
-        }
     }
   }
 
   private var searchRoot: some View {
-    TabScrollRoot(
-      topID: "search-top",
-      tab: .search,
-      tabInteractions: tabInteractions,
-      request: tabInteractions.requests[.search],
-      onResetToRoot: resetSearchHome
-    ) {
+    List {
       SearchListContent(
         model: model,
         searchScope: $searchScope,
@@ -1000,23 +989,23 @@ struct Search: View {
 
   private func selectPost(_ post: Post) {
     dismissSearchField()
-    navigateRedditDestination(.reddit(.post(post)), model: splitNavigation, origin: .content)
+    navigateRedditDestination(.reddit(.post(post)), model: nav, origin: .content)
   }
 
   private func selectComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
     dismissSearchField()
-    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: splitNavigation, origin: .content)
+    navigateRedditDestination(.reddit(.postHighlighted(Post(id: linkID, subID: subID), comment.id)), model: nav, origin: .content)
   }
 
   private func selectSubreddit(_ subreddit: Subreddit) {
     dismissSearchField()
-    navigateRedditDestination(.reddit(.subFeed(subreddit)), model: splitNavigation, origin: .content)
+    navigateRedditDestination(.reddit(.subFeed(subreddit)), model: nav, origin: .content)
   }
 
   private func selectUser(_ user: User) {
     dismissSearchField()
-    navigateRedditDestination(.reddit(.user(user)), model: splitNavigation, origin: .content)
+    navigateRedditDestination(.reddit(.user(user)), model: nav, origin: .content)
   }
 
   private func dismissSearchField() {

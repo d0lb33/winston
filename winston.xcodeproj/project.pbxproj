@@ -288,7 +288,6 @@
 		EC8F349D2A6F988900EB8249 /* Placeholder.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC8F349C2A6F988900EB8249 /* Placeholder.swift */; };
 		EC8F34A12A6FC99000EB8249 /* updatePostsInBox.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC8F34A02A6FC99000EB8249 /* updatePostsInBox.swift */; };
 		EC8F34A32A6FCB3500EB8249 /* timeSince.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC8F34A22A6FCB3500EB8249 /* timeSince.swift */; };
-		EC91C8542AB9601000F2AD30 /* TabBarOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91C8532AB9601000F2AD30 /* TabBarOverlay.swift */; };
 		EC91C8582AB9884F00F2AD30 /* GeneralTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91C8572AB9884F00F2AD30 /* GeneralTheme.swift */; };
 		EC91C85C2AB99E5600F2AD30 /* FilteredSubredditsSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC91C85B2AB99E5600F2AD30 /* FilteredSubredditsSettings.swift */; };
 		EC9269E82A514AA6003F33B1 /* DownAttributedString.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC9269E72A514AA6003F33B1 /* DownAttributedString.swift */; };
@@ -720,7 +719,6 @@
 		EC8F349C2A6F988900EB8249 /* Placeholder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Placeholder.swift; sourceTree = "<group>"; };
 		EC8F34A02A6FC99000EB8249 /* updatePostsInBox.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = updatePostsInBox.swift; sourceTree = "<group>"; };
 		EC8F34A22A6FCB3500EB8249 /* timeSince.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = timeSince.swift; sourceTree = "<group>"; };
-		EC91C8532AB9601000F2AD30 /* TabBarOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TabBarOverlay.swift; sourceTree = "<group>"; };
 		EC91C8572AB9884F00F2AD30 /* GeneralTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GeneralTheme.swift; sourceTree = "<group>"; };
 		EC91C85B2AB99E5600F2AD30 /* FilteredSubredditsSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FilteredSubredditsSettings.swift; sourceTree = "<group>"; };
 		EC9269E72A514AA6003F33B1 /* DownAttributedString.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownAttributedString.swift; sourceTree = "<group>"; };
@@ -1803,7 +1801,6 @@
 				ECD5EE962B11D59F002CA158 /* AccountSwitcherOverlayView.swift */,
 				EC796DD02B14595700B425A1 /* AccountSwitcherTrigger.swift */,
 				EC796DCE2B1455D400B425A1 /* AccountSwitcherProvider.swift */,
-				EC91C8532AB9601000F2AD30 /* TabBarOverlay.swift */,
 			);
 			path = TabBarOverlay;
 			sourceTree = "<group>";
@@ -2196,7 +2193,6 @@
 				EC1E7B662A815BC100DB459A /* LightBoxElementView.swift in Sources */,
 				0A53024C2FDF202500CAC6F2 /* MockData.swift in Sources */,
 				ECF82A172B21664100CBF45D /* ThemedForegroundBG.swift in Sources */,
-				EC91C8542AB9601000F2AD30 /* TabBarOverlay.swift in Sources */,
 				EC4792E22B45143000487AEE /* BetterLottieView.swift in Sources */,
 				657643802ACF20F100805641 /* ExpandableText.swift in Sources */,
 				ECD1FC072A56D46D00723016 /* ObservableArray.swift in Sources */,

@@ -18,15 +18,9 @@ import Defaults
 import MarkdownUI
 
 struct AuroraPostDetail: View {
-  private static let topID = "aurora-post-detail-top"
-
   @ObservedObject var post: Post
   var subreddit: Subreddit
   var highlightID: String?
-  var tabInteractionTab: Nav.TabIdentifier?
-  var tabInteractions: TabInteractionCenter?
-  var tabInteractionRequest: TabInteractionRequest?
-  var tabInteractionOwnerID: TabInteractionOwnerID?
 
   @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
@@ -43,42 +37,15 @@ struct AuroraPostDetail: View {
 
   @Default(.CommentLinkDefSettings) private var commentDefSettings
   @Environment(\.auroraTheme) private var theme
-  @Environment(\.tabInteractionTab) private var environmentTabInteractionTab
-  @Environment(\.tabInteractionCenter) private var environmentTabInteractions
-  @Environment(\.tabInteractionRequest) private var environmentTabInteractionRequest
-
-  private var effectiveTabInteractionTab: Nav.TabIdentifier? {
-    tabInteractionTab ?? environmentTabInteractionTab
-  }
-
-  private var effectiveTabInteractions: TabInteractionCenter? {
-    tabInteractions ?? environmentTabInteractions
-  }
-
-  private var effectiveTabInteractionRequest: TabInteractionRequest? {
-    tabInteractionRequest ?? environmentTabInteractionRequest
-  }
-
-  private var effectiveTabInteractionOwnerID: TabInteractionOwnerID {
-    tabInteractionOwnerID ?? TabInteractionOwnerID("post-detail.\(post.id).\(highlightID ?? "root")")
-  }
 
   init(
     post: Post,
     subreddit: Subreddit,
-    highlightID: String? = nil,
-    tabInteractionTab: Nav.TabIdentifier? = nil,
-    tabInteractions: TabInteractionCenter? = nil,
-    tabInteractionRequest: TabInteractionRequest? = nil,
-    tabInteractionOwnerID: TabInteractionOwnerID? = nil
+    highlightID: String? = nil
   ) {
     self.post = post
     self.subreddit = subreddit
     self.highlightID = highlightID
-    self.tabInteractionTab = tabInteractionTab
-    self.tabInteractions = tabInteractions
-    self.tabInteractionRequest = tabInteractionRequest
-    self.tabInteractionOwnerID = tabInteractionOwnerID
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
 
     let defSettings = Defaults[.PostPageDefSettings]
@@ -97,13 +64,6 @@ struct AuroraPostDetail: View {
         let contentWidth = max(1, geometry.size.width)
 
         List {
-          Color.clear
-            .frame(height: 0)
-            .id(Self.topID)
-            .listRowSeparator(.hidden)
-            .listRowBackground(Color.clear)
-            .listRowInsets(EdgeInsets())
-
           Section {
             if let winstonData = post.winstonData {
               if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
@@ -153,40 +113,10 @@ struct AuroraPostDetail: View {
         .toolbar { sortToolbar }
         .safeAreaInset(edge: .bottom) { composer }
         .refreshable { await fetch(true) }
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-          geometry.contentOffset.y
-        } action: { _, newOffsetY in
-          recordTabInteractionScrollOffset(newOffsetY)
-        }
         .onAppear {
-          AppDiagnostics.asyncBreadcrumb(
-            "tabInteraction.postDetailAppear",
-            metadata: postDetailTabInteractionMetadata(branch: "appear")
-          )
-          activateTabInteractionOwner()
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
             Task { await fetch(post.data == nil) }
-          }
-        }
-        .onDisappear {
-          AppDiagnostics.asyncBreadcrumb(
-            "tabInteraction.postDetailDisappear",
-            metadata: postDetailTabInteractionMetadata(branch: "disappear")
-          )
-          deactivateTabInteractionOwner()
-        }
-        .onChange(of: effectiveTabInteractionTab) { oldTab, newTab in
-          AppDiagnostics.asyncBreadcrumb(
-            "tabInteraction.postDetailTabChanged",
-            metadata: postDetailTabInteractionMetadata(branch: "tabChanged")
-              .merging(["oldTab": oldTab?.rawValue ?? "none", "newTab": newTab?.rawValue ?? "none"]) { current, _ in current }
-          )
-          if let oldTab, let effectiveTabInteractions {
-            effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: oldTab)
-          }
-          if newTab != nil {
-            activateTabInteractionOwner()
           }
         }
         .onChange(of: sort) { _, _ in
@@ -199,77 +129,11 @@ struct AuroraPostDetail: View {
             pendingHighlight = nil
           }
         }
-        .onChange(of: effectiveTabInteractionRequest) { _, request in
-          guard let request else { return }
-          let isActive = effectiveTabInteractionTab.map {
-            effectiveTabInteractions?.isActiveOwner(effectiveTabInteractionOwnerID, for: $0) == true
-          } ?? false
-          let canHandle = effectiveTabInteractionTab.map {
-            effectiveTabInteractions?.canOwnerHandleRequest(request, ownerID: effectiveTabInteractionOwnerID, for: $0) == true
-          } ?? false
-          AppDiagnostics.asyncBreadcrumb(
-            "tabInteraction.postDetailRequest",
-            metadata: postDetailTabInteractionMetadata(request: request, branch: "request")
-              .merging(["isActiveOwner": "\(isActive)", "canHandle": "\(canHandle)"]) { current, _ in current }
-          )
-          guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-          guard canHandle else {
-            AppDiagnostics.asyncBreadcrumb(
-              "tabInteraction.postDetailRequestIgnored",
-              metadata: postDetailTabInteractionMetadata(request: request, branch: isActive ? "ignored.staleBeforeOwnerActivation" : "ignored.inactiveOwner")
-            )
-            return
-          }
-          withAnimation(.snappy) {
-            proxy.scrollTo(Self.topID, anchor: .top)
-          }
-          AppDiagnostics.asyncBreadcrumb(
-            "tabInteraction.postDetailScrollToTop",
-            metadata: postDetailTabInteractionMetadata(request: request, branch: "scrollToTop")
-          )
-        }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
         }
       }
     }
-  }
-
-  private func recordTabInteractionScrollOffset(_ offsetY: CGFloat) {
-    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
-    effectiveTabInteractions.recordScrollOffset(offsetY, for: effectiveTabInteractionTab, ownerID: effectiveTabInteractionOwnerID)
-  }
-
-  private func activateTabInteractionOwner() {
-    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.postDetailActivateOwner",
-      metadata: postDetailTabInteractionMetadata(branch: "activateOwner")
-    )
-    effectiveTabInteractions.activateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab, initialIsAtTop: false)
-  }
-
-  private func deactivateTabInteractionOwner() {
-    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.postDetailDeactivateOwner",
-      metadata: postDetailTabInteractionMetadata(branch: "deactivateOwner")
-    )
-    effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab)
-  }
-
-  private func postDetailTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
-    let tabMetadata = effectiveTabInteractionTab.flatMap { effectiveTabInteractions?.diagnosticsMetadata(for: $0) } ?? ["tab": "none"]
-    return tabMetadata.merging([
-      "requestKind": request.map { "\($0.kind)" } ?? "none",
-      "requestID": request?.id.uuidString ?? "none",
-      "branch": branch,
-      "owner": effectiveTabInteractionOwnerID.rawValue,
-      "postID": post.id,
-      "highlightID": highlightID ?? "nil",
-      "showingAllComments": "\(showingAllComments)",
-      "rowsCount": "\(model.rows.count)"
-    ]) { current, _ in current }
   }
 
   private var commentsHeaderTitle: String {

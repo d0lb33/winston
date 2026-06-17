@@ -88,9 +88,6 @@ struct AuroraFeed: View {
   let community: Subreddit?
   @Binding private var selectedPostID: String?
   @Binding private var sort: SubListingSortOption
-  let tabInteractionTab: Nav.TabIdentifier?
-  let tabInteractions: TabInteractionCenter?
-  let tabInteractionRequest: TabInteractionRequest?
   var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
@@ -106,9 +103,6 @@ struct AuroraFeed: View {
     selectedPostID: Binding<String?>,
     scrollPositionID: Binding<String?>,
     sort: Binding<SubListingSortOption>,
-    tabInteractionTab: Nav.TabIdentifier? = nil,
-    tabInteractions: TabInteractionCenter? = nil,
-    tabInteractionRequest: TabInteractionRequest? = nil,
     onCompactNavigate: ((NavDest) -> Void)? = nil
   ) {
     self.model = model
@@ -117,9 +111,6 @@ struct AuroraFeed: View {
     self._selectedPostID = selectedPostID
     self._scrollPositionID = scrollPositionID
     self._sort = sort
-    self.tabInteractionTab = tabInteractionTab
-    self.tabInteractions = tabInteractions
-    self.tabInteractionRequest = tabInteractionRequest
     self.onCompactNavigate = onCompactNavigate
   }
 
@@ -134,19 +125,7 @@ struct AuroraFeed: View {
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
 
-      TabScrollRoot(
-        topID: Self.topID,
-        tab: tabInteractionTab,
-        tabInteractions: tabInteractions,
-        request: tabInteractionRequest,
-        selection: $selectedPostID,
-        scrollPosition: $scrollPositionID,
-        onOffsetChange: { offsetY in
-          ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
-            readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
-          }
-        }
-      ) {
+      List(selection: $selectedPostID) {
           if let community {
             AuroraCommunityHeader(sub: community)
               .listRowBackground(Color.clear)
@@ -210,6 +189,14 @@ struct AuroraFeed: View {
           AuroraFeedLoadingFooter(model: model)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
+      }
+      .scrollPosition(id: $scrollPositionID)
+      .onScrollGeometryChange(for: CGFloat.self) { geometry in
+        geometry.contentOffset.y
+      } action: { _, offsetY in
+        ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
+          readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
+        }
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)

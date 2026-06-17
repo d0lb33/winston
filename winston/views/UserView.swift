@@ -73,8 +73,6 @@ struct UserView: View {
   private static let topID = "user-view-top"
 
   @StateObject var user: User
-  let tabInteractionTab: Nav.TabIdentifier?
-  let tabInteractions: TabInteractionCenter?
   @State private var extras: UserProfileExtras?
   @State private var selectedTab: ProfileTab = .overview
   @State private var feeds: [ProfileTab: ProfileFeedState] = [:]
@@ -90,10 +88,8 @@ struct UserView: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
-  init(user: User, tabInteractionTab: Nav.TabIdentifier? = nil, tabInteractions: TabInteractionCenter? = nil) {
+  init(user: User) {
     _user = StateObject(wrappedValue: user)
-    self.tabInteractionTab = tabInteractionTab
-    self.tabInteractions = tabInteractions
   }
 
 #if DEBUG
@@ -101,8 +97,6 @@ struct UserView: View {
   /// without a live Reddit session.
   fileprivate init(previewUser: User, extras: UserProfileExtras?, tab: ProfileTab) {
     _user = StateObject(wrappedValue: previewUser)
-    tabInteractionTab = nil
-    tabInteractions = nil
     _extras = State(initialValue: extras)
     _selectedTab = State(initialValue: tab)
   }
@@ -283,12 +277,7 @@ struct UserView: View {
   }
 
   var body: some View {
-    TabScrollRoot(
-      topID: Self.topID,
-      tab: tabInteractionTab,
-      tabInteractions: tabInteractions,
-      request: tabInteractionTab.flatMap { tabInteractions?.requests[$0] }
-    ) {
+    List {
       if let data = user.data {
         Section {
           UserHeaderNative(

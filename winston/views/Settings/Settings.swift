@@ -10,39 +10,11 @@ import WhatsNewKit
 //import SceneKit
 
 struct Settings: View {
-  @ObservedObject var router: Router
-  @State private var nav = SettingsNav()
+  let nav: SettingsNav
   @Environment(\.openURL) private var openURL
-  @Environment(\.horizontalSizeClass) private var hSize
   @State private var presentingWhatsNew: Bool = false
   @State private var presentingAnnouncement: Bool = false
   @State private var presentingGQLDebug: Bool = false
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
-
-  private var isSidebarVisibleForTabInteraction: Bool {
-    hSize == .regular || nav.preferredColumn == .sidebar
-  }
-
-  private var isDetailVisibleForTabInteraction: Bool {
-    hSize != .regular && nav.preferredColumn == .detail
-  }
-
-  private var isDetailScrollOwnerForTabInteraction: Bool {
-    guard isDetailVisibleForTabInteraction else { return false }
-    guard let destination = nav.detailPath.last else {
-      return nav.selection?.usesSettingsPanelScrollRoot ?? true
-    }
-    switch destination {
-    case .setting(let setting):
-      return setting.usesSettingsPanelScrollRoot
-    case .reddit:
-      return PostsNav.postDetail(from: destination) != nil
-    }
-  }
-
-  private var detailTabInteractionContext: TabInteractionContext? {
-    isDetailScrollOwnerForTabInteraction ? TabInteractionContext(tab: .settings, center: tabInteractions) : nil
-  }
 
   var body: some View {
     @Bindable var nav = nav
@@ -51,7 +23,6 @@ struct Settings: View {
       NavigationStack {
         SettingsSidebarList(
           selectedSetting: nav.selection,
-          isTabInteractionOwner: isSidebarVisibleForTabInteraction,
           showWhatsNew: { presentingWhatsNew.toggle() },
           showAnnouncements: { presentingAnnouncement.toggle() },
           showGraphQLDebug: { presentingGQLDebug.toggle() },
@@ -68,10 +39,8 @@ struct Settings: View {
         SettingsDetailColumnContent(setting: nav.selection)
           .settingsNavigation(nav, origin: .detail)
           .redditNavigation(nav, origin: .detail)
-          .settingsDestinations(nav, tabInteractionContext: detailTabInteractionContext)
+          .settingsDestinations(nav)
       }
-      .environment(\.settingsPanelIsTabInteractionOwner, isDetailScrollOwnerForTabInteraction)
-      .tabInteractionContext(detailTabInteractionContext)
     }
     .navigationSplitViewStyle(.balanced)
     .sheet(isPresented: $presentingWhatsNew){
@@ -84,100 +53,7 @@ struct Settings: View {
     }
     .onAppear {
       AppDiagnostics.shared.breadcrumb("Opened Settings root")
-      synchronizeSettingsTabInteractionOwner()
     }
-    .routerDeepLinkInbox(
-      router: router,
-      consume: {
-        nav.consumeDeepLink(path: $0)
-        synchronizeSettingsTabInteractionOwner()
-      },
-      onRootReset: {
-        nav.reset()
-        synchronizeSettingsTabInteractionOwner()
-      }
-    )
-    .onChange(of: tabInteractions.requests[.settings]) { _, request in
-      handleTabInteractionRequest(request)
-    }
-    .onChange(of: isSidebarVisibleForTabInteraction) { _, _ in
-      synchronizeSettingsTabInteractionOwner()
-    }
-    .onChange(of: isDetailScrollOwnerForTabInteraction) { _, _ in
-      synchronizeSettingsTabInteractionOwner()
-    }
-  }
-
-  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
-    guard let request else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.settingsHandleRequest",
-      metadata: settingsTabInteractionMetadata(request: request, branch: "start")
-    )
-    switch request.kind {
-    case .scrollToTop:
-      guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction || tabInteractions.hasActiveOwner(for: .settings) else {
-        let didGoBack = nav.goBackOneStep()
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.settingsGoBackResult",
-          metadata: settingsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
-            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-        )
-        if didGoBack {
-          synchronizeSettingsTabInteractionOwner()
-        }
-        return
-      }
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsScrollHandledByVisibleOwner",
-        metadata: settingsTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
-      )
-    case .goBack:
-      let didGoBack = nav.goBackOneStep()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsGoBackResult",
-        metadata: settingsTabInteractionMetadata(request: request, branch: "goBack")
-          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-      )
-      if didGoBack {
-        synchronizeSettingsTabInteractionOwner()
-      }
-    case .resetToRoot:
-      nav.reset()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsResetToRoot",
-        metadata: settingsTabInteractionMetadata(request: request, branch: "resetToRoot")
-      )
-      synchronizeSettingsTabInteractionOwner()
-    }
-  }
-
-  private func synchronizeSettingsTabInteractionOwner() {
-    guard isSidebarVisibleForTabInteraction else {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsSyncOwnerSkipped",
-        metadata: settingsTabInteractionMetadata(branch: "syncOwner.sidebarNotVisible")
-      )
-      return
-    }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.settingsSyncOwner",
-      metadata: settingsTabInteractionMetadata(branch: "syncOwner.sidebar")
-    )
-    tabInteractions.activateScrollOwner(.settingsRoot, for: .settings, initialIsAtTop: false)
-  }
-
-  private func settingsTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
-    tabInteractions.diagnosticsMetadata(for: .settings).merging([
-      "requestKind": request.map { "\($0.kind)" } ?? "none",
-      "branch": branch,
-      "preferredColumn": "\(nav.preferredColumn)",
-      "selection": nav.selection.map { "\($0)" } ?? "nil",
-      "detailPathCount": "\(nav.detailPath.count)",
-      "isSidebarVisible": "\(isSidebarVisibleForTabInteraction)",
-      "isDetailVisible": "\(isDetailVisibleForTabInteraction)",
-      "isDetailScrollOwner": "\(isDetailScrollOwnerForTabInteraction)"
-    ]) { current, _ in current }
   }
 
 }
@@ -186,7 +62,6 @@ private struct SettingsSidebarList: View {
   private static let topID = "settings-top"
 
   let selectedSetting: NavDest.Setting?
-  let isTabInteractionOwner: Bool
   let showWhatsNew: () -> Void
   let showAnnouncements: () -> Void
   let showGraphQLDebug: () -> Void
@@ -195,8 +70,7 @@ private struct SettingsSidebarList: View {
 
   var body: some View {
     SettingsPanelScrollRoot(
-      topID: Self.topID,
-      isTabInteractionOwner: isTabInteractionOwner
+      topID: Self.topID
     ) {
       SettingsMainSection(selectedSetting: selectedSetting)
       SettingsInfoSection(

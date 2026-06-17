@@ -26,7 +26,7 @@ import Defaults
 import CoreData
 
 struct AuroraRoot: View {
-  @ObservedObject var router: Router
+  let posts: PostsNav
   let accountID: UUID?
   /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
   var themeOverride: AuroraTheme? = nil
@@ -39,21 +39,16 @@ struct AuroraRoot: View {
 
   @FetchRequest private var subs: FetchedResults<CachedSub>
 
-  /// Single source of truth for this surface's navigation. The detail stack lives inside
-  /// it, so the split re-renders straight from this on resize/fold.
-  @State private var posts = PostsNav()
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
 
-  init(router: Router, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
+  init(nav posts: PostsNav, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
-    self.router = router
+    self.posts = posts
     self.accountID = accountID
     self.themeOverride = themeOverride
     self.onClose = onClose
-    _posts = State(initialValue: PostsNav(launchFeed: launchFeed))
     _model = State(initialValue: AuroraFeedModel(subreddit: launchFeed.initialSubreddit))
     if let cid = accountID {
       _subs = FetchRequest<CachedSub>(
@@ -101,30 +96,6 @@ struct AuroraRoot: View {
     return posts.detailPost
   }
 
-  private var isFeedRootVisibleForTabInteraction: Bool {
-    posts.contentPath.isEmpty && (hSize == .regular || posts.preferredColumn == .content)
-  }
-
-  private var isContentColumnVisibleForTabInteraction: Bool {
-    hSize == .regular || posts.preferredColumn == .content
-  }
-
-  private var isDetailVisibleForTabInteraction: Bool {
-    selectedPost != nil && hSize != .regular && posts.preferredColumn == .detail
-  }
-
-  private var feedRootTabInteractionContext: TabInteractionContext? {
-    isFeedRootVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
-  }
-
-  private var contentDestinationTabInteractionContext: TabInteractionContext? {
-    isContentColumnVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
-  }
-
-  private var detailTabInteractionContext: TabInteractionContext? {
-    isDetailVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
-  }
-
   var body: some View {
     @Bindable var posts = posts
 
@@ -149,21 +120,6 @@ struct AuroraRoot: View {
     .diagnosticScreen("aurora.posts")
     .onAppear {
       reloadSavedListSummaries()
-      synchronizePostsTabInteractionOwner()
-    }
-    .routerDeepLinkInbox(
-      router: router,
-      consume: { posts.consumeDeepLink(path: $0) },
-      onRootReset: { resetToLaunchFeed() }
-    )
-    .onChange(of: tabInteractions.requests[.posts]) { _, request in
-      handleTabInteractionRequest(request)
-    }
-    .onChange(of: isFeedRootVisibleForTabInteraction) { _, _ in
-      synchronizePostsTabInteractionOwner()
-    }
-    .onChange(of: isDetailVisibleForTabInteraction) { _, _ in
-      synchronizePostsTabInteractionOwner()
     }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
@@ -187,7 +143,6 @@ struct AuroraRoot: View {
       guard let newID, let post = model.post(id: newID) else { return }
       posts.selectFeedPost(post)
       AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
-      synchronizePostsTabInteractionOwner()
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
@@ -205,84 +160,6 @@ struct AuroraRoot: View {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
     posts.reset(to: launchFeed)
     model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
-    synchronizePostsTabInteractionOwner()
-  }
-
-  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
-    guard let request else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.postsHandleRequest",
-      metadata: postsTabInteractionMetadata(request: request, branch: "start")
-    )
-    switch request.kind {
-    case .scrollToTop:
-      guard isFeedRootVisibleForTabInteraction || isDetailVisibleForTabInteraction || tabInteractions.hasActiveOwner(for: .posts) else {
-        AppDiagnostics.asyncBreadcrumb(
-          "Posts tab scroll request routed to back",
-          metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
-        )
-        let didGoBack = posts.goBackOneStep()
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.postsGoBackResult",
-          metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack.result")
-            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-        )
-        if didGoBack {
-          synchronizePostsTabInteractionOwner()
-        }
-        return
-      }
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.postsScrollHandledByVisibleOwner",
-        metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
-      )
-    case .goBack:
-      let didGoBack = posts.goBackOneStep()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.postsGoBackResult",
-        metadata: postsTabInteractionMetadata(request: request, branch: "goBack")
-          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-      )
-      if didGoBack {
-        synchronizePostsTabInteractionOwner()
-      }
-    case .resetToRoot:
-      posts.resetToSidebarRoot()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.postsResetToRoot",
-        metadata: postsTabInteractionMetadata(request: request, branch: "resetToRoot")
-      )
-      synchronizePostsTabInteractionOwner()
-    }
-  }
-
-  private func synchronizePostsTabInteractionOwner() {
-    guard isFeedRootVisibleForTabInteraction else {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.postsSyncOwnerSkipped",
-        metadata: postsTabInteractionMetadata(branch: "syncOwner.notFeedRootVisible")
-      )
-      return
-    }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.postsSyncOwner",
-      metadata: postsTabInteractionMetadata(branch: "syncOwner.feedRoot")
-    )
-    tabInteractions.activateScrollOwner(.postsFeed, for: .posts, initialIsAtTop: false)
-  }
-
-  private func postsTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
-    tabInteractions.diagnosticsMetadata(for: .posts).merging([
-      "requestKind": request.map { "\($0.kind)" } ?? "none",
-      "branch": branch,
-      "preferredColumn": "\(posts.preferredColumn)",
-      "contentPathCount": "\(posts.contentPath.count)",
-      "detailPathCount": "\(posts.detailPath.count)",
-      "hasSelectedPost": "\(posts.selectedPostID != nil)",
-      "hasDetailPost": "\(posts.detailPost != nil)",
-      "isFeedRootVisible": "\(isFeedRootVisibleForTabInteraction)",
-      "isDetailVisible": "\(isDetailVisibleForTabInteraction)"
-    ]) { current, _ in current }
   }
 
   // MARK: - Columns
@@ -293,12 +170,14 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.contentPath) {
       feedContent(selectedPostID: $posts.selectedPostID)
         .redditNavigation(posts, origin: .content)
-        .redditDestinations(posts, origin: .content, tabInteractionContext: contentDestinationTabInteractionContext)
+        .redditDestinations(posts, origin: .content)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
 
   @ViewBuilder private func feedContent(selectedPostID: Binding<String?>) -> some View {
+    @Bindable var posts = posts
+
     if posts.community == SavedListsRoute.overviewID {
       SavedListsOverviewScreen(
         mode: .manage,
@@ -321,10 +200,7 @@ struct AuroraRoot: View {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: selectedPostID,
                  scrollPositionID: $posts.feedScrollPositionID,
-                 sort: $sort,
-                 tabInteractionTab: feedRootTabInteractionContext?.tab,
-                 tabInteractions: feedRootTabInteractionContext?.center,
-                 tabInteractionRequest: feedRootTabInteractionContext?.request) { destination in
+                 sort: $sort) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -336,9 +212,8 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.detailPath) {
       detailContent
         .redditNavigation(posts, origin: .detail)
-        .redditDestinations(posts, origin: .detail, tabInteractionContext: detailTabInteractionContext)
+        .redditDestinations(posts, origin: .detail)
     }
-    .tabInteractionContext(detailTabInteractionContext)
   }
 
   @ViewBuilder private var detailContent: some View {
@@ -621,10 +496,8 @@ struct AuroraDetailPlaceholder: View {
 struct AuroraDesignLabPreview: View {
   let theme: AuroraTheme
   let onClose: () -> Void
-  @StateObject private var router = Router(id: "aurora-designlab")
-  @StateObject private var tabInteractions = TabInteractionCenter()
+  @State private var posts = PostsNav()
   var body: some View {
-    AuroraRoot(router: router, themeOverride: theme, onClose: onClose)
-      .environmentObject(tabInteractions)
+    AuroraRoot(nav: posts, themeOverride: theme, onClose: onClose)
   }
 }

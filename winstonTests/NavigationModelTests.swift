@@ -343,137 +343,71 @@ struct StackNavTests {
   }
 }
 
-// MARK: - TabInteractionCenter
+// MARK: - AppNav facade bridge
 
 @MainActor
-struct TabInteractionCenterTests {
-  @Test("scroll root owner preserves unscoped top id")
-  func scrollRootOwnerPreservesUnscopedTopID() {
-    #expect(TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: nil).rawValue == "user-view-top")
-    #expect(TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "").rawValue == "user-view-top")
+struct AppNavBridgeTests {
+  @Test("resetAccountScopedSurfaces clears account tabs and preserves Settings")
+  func resetAccountScopedSurfaces() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.me.openPostInDetail(Post(id: "p2"))
+    appNav.search.contentPath = [.reddit(.user(User(id: "alice")))]
+    appNav.inbox.path = [.reddit(.post(Post(id: "p3")))]
+    appNav.settings.select(.appearance)
+    appNav.selectedTab = .settings
+
+    appNav.resetAccountScopedSurfaces()
+
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.me.detailPost == nil)
+    #expect(appNav.search.contentPath.isEmpty)
+    #expect(appNav.inbox.path.isEmpty)
+    #expect(appNav.settings.selection == .appearance)
+    #expect(appNav.selectedTab == .settings)
   }
 
-  @Test("scroll root owner is unique per destination scope")
-  func scrollRootOwnerIsUniquePerDestinationScope() {
-    let postsUser = TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "posts.detail.reddit.user.alice")
-    let searchUser = TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "search.detail.reddit.user.alice")
+  @Test("Nav.to routes into the selected AppNav surface")
+  func navToRoutesIntoSelectedSurface() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .search
 
-    #expect(postsUser.rawValue == "posts.detail.reddit.user.alice.user-view-top")
-    #expect(searchUser.rawValue == "search.detail.reddit.user.alice.user-view-top")
-    #expect(postsUser != searchUser)
+    let post = Post(id: "p1")
+    Nav.to(.reddit(.post(post)))
+
+    #expect(appNav.selectedTab == .search)
+    #expect(appNav.search.detailPost === post)
+    #expect(appNav.search.preferredColumn == .detail)
   }
 
-  @Test("scrolled active owner requests scroll to top")
-  func scrolledActiveOwnerRequestsScrollToTop() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+  @Test("Nav.fullTo selects a tab and routes into its AppNav surface")
+  func navFullToSelectsAndRoutes() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
 
-    center.selectedTabTappedAgain(.posts)
+    Nav.fullTo(.inbox, .reddit(.user(User(id: "alice"))), false)
 
-    #expect(center.requests[.posts]?.kind == .scrollToTop)
+    #expect(appNav.selectedTab == .inbox)
+    #expect(appNav.inbox.path.count == 1)
+    guard case .reddit(.user) = appNav.inbox.path[0] else {
+      Issue.record("expected user destination in inbox path")
+      return
+    }
   }
 
-  @Test("at-top active owner requests one-step back")
-  func atTopActiveOwnerRequestsBack() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
+  @Test("Nav.back delegates to the selected AppNav surface")
+  func navBackDelegatesToSelectedSurface() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .me
+    appNav.me.contentPath = [.reddit(.user(User(id: "alice")))]
 
-    center.selectedTabTappedAgain(.posts)
+    Nav.back()
 
-    #expect(center.requests[.posts]?.kind == .goBack)
-  }
-
-  @Test("newly selected tab defaults to scroll instead of back")
-  func newlySelectedTabDefaultsToScrollInsteadOfBack() {
-    let center = TabInteractionCenter()
-    center.selectedTabChanged(to: .search)
-
-    center.selectedTabTappedAgain(.search)
-
-    #expect(center.requests[.search]?.kind == .scrollToTop)
-  }
-
-  @Test("active owner only goes back after confirmed top geometry")
-  func activeOwnerOnlyGoesBackAfterConfirmedTopGeometry() async throws {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("search-top", for: .search, initialIsAtTop: false)
-
-    center.selectedTabTappedAgain(.search)
-    #expect(center.requests[.search]?.kind == .scrollToTop)
-
-    center.setIsAtTop(.search, true, ownerID: "search-top")
-    try await Task.sleep(for: .milliseconds(350))
-    center.selectedTabTappedAgain(.search)
-    #expect(center.requests[.search]?.kind == .goBack)
-  }
-
-  @Test("active owner requests tab bar reveal when scrolling upward")
-  func activeOwnerRequestsTabBarRevealWhenScrollingUpward() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("search-top", for: .search, initialIsAtTop: false)
-
-    center.recordScrollOffset(120, for: .search, ownerID: "search-top")
-    center.recordScrollOffset(116, for: .search, ownerID: "search-top")
-
-    #expect(center.tabBarRevealRequest?.tab == .search)
-  }
-
-  @Test("hidden owner cannot overwrite active owner top state")
-  func hiddenOwnerWritesAreIgnored() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
-
-    center.setIsAtTop(.posts, true, ownerID: "posts.detail.p1")
-    center.selectedTabTappedAgain(.posts)
-
-    #expect(center.requests[.posts]?.kind == .scrollToTop)
-  }
-
-  @Test("returning from detail uses the feed owner's scroll state")
-  func returningFromDetailUsesFeedOwnerState() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
-    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
-
-    center.selectedTabTappedAgain(.posts)
-
-    #expect(center.requests[.posts]?.kind == .scrollToTop)
-  }
-
-  @Test("owner ignores request issued before it became active")
-  func ownerIgnoresRequestIssuedBeforeActivation() async throws {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: false)
-
-    center.selectedTabTappedAgain(.posts)
-    let request = try #require(center.requests[.posts])
-    try await Task.sleep(for: .milliseconds(10))
-    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
-
-    #expect(!center.canOwnerHandleRequest(request, ownerID: "posts.feed", for: .posts))
-  }
-
-  @Test("missing active owner requests scroll instead of back")
-  func missingActiveOwnerRequestsScrollInsteadOfBack() {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
-    center.deactivateScrollOwner("posts.detail.p1", for: .posts)
-
-    center.selectedTabTappedAgain(.posts)
-
-    #expect(center.requests[.posts]?.kind == .scrollToTop)
-  }
-
-  @Test("second reselect inside double-tap interval resets to root")
-  func doubleTapResetsToRoot() async throws {
-    let center = TabInteractionCenter()
-    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
-
-    center.selectedTabTappedAgain(.posts)
-    try await Task.sleep(for: .milliseconds(80))
-    center.selectedTabTappedAgain(.posts)
-
-    #expect(center.requests[.posts]?.kind == .resetToRoot)
+    #expect(appNav.me.contentPath.isEmpty)
   }
 }
 

@@ -8,16 +8,15 @@
 import SwiftUI
 
 struct Me: View {
-  @ObservedObject var router: Router
+  let nav: ColumnNav
   @ObservedObject var wire = RedditWire.shared
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   @State private var loading = true
   var body: some View {
-    RedditTwoColumnShell(router: router, tab: .me) { _ in
+    RedditTwoColumnShell(nav: nav) { _ in
       Group {
         if let user = wire.me {
-          UserView(user: user, tabInteractionTab: .me, tabInteractions: tabInteractions)
+          UserView(user: user)
             .id("me-user-view-\(user.id)")
           
         } else {
@@ -29,6 +28,18 @@ struct Me: View {
                 await RedditWire.shared.fetchMe(force: true)
               }
             }
+        }
+      }
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          AccountSwitcherTrigger(onTap: {}) {
+            Image(systemName: "person.2.fill")
+              .font(.body.weight(.semibold))
+              .foregroundStyle(.primary)
+              .frame(width: 36, height: 36)
+              .contentShape(Rectangle())
+          }
+          .accessibilityLabel("Switch account")
         }
       }
     }

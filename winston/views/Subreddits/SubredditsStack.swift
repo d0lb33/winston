@@ -11,7 +11,7 @@
 import SwiftUI
 
 struct SubredditsStack: View {
-  @ObservedObject var router: Router
+  let nav: PostsNav
   @ObservedObject private var wire = RedditWire.shared
   @Environment(\.displayScale) private var displayScale
 
@@ -19,7 +19,7 @@ struct SubredditsStack: View {
     GeometryReader { proxy in
       let metrics = SubredditsViewportMetrics(size: proxy.size, safeAreaInsets: proxy.safeAreaInsets)
 
-      AuroraRoot(router: router, accountID: wire.accountScopeID)
+      AuroraRoot(nav: nav, accountID: wire.accountScopeID)
         .environment(\.contentWidth, max(Double(proxy.size.width), 1))
         .onAppear {
           ScreenMetrics.refresh(size: metrics.fullSize, scale: displayScale, safeAreaInsets: metrics.uiEdgeInsets)

@@ -4085,6 +4085,9 @@
         }
       }
     },
+    "Switch account" : {
+
+    },
     "Sync API Key" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4105,7 +4108,7 @@
     "t3_…" : {
 
     },
-    "Tap an account to switch to it, or hold the \"me\" (or your username) tab pressed in the bottom bar." : {
+    "Tap an account to switch to it, or use the account switcher in the Me tab." : {
 
     },
     "Tap to copy" : {

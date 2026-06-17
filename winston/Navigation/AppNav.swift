@@ -67,7 +67,13 @@ final class AppNav {
   static let shared = AppNav()
 
   /// The selected tab. Bound directly to the native `TabView(selection:)`.
-  var selectedTab: Tab = .posts
+  var selectedTab: Tab = .posts {
+    didSet {
+      if Nav.shared.activeTab != selectedTab.legacyTab {
+        Nav.shared.activeTab = selectedTab.legacyTab
+      }
+    }
+  }
 
   /// Per-surface navigation state. Each is the single source of truth for its tab.
   let posts = PostsNav()
@@ -78,6 +84,26 @@ final class AppNav {
 
   enum Tab: String, CaseIterable, Hashable, Codable {
     case posts, inbox, me, search, settings
+
+    init(_ legacyTab: Nav.TabIdentifier) {
+      switch legacyTab {
+      case .posts: self = .posts
+      case .inbox: self = .inbox
+      case .me: self = .me
+      case .search: self = .search
+      case .settings: self = .settings
+      }
+    }
+
+    var legacyTab: Nav.TabIdentifier {
+      switch self {
+      case .posts: return .posts
+      case .inbox: return .inbox
+      case .me: return .me
+      case .search: return .search
+      case .settings: return .settings
+      }
+    }
   }
 
   private init() {}
@@ -90,6 +116,63 @@ final class AppNav {
     search.reset()
     inbox.reset()
     if selectedTab != .settings { selectedTab = .posts }
+  }
+
+  func navigate(_ destination: NavDest, reset: Bool = false) {
+    navigate(to: selectedTab, destination, reset: reset)
+  }
+
+  func navigate(to tab: Tab, _ destination: NavDest, reset: Bool = false) {
+    if reset {
+      self.reset(tab)
+    }
+    switch tab {
+    case .posts:
+      posts.consumeDeepLink(path: [destination])
+    case .inbox:
+      inbox.consumeDeepLink(path: [destination])
+    case .me:
+      me.consumeDeepLink(path: [destination])
+    case .search:
+      search.consumeDeepLink(path: [destination])
+    case .settings:
+      settings.consumeDeepLink(path: [destination])
+    }
+    selectedTab = tab
+  }
+
+  @discardableResult
+  func goBackOneStep() -> Bool {
+    switch selectedTab {
+    case .posts: return posts.goBackOneStep()
+    case .inbox: return inbox.goBackOneStep()
+    case .me: return me.goBackOneStep()
+    case .search: return search.goBackOneStep()
+    case .settings: return settings.goBackOneStep()
+    }
+  }
+
+  func resetSelectedSurface() {
+    reset(selectedTab)
+  }
+
+  func reset(_ tab: Tab) {
+    switch tab {
+    case .posts: posts.reset()
+    case .inbox: inbox.reset()
+    case .me: me.reset()
+    case .search: search.reset()
+    case .settings: settings.reset()
+    }
+  }
+
+  func resetAll() {
+    posts.reset()
+    me.reset()
+    search.reset()
+    inbox.reset()
+    settings.reset()
+    selectedTab = .posts
   }
 }
 

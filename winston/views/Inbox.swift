@@ -9,11 +9,8 @@ import SwiftUI
 import Defaults
 
 struct Inbox: View {
-  /// Legacy `Router` retained only as the write-only deep-link inbox (see
-  /// `.routerDeepLinkInbox`); the surface itself is driven by `nav`.
-  @ObservedObject var router: Router
   /// Single source of truth for this single-stack surface.
-  @State private var nav = StackNav()
+  let nav: StackNav
 
   @State private var notifications: [InboxNotification] = []
   @State private var nextAfter: String?
@@ -21,15 +18,6 @@ struct Inbox: View {
   @State private var loading = false
   @State private var loadingMore = false
   @Default(.GeneralDefSettings) private var generalDefSettings
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
-
-  private var isRootVisibleForTabInteraction: Bool {
-    nav.path.isEmpty
-  }
-
-  private var tabInteractionContext: TabInteractionContext {
-    TabInteractionContext(tab: .inbox, center: tabInteractions)
-  }
   
   func fetch(_ loadMore: Bool = false, _ force: Bool = false) async {
     if loading || loadingMore { return }
@@ -98,6 +86,8 @@ struct Inbox: View {
   }
   
   var body: some View {
+    @Bindable var nav = nav
+
     NavigationStack(path: $nav.path) {
       InboxList(
         notifications: notifications,
@@ -108,16 +98,12 @@ struct Inbox: View {
       )
       .auroraListChrome()
       .redditNavigation(nav, origin: .content)
-      .redditDestinations(nav, origin: .content, tabInteractionContext: tabInteractionContext)
+      .redditDestinations(nav, origin: .content)
       .loader(loading)
       .onAppear {
-        synchronizeTabInteractionOwner()
         Task(priority: .background) {
           await fetch()
         }
-      }
-      .onChange(of: tabInteractions.requests[.inbox]) { _, request in
-        handleTabInteractionRequest(request)
       }
       .refreshable {
         await fetch(false, true)
@@ -130,119 +116,22 @@ struct Inbox: View {
       }
       .navigationTitle("Inbox")
     }
-    .tabInteractionContext(tabInteractionContext)
-    .routerDeepLinkInbox(
-      router: router,
-      consume: {
-        nav.consumeDeepLink(path: $0)
-        synchronizeTabInteractionOwner()
-      },
-      onRootReset: {
-        nav.reset()
-        synchronizeTabInteractionOwner()
-      }
-    )
-    .onChange(of: isRootVisibleForTabInteraction) { _, _ in
-      synchronizeTabInteractionOwner()
-    }
-  }
-
-  private var isPostDestinationVisible: Bool {
-    nav.path.last.flatMap { PostsNav.postDetail(from: $0) } != nil
-  }
-
-  private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
-    guard let request else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.inboxHandleRequest",
-      metadata: inboxTabInteractionMetadata(request: request, branch: "start")
-    )
-    switch request.kind {
-    case .scrollToTop:
-      if !nav.path.isEmpty && !isPostDestinationVisible && !tabInteractions.hasActiveOwner(for: .inbox) {
-        let didGoBack = nav.goBackOneStep()
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.inboxGoBackResult",
-          metadata: inboxTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
-            .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-        )
-        if didGoBack {
-          synchronizeTabInteractionOwner()
-        }
-      } else {
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.inboxScrollHandledByVisibleOwner",
-          metadata: inboxTabInteractionMetadata(request: request, branch: "scrollToTop.visibleOwner")
-        )
-      }
-    case .goBack:
-      let didGoBack = nav.goBackOneStep()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.inboxGoBackResult",
-        metadata: inboxTabInteractionMetadata(request: request, branch: "goBack")
-          .merging(["didGoBack": "\(didGoBack)"]) { current, _ in current }
-      )
-      if didGoBack {
-        synchronizeTabInteractionOwner()
-      }
-    case .resetToRoot:
-      nav.reset()
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.inboxResetToRoot",
-        metadata: inboxTabInteractionMetadata(request: request, branch: "resetToRoot")
-      )
-      synchronizeTabInteractionOwner()
-    }
-  }
-
-  private func synchronizeTabInteractionOwner() {
-    guard isRootVisibleForTabInteraction else {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.inboxSyncOwnerSkipped",
-        metadata: inboxTabInteractionMetadata(branch: "syncOwner.rootNotVisible")
-      )
-      return
-    }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.inboxSyncOwner",
-      metadata: inboxTabInteractionMetadata(branch: "syncOwner.root")
-    )
-    tabInteractions.activateScrollOwner(.inboxRoot, for: .inbox, initialIsAtTop: false)
-  }
-
-  private func inboxTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
-    tabInteractions.diagnosticsMetadata(for: .inbox).merging([
-      "requestKind": request.map { "\($0.kind)" } ?? "none",
-      "branch": branch,
-      "pathCount": "\(nav.path.count)",
-      "isRootVisible": "\(isRootVisibleForTabInteraction)",
-      "isPostDestinationVisible": "\(isPostDestinationVisible)",
-      "notificationsCount": "\(notifications.count)"
-    ]) { current, _ in current }
   }
 }
 
 private struct InboxList: View {
-  private static let topID = "inbox-top"
-
   let notifications: [InboxNotification]
   let loadingMore: Bool
   let reachedEnd: Bool
   let fetchMore: () async -> Void
   let markRead: (InboxNotification) async -> Void
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
   
   var body: some View {
     Group {
       if notifications.isEmpty {
         InboxEmptyState()
       } else {
-        TabScrollRoot(
-          topID: Self.topID,
-          tab: .inbox,
-          tabInteractions: tabInteractions,
-          request: tabInteractions.requests[.inbox]
-        ) {
+        List {
           ForEach(notifications) { notification in
             AuroraInboxNotificationRow(notification: notification) {
               await markRead(notification)

@@ -19,17 +19,6 @@ struct NativeSettingsListModifier: ViewModifier {
   }
 }
 
-private struct SettingsPanelTabInteractionOwnerKey: EnvironmentKey {
-  static let defaultValue = false
-}
-
-extension EnvironmentValues {
-  var settingsPanelIsTabInteractionOwner: Bool {
-    get { self[SettingsPanelTabInteractionOwnerKey.self] }
-    set { self[SettingsPanelTabInteractionOwnerKey.self] = newValue }
-  }
-}
-
 extension View {
   func nativeSettingsList() -> some View {
     modifier(NativeSettingsListModifier())
@@ -37,31 +26,13 @@ extension View {
 }
 
 struct SettingsPanelScrollRoot<Content: View>: View {
-  private let topID: String
-  private let ownerID: TabInteractionOwnerID
-  private let explicitIsTabInteractionOwner: Bool?
-  private let onResetToRoot: (() -> Void)?
   private let content: () -> Content
-
-  @Environment(\.settingsPanelIsTabInteractionOwner) private var environmentIsTabInteractionOwner
-  @EnvironmentObject private var tabInteractions: TabInteractionCenter
-  @State private var scrollPosition = ScrollPosition(edge: .top)
 
   init(
     topID: String,
-    isTabInteractionOwner: Bool? = nil,
-    onResetToRoot: (() -> Void)? = nil,
     @ViewBuilder content: @escaping () -> Content
   ) {
-    self.topID = topID
-    self.ownerID = topID == "settings-top" ? .settingsRoot : TabInteractionOwnerID("settings.\(topID)")
-    self.explicitIsTabInteractionOwner = isTabInteractionOwner
-    self.onResetToRoot = onResetToRoot
     self.content = content
-  }
-
-  private var isTabInteractionOwner: Bool {
-    explicitIsTabInteractionOwner ?? environmentIsTabInteractionOwner
   }
 
   var body: some View {
@@ -69,83 +40,6 @@ struct SettingsPanelScrollRoot<Content: View>: View {
       content()
     }
     .nativeSettingsList()
-    .scrollPosition($scrollPosition)
-    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-      geometry.contentOffset.y
-    } action: { _, newOffsetY in
-      recordTabInteractionScrollOffset(newOffsetY)
-    }
-    .onAppear {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsPanelAppear",
-        metadata: settingsPanelTabInteractionMetadata(branch: "appear")
-      )
-      activateOwnerIfNeeded()
-    }
-    .onDisappear {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsPanelDisappear",
-        metadata: settingsPanelTabInteractionMetadata(branch: "disappear")
-      )
-      tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
-    }
-    .onChange(of: isTabInteractionOwner) { _, isOwner in
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsPanelOwnerFlagChanged",
-        metadata: settingsPanelTabInteractionMetadata(branch: "ownerFlagChanged")
-          .merging(["isOwner": "\(isOwner)"]) { current, _ in current }
-      )
-      if isOwner {
-        activateOwnerIfNeeded()
-      } else {
-        tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
-      }
-    }
-    .onChange(of: tabInteractions.requests[.settings]) { _, request in
-      guard isTabInteractionOwner, let request else { return }
-      let isActive = tabInteractions.isActiveOwner(ownerID, for: .settings)
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsPanelRequest",
-        metadata: settingsPanelTabInteractionMetadata(request: request, branch: "request")
-          .merging(["isActiveOwner": "\(isActive)"]) { current, _ in current }
-      )
-      if request.kind == .resetToRoot {
-        onResetToRoot?()
-      }
-      guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-      guard isActive else { return }
-      withAnimation(.snappy) {
-        scrollPosition.scrollTo(edge: .top)
-      }
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.settingsPanelScrollToTop",
-        metadata: settingsPanelTabInteractionMetadata(request: request, branch: "scrollToTop")
-      )
-    }
-  }
-
-  private func recordTabInteractionScrollOffset(_ offsetY: CGFloat) {
-    guard isTabInteractionOwner else { return }
-    tabInteractions.recordScrollOffset(offsetY, for: .settings, ownerID: ownerID)
-  }
-
-  private func activateOwnerIfNeeded() {
-    guard isTabInteractionOwner else { return }
-    AppDiagnostics.asyncBreadcrumb(
-      "tabInteraction.settingsPanelActivateOwner",
-      metadata: settingsPanelTabInteractionMetadata(branch: "activateOwner")
-    )
-    tabInteractions.activateScrollOwner(ownerID, for: .settings, initialIsAtTop: false)
-  }
-
-  private func settingsPanelTabInteractionMetadata(request: TabInteractionRequest? = nil, branch: String) -> [String: String] {
-    tabInteractions.diagnosticsMetadata(for: .settings).merging([
-      "requestKind": request.map { "\($0.kind)" } ?? "none",
-      "branch": branch,
-      "owner": ownerID.rawValue,
-      "topID": topID,
-      "isTabInteractionOwner": "\(isTabInteractionOwner)"
-    ]) { current, _ in current }
   }
 }
 

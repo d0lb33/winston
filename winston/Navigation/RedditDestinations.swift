@@ -30,38 +30,23 @@ extension View {
   /// link taps into the correct column. Use on Posts / Me / Search / Inbox stacks.
   func redditDestinations(
     _ navigator: any RedditNavigator,
-    origin: RedditNavigationOrigin,
-    tabInteractionContext: TabInteractionContext? = nil
+    origin: RedditNavigationOrigin
   ) -> some View {
     navigationDestination(for: NavDest.self) { destination in
       RouterDestinationView(destination: destination)
         .redditNavigation(navigator, origin: origin)
-        .tabInteractionContext(tabInteractionContext)
-        .environment(\.tabInteractionOwnerScope, tabInteractionOwnerScope(for: destination, origin: origin, context: tabInteractionContext))
     }
   }
 
   /// Host destinations for the Settings detail stack. Pushed panels are always at
   /// detail origin, and must carry BOTH the reddit nav seam (reddit links inside a
   /// panel) and the settings nav seam (nested settings links).
-  func settingsDestinations(_ nav: SettingsNav, tabInteractionContext: TabInteractionContext? = nil) -> some View {
+  func settingsDestinations(_ nav: SettingsNav) -> some View {
     navigationDestination(for: NavDest.self) { destination in
       RouterDestinationView(destination: destination)
         .redditNavigation(nav, origin: .detail)
         .settingsNavigation(nav, origin: .detail)
-        .tabInteractionContext(tabInteractionContext)
-        .environment(\.tabInteractionOwnerScope, tabInteractionOwnerScope(for: destination, origin: .detail, context: tabInteractionContext))
     }
-  }
-
-  @MainActor
-  private func tabInteractionOwnerScope(
-    for destination: NavDest,
-    origin: RedditNavigationOrigin,
-    context: TabInteractionContext?
-  ) -> String? {
-    guard let context else { return nil }
-    return "\(context.tab.rawValue).\(origin.diagnosticsName).\(destination.diagnosticsName)"
   }
 }
 
