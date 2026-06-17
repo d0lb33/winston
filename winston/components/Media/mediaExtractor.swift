@@ -99,9 +99,14 @@ final class MediaDescriptorCache {
 
   func extractedMedia(key: String, build: () -> MediaExtractedType?) -> MediaExtractedType? {
     if let cached = media.get(key: key) {
+      ScrollPerfDiagnostics.bump("mediaDescriptor.hit")
       return cached
     }
-    guard let value = build() else { return nil }
+    ScrollPerfDiagnostics.bump("mediaDescriptor.miss")
+    let value = ScrollPerfDiagnostics.measure("mediaDescriptor.build", slowThresholdMs: 4, slowMessage: "Media descriptor build was slow") {
+      build()
+    }
+    guard let value else { return nil }
     media.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
     return value
   }
@@ -113,9 +118,13 @@ final class MediaDescriptorCache {
 
   func postDimensions(key: String, build: () -> PostDimensions) -> PostDimensions {
     if let cached = dimensions.get(key: key) {
+      ScrollPerfDiagnostics.bump("mediaLayout.hit")
       return cached
     }
-    let value = build()
+    ScrollPerfDiagnostics.bump("mediaLayout.miss")
+    let value = ScrollPerfDiagnostics.measure("mediaLayout.build", slowThresholdMs: 4, slowMessage: "Media layout descriptor build was slow") {
+      build()
+    }
     dimensions.addKeyValue(key: key, data: { value }, expires: Date().dateByAdding(1, .day).date)
     return value
   }

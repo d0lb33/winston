@@ -79,6 +79,7 @@ final class AuroraFeedModel {
   }
 
   private func resetFeedState() {
+    ScrollPerfDiagnostics.bump("auroraFeedModel.resetFeedState")
     posts = []
     hiddenPostIDs.removeAll(keepingCapacity: true)
     refreshVisiblePosts()
@@ -116,12 +117,14 @@ final class AuroraFeedModel {
 
   private func resetHiddenPosts() {
     guard !hiddenPostIDs.isEmpty else { return }
+    ScrollPerfDiagnostics.bump("auroraFeedModel.resetHiddenPosts")
     hiddenPostIDs.removeAll(keepingCapacity: true)
     refreshVisiblePosts()
   }
 
   @discardableResult
   private func hideVisibleReadPosts() -> Int {
+    let start = ScrollPerfDiagnostics.now()
     let readPosts = visiblePosts.filter { $0.data?.winstonSeen == true }
     guard !readPosts.isEmpty else { return 0 }
 
@@ -132,6 +135,13 @@ final class AuroraFeedModel {
       refreshVisiblePosts()
     }
 
+    ScrollPerfDiagnostics.recordDuration(
+      category: "auroraFeedModel.hideVisibleReadPosts",
+      message: "Hide read posts update was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 12,
+      metadata: ["hidden": "\(readPosts.count)", "visible": "\(visiblePosts.count)"]
+    )
     return readPosts.count
   }
 
@@ -160,6 +170,7 @@ final class AuroraFeedModel {
   @discardableResult
   private func load(more: Bool, sort: SubListingSortOption, contentWidth: CGFloat) async -> Int {
     guard !inFlight else { return 0 }
+    let start = ScrollPerfDiagnostics.now()
     let generation = loadGeneration
     let requestIdentity = feedIdentity
     inFlight = true
@@ -179,6 +190,13 @@ final class AuroraFeedModel {
       "width": "\(Int(contentWidth))", "after": cursor ?? "nil"
     ])
     let result = await pageLoader(subreddit, requestIdentity == "saved", cursor, sort, max(1, contentWidth))
+    ScrollPerfDiagnostics.recordDuration(
+      category: "auroraFeedModel.pageLoader",
+      message: "Aurora feed page loader was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 250,
+      metadata: ["sub": subreddit.id, "feedIdentity": requestIdentity, "more": "\(more)", "sort": sort.rawVal.value]
+    )
 
     guard !Task.isCancelled else {
       AppDiagnostics.asyncRecord(.info, category: "ui.aurora.feed",
@@ -214,9 +232,12 @@ final class AuroraFeedModel {
 
   @discardableResult
   private func applyPage(newPosts: [Post], nextAfter: String?, more: Bool, sort: SubListingSortOption, contentWidth: CGFloat, requestIdentity: String) async -> Int {
+    let start = ScrollPerfDiagnostics.now()
     // Author avatars are fetched lazily in the background, exactly like the legacy feed.
     let avatarSize = AuroraPostPresentation.avatarSize
-    RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: avatarSize)
+    ScrollPerfDiagnostics.measure("auroraFeedModel.applyAvatars", slowThresholdMs: 8, slowMessage: "Aurora feed avatar application was slow", metadata: ["posts": "\(newPosts.count)"]) {
+      RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: avatarSize)
+    }
 
     if shouldRetryEmptyInitialPage(more: more, received: newPosts.count, nextAfter: nextAfter) {
       retriedEmptyInitialPage = true
@@ -232,19 +253,23 @@ final class AuroraFeedModel {
       return await load(more: false, sort: sort, contentWidth: contentWidth)
     }
 
-    let fresh = more ? newPosts.filter { !loadedIDs.contains($0.id) } : newPosts.deduped { $0.id }
+    let fresh = ScrollPerfDiagnostics.measure("auroraFeedModel.dedupe", slowThresholdMs: 4, slowMessage: "Aurora feed dedupe was slow", metadata: ["received": "\(newPosts.count)", "loaded": "\(loadedIDs.count)"]) {
+      more ? newPosts.filter { !loadedIDs.contains($0.id) } : newPosts.deduped { $0.id }
+    }
 
     var transaction = Transaction()
     transaction.disablesAnimations = true
-    withTransaction(transaction) {
-      if more {
-        posts.append(contentsOf: fresh)
-      } else {
-        loadedIDs.removeAll(keepingCapacity: true)
-        hiddenPostIDs.removeAll(keepingCapacity: true)
-        posts = fresh
+    ScrollPerfDiagnostics.measure("auroraFeedModel.applyTransaction", slowThresholdMs: 10, slowMessage: "Aurora feed apply transaction was slow", metadata: ["fresh": "\(fresh.count)", "more": "\(more)"]) {
+      withTransaction(transaction) {
+        if more {
+          posts.append(contentsOf: fresh)
+        } else {
+          loadedIDs.removeAll(keepingCapacity: true)
+          hiddenPostIDs.removeAll(keepingCapacity: true)
+          posts = fresh
+        }
+        refreshVisiblePosts()
       }
-      refreshVisiblePosts()
     }
     fresh.forEach { loadedIDs.insert($0.id) }
     after = nextAfter
@@ -256,6 +281,20 @@ final class AuroraFeedModel {
         "sub": subreddit.id, "feedIdentity": requestIdentity, "received": "\(newPosts.count)", "applied": "\(fresh.count)",
         "total": "\(posts.count)", "after": nextAfter ?? "nil"
       ])
+    ScrollPerfDiagnostics.recordDuration(
+      category: "auroraFeedModel.applyPage",
+      message: "Aurora feed page application was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 20,
+      metadata: [
+        "sub": subreddit.id,
+        "feedIdentity": requestIdentity,
+        "received": "\(newPosts.count)",
+        "applied": "\(fresh.count)",
+        "total": "\(posts.count)",
+        "more": "\(more)"
+      ]
+    )
     return fresh.count
   }
 
@@ -264,7 +303,9 @@ final class AuroraFeedModel {
   }
 
   private func refreshVisiblePosts() {
-    visiblePosts = posts.filter { !hiddenPostIDs.contains($0.id) }
+    visiblePosts = ScrollPerfDiagnostics.measure("auroraFeedModel.refreshVisiblePosts", slowThresholdMs: 4, slowMessage: "Aurora visible-post filter was slow", metadata: ["posts": "\(posts.count)", "hidden": "\(hiddenPostIDs.count)"]) {
+      posts.filter { !hiddenPostIDs.contains($0.id) }
+    }
   }
 
   private static func defaultPageLoader(subreddit: Subreddit, savedFeed: Bool, cursor: String?, sort: SubListingSortOption, contentWidth: CGFloat) async -> AuroraFeedPageResult {

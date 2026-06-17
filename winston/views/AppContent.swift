@@ -128,6 +128,9 @@ struct AppContent: View {
       }
     }
     .blur(radius: lockBlur)
+    .background {
+      DiagnosticsRuntimeController()
+    }
     .overlay {
       DiagnosticsHUD()
     }

@@ -40,6 +40,10 @@ struct Settings: View {
     }
   }
 
+  private var detailTabInteractionContext: TabInteractionContext? {
+    isDetailScrollOwnerForTabInteraction ? TabInteractionContext(tab: .settings, center: tabInteractions) : nil
+  }
+
   var body: some View {
     @Bindable var nav = nav
 
@@ -64,12 +68,10 @@ struct Settings: View {
         SettingsDetailColumnContent(setting: nav.selection)
           .settingsNavigation(nav, origin: .detail)
           .redditNavigation(nav, origin: .detail)
-          .settingsDestinations(nav)
+          .settingsDestinations(nav, tabInteractionContext: detailTabInteractionContext)
       }
       .environment(\.settingsPanelIsTabInteractionOwner, isDetailScrollOwnerForTabInteraction)
-      .environment(\.tabInteractionTab, isDetailScrollOwnerForTabInteraction ? Nav.TabIdentifier.settings : nil)
-      .environment(\.tabInteractionCenter, isDetailScrollOwnerForTabInteraction ? tabInteractions : nil)
-      .environment(\.tabInteractionRequest, isDetailScrollOwnerForTabInteraction ? tabInteractions.requests[.settings] : nil)
+      .tabInteractionContext(detailTabInteractionContext)
     }
     .navigationSplitViewStyle(.balanced)
     .sheet(isPresented: $presentingWhatsNew){
@@ -114,7 +116,7 @@ struct Settings: View {
     )
     switch request.kind {
     case .scrollToTop:
-      guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction else {
+      guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction || tabInteractions.hasActiveOwner(for: .settings) else {
         let didGoBack = nav.goBackOneStep()
         AppDiagnostics.asyncBreadcrumb(
           "tabInteraction.settingsGoBackResult",

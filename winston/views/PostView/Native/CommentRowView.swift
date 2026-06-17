@@ -33,6 +33,7 @@ struct CommentRowView: View {
   private var bodyWidth: CGFloat { max(1, contentWidth - 32 - indent) }
 
   var body: some View {
+    let _ = ScrollPerfDiagnostics.bump(row.kind.bodyDiagnosticsCategory)
     VStack(alignment: .leading, spacing: 0) {
       // Full-width hairline between top-level threads.
       if row.depth == 0 {
@@ -74,6 +75,7 @@ struct CommentRowView: View {
   }
 
   @ViewBuilder private var commentRow: some View {
+    let _ = ScrollPerfDiagnostics.bump("commentRow.commentBody")
     if let data = comment.data {
       let collapsed = row.isCollapsed
       let hasBody = data.body?.isEmpty == false
@@ -126,6 +128,7 @@ struct CommentRowView: View {
   // specialization, so the Swift runtime had to instantiate fresh type metadata
   // (swift_getTypeByMangledName) for each as rows scrolled in — the dominant scroll hitch.
   private func header(_ data: CommentData, isCollapsed: Bool) -> some View {
+    ScrollPerfDiagnostics.bump("commentRow.header")
     let isOP = (data.is_submitter ?? false) || (opAuthor != nil && data.author == opAuthor)
     return HStack(spacing: 6) {
       // Avatar + author share a single tap target (open profile / expand-when-collapsed). The avatar
@@ -171,6 +174,7 @@ struct CommentRowView: View {
   }
 
   private func headerChips(_ data: CommentData, isOP: Bool, isCollapsed: Bool) -> [HeaderChip] {
+    ScrollPerfDiagnostics.bump("commentRow.headerChips")
     var chips: [HeaderChip] = []
     if isOP { chips.append(HeaderChip(id: "op", text: "OP", isOP: true)) }
     if !isCollapsed, let flair = data.author_flair_text, !flair.isEmpty {
@@ -238,13 +242,22 @@ struct CommentRowView: View {
   // MARK: - Load more
 
   private var moreRow: some View {
+    let _ = ScrollPerfDiagnostics.bump("commentRow.moreBody")
     let count = comment.data?.count ?? 0
     return Button {
       guard let parent = row.parent else { return }
       loadingMore = true
       Task {
+        let start = ScrollPerfDiagnostics.now()
         await comment.loadChildren(parent: parent, postFullname: postFullname, avatarSize: 28, post: post)
         model.rebuild(invalidateCollapseMetrics: true)
+        ScrollPerfDiagnostics.recordDuration(
+          category: "commentRow.loadMore",
+          message: "Comment load-more was slow",
+          elapsedNanos: ScrollPerfDiagnostics.now() - start,
+          thresholdMs: 40,
+          metadata: ["row": row.id, "post": postFullname, "count": "\(count)"]
+        )
         loadingMore = false
       }
     } label: {
@@ -269,7 +282,8 @@ struct CommentRowView: View {
   // MARK: - Continue thread
 
   private var continueThreadRow: some View {
-    Button {
+    let _ = ScrollPerfDiagnostics.bump("commentRow.continueBody")
+    return Button {
       guard let post else { return }
       // Deep-link to the parent comment's context (cursor pagination loops on
       // these "too deep" continuations, so load the parent thread fresh instead).
@@ -333,6 +347,16 @@ struct CommentRowView: View {
       )
     } label: {
       Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
+    }
+  }
+}
+
+private extension CommentRowKind {
+  var bodyDiagnosticsCategory: String {
+    switch self {
+    case .comment: return "commentRow.body.comment"
+    case .more: return "commentRow.body.more"
+    case .continueThread: return "commentRow.body.continue"
     }
   }
 }

@@ -94,6 +94,7 @@ extension Post {
   
   func setupWinstonData(data: PostData? = nil, winstonData: PostWinstonData? = nil, contentWidth: Double = Double(defaultContentWidth), secondary: Bool = false, theme: WinstonTheme, sub: Subreddit? = nil, styleKey: String? = nil, fetchAvatar: Bool = true) {
     if let data = data ?? self.data {
+      let setupStart = ScrollPerfDiagnostics.now()
       let feedStyleKey = styleKey ?? sub?.id ?? data.subreddit
       let feedDefSettings = Defaults[.SubredditFeedDefSettings]
       let compactOverride = feedDefSettings.compactPerSubreddit[feedStyleKey]
@@ -114,12 +115,16 @@ extension Post {
         let mediaKey = descriptorCache.mediaKey(data: data, compact: compact, contentWidth: contentWidth, theme: theme, variant: "feed", postLinkSettings: postLinkDefSettings)
         let forcedNormalMediaKey = descriptorCache.mediaKey(data: data, compact: false, contentWidth: contentWidth, theme: theme, variant: "forcedNormal", postLinkSettings: postLinkDefSettings)
         var extractedMedia = descriptorCache.extractedMedia(key: mediaKey) {
-          mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
+          ScrollPerfDiagnostics.measure("post.setup.mediaExtractor", slowThresholdMs: 5, slowMessage: "Post media extraction was slow", metadata: ["post": data.name, "compact": "\(compact)", "subreddit": data.subreddit]) {
+            mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
+          }
         }
         var extractedMediaForcedNormal: MediaExtractedType?
         if compact {
           extractedMediaForcedNormal = descriptorCache.extractedMedia(key: forcedNormalMediaKey) {
-            mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme)
+            ScrollPerfDiagnostics.measure("post.setup.mediaExtractorForcedNormal", slowThresholdMs: 5, slowMessage: "Post forced-normal media extraction was slow", metadata: ["post": data.name, "subreddit": data.subreddit]) {
+              mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme)
+            }
           }
         } else {
           extractedMediaForcedNormal = extractedMedia
@@ -171,8 +176,12 @@ extension Post {
                   self.winstonData?.extractedMedia = .video(video)
                   self.winstonData?.extractedMediaForcedNormal = .video(video)
 
-                  let dimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
-                  let forcedNormalDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+                  let dimensions = ScrollPerfDiagnostics.measure("post.setup.streamableDimensions", slowThresholdMs: 5, slowMessage: "Streamable dimensions build was slow", metadata: ["post": data.name]) {
+                    getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+                  }
+                  let forcedNormalDimensions = ScrollPerfDiagnostics.measure("post.setup.streamableDimensionsForcedNormal", slowThresholdMs: 5, slowMessage: "Streamable forced-normal dimensions build was slow", metadata: ["post": data.name]) {
+                    getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+                  }
                   descriptorCache.setPostDimensions(dimensions, key: dimensionsKey)
                   descriptorCache.setPostDimensions(forcedNormalDimensions, key: forcedNormalDimensionsKey)
                   self.winstonData?.postDimensions = dimensions
@@ -189,14 +198,20 @@ extension Post {
         self.winstonData?.extractedMediaForcedNormal = extractedMediaForcedNormal
 
         self.winstonData?.postDimensions = descriptorCache.postDimensions(key: dimensionsKey) {
-          getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+          ScrollPerfDiagnostics.measure("post.setup.dimensions", slowThresholdMs: 5, slowMessage: "Post dimensions build was slow", metadata: ["post": data.name, "compact": "\(compact)", "subreddit": data.subreddit]) {
+            getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+          }
         }
         self.winstonData?.postDimensionsForcedNormal = descriptorCache.postDimensions(key: forcedNormalDimensionsKey) {
-          getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+          ScrollPerfDiagnostics.measure("post.setup.dimensionsForcedNormal", slowThresholdMs: 5, slowMessage: "Post forced-normal dimensions build was slow", metadata: ["post": data.name, "subreddit": data.subreddit]) {
+            getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+          }
         }
       }
 
-      self.winstonData?.titleAttr = createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())
+      self.winstonData?.titleAttr = ScrollPerfDiagnostics.measure("post.setup.titleAttr", slowThresholdMs: 4, slowMessage: "Post title attributed-string build was slow", metadata: ["post": data.name, "subreddit": data.subreddit]) {
+        createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())
+      }
       
       let hydratedSubredditData = SubredditMetadataRegistry.shared.data(forName: data.subreddit, id: data.subreddit_id)
       if let sub {
@@ -222,6 +237,19 @@ extension Post {
       if fetchAvatar {
         RedditWire.shared.applyAvatars(toPosts: [self], avatarSize: theme.postLinks.theme.badge.avatar.size)
       }
+      ScrollPerfDiagnostics.recordDuration(
+        category: "post.setupWinstonData",
+        message: "Post Winston data setup was slow",
+        elapsedNanos: ScrollPerfDiagnostics.now() - setupStart,
+        thresholdMs: 12,
+        metadata: [
+          "post": data.name,
+          "subreddit": data.subreddit,
+          "compact": "\(compact)",
+          "contentWidth": "\(contentWidth)",
+          "fetchAvatar": "\(fetchAvatar)"
+        ]
+      )
     }
   }
 

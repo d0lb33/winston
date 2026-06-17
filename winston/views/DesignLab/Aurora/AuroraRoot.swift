@@ -105,8 +105,24 @@ struct AuroraRoot: View {
     posts.contentPath.isEmpty && (hSize == .regular || posts.preferredColumn == .content)
   }
 
+  private var isContentColumnVisibleForTabInteraction: Bool {
+    hSize == .regular || posts.preferredColumn == .content
+  }
+
   private var isDetailVisibleForTabInteraction: Bool {
     selectedPost != nil && hSize != .regular && posts.preferredColumn == .detail
+  }
+
+  private var feedRootTabInteractionContext: TabInteractionContext? {
+    isFeedRootVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
+  }
+
+  private var contentDestinationTabInteractionContext: TabInteractionContext? {
+    isContentColumnVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
+  }
+
+  private var detailTabInteractionContext: TabInteractionContext? {
+    isDetailVisibleForTabInteraction ? TabInteractionContext(tab: .posts, center: tabInteractions) : nil
   }
 
   var body: some View {
@@ -200,7 +216,7 @@ struct AuroraRoot: View {
     )
     switch request.kind {
     case .scrollToTop:
-      guard isFeedRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
+      guard isFeedRootVisibleForTabInteraction || isDetailVisibleForTabInteraction || tabInteractions.hasActiveOwner(for: .posts) else {
         AppDiagnostics.asyncBreadcrumb(
           "Posts tab scroll request routed to back",
           metadata: postsTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")
@@ -277,7 +293,7 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.contentPath) {
       feedContent(selectedPostID: $posts.selectedPostID)
         .redditNavigation(posts, origin: .content)
-        .redditDestinations(posts, origin: .content)
+        .redditDestinations(posts, origin: .content, tabInteractionContext: contentDestinationTabInteractionContext)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
   }
@@ -306,9 +322,9 @@ struct AuroraRoot: View {
                  selectedPostID: selectedPostID,
                  scrollPositionID: $posts.feedScrollPositionID,
                  sort: $sort,
-                 tabInteractionTab: isFeedRootVisibleForTabInteraction ? .posts : nil,
-                 tabInteractions: isFeedRootVisibleForTabInteraction ? tabInteractions : nil,
-                 tabInteractionRequest: isFeedRootVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil) { destination in
+                 tabInteractionTab: feedRootTabInteractionContext?.tab,
+                 tabInteractions: feedRootTabInteractionContext?.center,
+                 tabInteractionRequest: feedRootTabInteractionContext?.request) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -320,11 +336,9 @@ struct AuroraRoot: View {
     return NavigationStack(path: $posts.detailPath) {
       detailContent
         .redditNavigation(posts, origin: .detail)
-        .redditDestinations(posts, origin: .detail)
+        .redditDestinations(posts, origin: .detail, tabInteractionContext: detailTabInteractionContext)
     }
-    .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? Nav.TabIdentifier.posts : nil)
-    .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)
-    .environment(\.tabInteractionRequest, isDetailVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil)
+    .tabInteractionContext(detailTabInteractionContext)
   }
 
   @ViewBuilder private var detailContent: some View {
@@ -332,10 +346,7 @@ struct AuroraRoot: View {
       AuroraPostDetail(
         post: selectedPost,
         subreddit: detailSubreddit(for: selectedPost),
-        highlightID: posts.detailHighlightID,
-        tabInteractionTab: isDetailVisibleForTabInteraction ? .posts : nil,
-        tabInteractions: isDetailVisibleForTabInteraction ? tabInteractions : nil,
-        tabInteractionRequest: isDetailVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil
+        highlightID: posts.detailHighlightID
       )
         .id("\(selectedPost.id)-\(posts.detailHighlightID ?? "root")")
         .diagnosticScreen("aurora.post.\(selectedPost.id)")

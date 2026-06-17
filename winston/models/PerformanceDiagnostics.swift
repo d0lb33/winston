@@ -148,8 +148,8 @@ extension View {
 }
 
 /// Counts dropped-frame hitches via CADisplayLink and exposes a rolling
-/// hitches-per-minute figure for the Debug HUD. Only runs while the HUD is
-/// visible — it costs a display-link callback per frame.
+/// hitches-per-minute figure for diagnostics. Only runs while scroll/hitch
+/// diagnostics are enabled — it costs a display-link callback per frame.
 @MainActor
 final class FrameHitchMonitor: ObservableObject {
   static let shared = FrameHitchMonitor()
@@ -294,13 +294,15 @@ final class FrameHitchMonitor: ObservableObject {
 
 /// Lightweight, lock-guarded attribution probe for scroll hitches. Hot paths call
 /// `bump`/`measure`; `FrameHitchMonitor` drains the accumulated counts/timings each
-/// frame and logs them alongside any hitch. Active only while the Debug HUD is on,
-/// so it costs nothing in normal use.
+/// frame and logs them alongside any hitch. Active only while scroll/hitch
+/// diagnostics are enabled, so it costs nothing in normal use.
 final class ScrollPerfProbe {
   static let shared = ScrollPerfProbe()
 
   /// Toggled with `FrameHitchMonitor.start()/stop()`. When false, all calls early-out.
   var enabled = false
+
+  var isEnabled: Bool { enabled }
 
   private var lock = os_unfair_lock_s()
   private var counts: [String: Int] = [:]
@@ -354,6 +356,75 @@ final class ScrollPerfProbe {
   }
 }
 
+/// Shared helpers for targeted scroll diagnostics. These are gated by
+/// `ScrollPerfProbe.enabled`, so normal app use does not emit extra logs or do
+/// metadata work. Turn on scroll/hitch diagnostics to collect them.
+enum ScrollPerfDiagnostics {
+  static func now() -> UInt64 {
+    DispatchTime.now().uptimeNanoseconds
+  }
+
+  static func bump(_ category: String, nanos: UInt64 = 0) {
+    ScrollPerfProbe.shared.bump(category, nanos: nanos)
+  }
+
+  @discardableResult
+  @inline(__always)
+  static func measure<T>(
+    _ category: String,
+    slowThresholdMs: Double? = nil,
+    slowMessage: String? = nil,
+    metadata: @autoclosure () -> [String: String] = [:],
+    _ work: () throws -> T
+  ) rethrows -> T {
+    guard ScrollPerfProbe.shared.isEnabled else { return try work() }
+    let start = now()
+    defer {
+      let elapsed = now() - start
+      ScrollPerfProbe.shared.bump(category, nanos: elapsed)
+      if let slowThresholdMs {
+        recordDuration(
+          category: category,
+          message: slowMessage ?? category,
+          elapsedNanos: elapsed,
+          thresholdMs: slowThresholdMs,
+          metadata: metadata()
+        )
+      }
+    }
+    return try work()
+  }
+
+  static func event(
+    _ message: String,
+    category: String = "perf.scroll.lifecycle",
+    metadata: [String: String] = [:]
+  ) {
+    guard ScrollPerfProbe.shared.isEnabled else { return }
+    AppDiagnostics.asyncRecord(.info, category: category, message: message, metadata: metadata)
+  }
+
+  static func recordDuration(
+    category: String,
+    message: String,
+    elapsedNanos: UInt64,
+    thresholdMs: Double,
+    metadata: [String: String] = [:]
+  ) {
+    guard ScrollPerfProbe.shared.isEnabled else { return }
+    let elapsedMs = Double(elapsedNanos) / 1_000_000
+    guard elapsedMs >= thresholdMs else { return }
+    var combined = metadata
+    combined["elapsedMs"] = String(format: "%.1f", elapsedMs)
+    AppDiagnostics.asyncRecord(
+      elapsedMs >= thresholdMs * 2 ? .warning : .info,
+      category: "perf.scroll.slow",
+      message: message,
+      metadata: combined.merging(["probe": category]) { current, _ in current }
+    )
+  }
+}
+
 /// Poor-man's sampling profiler for the main thread. A background timer watches a
 /// heartbeat that `FrameHitchMonitor` bumps every frame; when the heartbeat goes
 /// stale (the main thread is blocked), it suspends the main thread just long enough
@@ -362,8 +433,9 @@ final class ScrollPerfProbe {
 /// logged hitch — revealing costs that the counter probe can't see (SwiftUI layout,
 /// image decode, CoreAnimation, AVFoundation).
 ///
-/// Active only while the Debug HUD is on. Only ever inspects this process's own main
-/// thread, and never allocates while the thread is suspended (dladdr runs after resume).
+/// Active only while scroll/hitch diagnostics are enabled. Only ever inspects this
+/// process's own main thread, and never allocates while the thread is suspended
+/// (dladdr runs after resume).
 final class MainThreadSampler {
   static let shared = MainThreadSampler()
 

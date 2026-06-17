@@ -347,6 +347,22 @@ struct StackNavTests {
 
 @MainActor
 struct TabInteractionCenterTests {
+  @Test("scroll root owner preserves unscoped top id")
+  func scrollRootOwnerPreservesUnscopedTopID() {
+    #expect(TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: nil).rawValue == "user-view-top")
+    #expect(TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "").rawValue == "user-view-top")
+  }
+
+  @Test("scroll root owner is unique per destination scope")
+  func scrollRootOwnerIsUniquePerDestinationScope() {
+    let postsUser = TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "posts.detail.reddit.user.alice")
+    let searchUser = TabInteractionOwnerID.scrollRoot(topID: "user-view-top", scope: "search.detail.reddit.user.alice")
+
+    #expect(postsUser.rawValue == "posts.detail.reddit.user.alice.user-view-top")
+    #expect(searchUser.rawValue == "search.detail.reddit.user.alice.user-view-top")
+    #expect(postsUser != searchUser)
+  }
+
   @Test("scrolled active owner requests scroll to top")
   func scrolledActiveOwnerRequestsScrollToTop() {
     let center = TabInteractionCenter()

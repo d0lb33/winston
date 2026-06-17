@@ -35,7 +35,8 @@ struct DiagnosticsPanel: View {
         DiagnosticRow(label: "Account", value: wire.account.map { "u/\($0.username)" } ?? "none")
         DiagnosticRow(label: "Accounts", value: "\(wire.accounts.count)")
         DiagnosticRow(label: "Rendering Reports", value: "\(renderingReports.reportCount)")
-        Toggle("Debug HUD", isOn: $diagnostics.overlayEnabled)
+        Toggle("Collect Scroll/Hitch Diagnostics", isOn: $diagnostics.performanceDiagnosticsEnabled)
+        Toggle("Show Mini Debug HUD", isOn: $diagnostics.overlayEnabled)
         Toggle("Show Tap Targets", isOn: $showTapTargets)
         Toggle("Disable Aurora Feed Media", isOn: $disableAuroraFeedMedia)
         #if DEBUG
@@ -246,9 +247,43 @@ struct DiagnosticsHUD: View {
       .padding(.leading, 8)
       .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
       .allowsHitTesting(false)
-      .onAppear { FrameHitchMonitor.shared.start() }
-      .onDisappear { FrameHitchMonitor.shared.stop() }
     }
+  }
+}
+
+struct DiagnosticsRuntimeController: View {
+  @ObservedObject private var diagnostics = AppDiagnostics.shared
+  @State private var monitorRunning = false
+
+  var body: some View {
+    Color.clear
+      .frame(width: 0, height: 0)
+      .allowsHitTesting(false)
+      .onAppear { syncMonitor() }
+      .onDisappear { stopMonitor() }
+      .onChange(of: diagnostics.performanceDiagnosticsEnabled) { _, _ in
+        syncMonitor()
+      }
+  }
+
+  private func syncMonitor() {
+    if diagnostics.performanceDiagnosticsEnabled {
+      startMonitor()
+    } else {
+      stopMonitor()
+    }
+  }
+
+  private func startMonitor() {
+    guard !monitorRunning else { return }
+    FrameHitchMonitor.shared.start()
+    monitorRunning = true
+  }
+
+  private func stopMonitor() {
+    guard monitorRunning else { return }
+    FrameHitchMonitor.shared.stop()
+    monitorRunning = false
   }
 }
 

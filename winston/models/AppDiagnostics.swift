@@ -73,11 +73,18 @@ final class AppDiagnostics: ObservableObject {
   @Published var overlayEnabled: Bool {
     didSet {
       UserDefaults.standard.set(overlayEnabled, forKey: Self.overlayEnabledKey)
-      record(.info, category: "diagnostics", message: "Debug HUD \(overlayEnabled ? "enabled" : "disabled")")
+      record(.info, category: "diagnostics", message: "Debug HUD overlay \(overlayEnabled ? "enabled" : "disabled")")
+    }
+  }
+  @Published var performanceDiagnosticsEnabled: Bool {
+    didSet {
+      UserDefaults.standard.set(performanceDiagnosticsEnabled, forKey: Self.performanceDiagnosticsEnabledKey)
+      record(.info, category: "diagnostics", message: "Scroll/hitch diagnostics \(performanceDiagnosticsEnabled ? "enabled" : "disabled")")
     }
   }
 
   private static let overlayEnabledKey = "diagnostics.overlayEnabled"
+  private static let performanceDiagnosticsEnabledKey = "diagnostics.performanceDiagnosticsEnabled"
   private static let dirtySessionKey = "diagnostics.sessionDirty"
   private static let sessionIDKey = "diagnostics.sessionID"
   private static let sessionStartedAtKey = "diagnostics.sessionStartedAt"
@@ -102,7 +109,17 @@ final class AppDiagnostics: ObservableObject {
   }
 
   private init() {
-    overlayEnabled = UserDefaults.standard.bool(forKey: Self.overlayEnabledKey)
+    let defaults = UserDefaults.standard
+    let legacyOverlayEnabled = defaults.bool(forKey: Self.overlayEnabledKey)
+    if defaults.object(forKey: Self.performanceDiagnosticsEnabledKey) == nil, legacyOverlayEnabled {
+      performanceDiagnosticsEnabled = true
+      overlayEnabled = false
+      defaults.set(true, forKey: Self.performanceDiagnosticsEnabledKey)
+      defaults.set(false, forKey: Self.overlayEnabledKey)
+    } else {
+      overlayEnabled = legacyOverlayEnabled
+      performanceDiagnosticsEnabled = defaults.bool(forKey: Self.performanceDiagnosticsEnabledKey)
+    }
     createDirectoryIfNeeded()
     loadRecentEntries()
   }
@@ -308,7 +325,8 @@ final class AppDiagnostics: ObservableObject {
         "previousLogExists": FileManager.default.fileExists(atPath: previousLogURL.path),
         "entryCountInMemory": entries.count,
         "renderingReportCount": RenderingReportStore.shared.reportCount,
-        "overlayEnabled": overlayEnabled
+        "overlayEnabled": overlayEnabled,
+        "performanceDiagnosticsEnabled": performanceDiagnosticsEnabled
       ],
       "recentEvents": entries.suffix(50).map { entry in
         [

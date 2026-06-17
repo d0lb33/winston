@@ -20,6 +20,7 @@ private final class AuroraReadOnScrollTracker {
   private var isScrollingDown = false
 
   func updateFrame(_ frame: AuroraReadFrame, for postID: String) {
+    ScrollPerfDiagnostics.bump("auroraRead.frameUpdate")
     latestFrameByID[postID] = frame
     if frame.isVisible {
       visiblePostIDs.insert(postID)
@@ -27,36 +28,44 @@ private final class AuroraReadOnScrollTracker {
   }
 
   func remove(postID: String) {
+    ScrollPerfDiagnostics.bump("auroraRead.frameRemove")
     latestFrameByID.removeValue(forKey: postID)
     previousFrameByID.removeValue(forKey: postID)
     visiblePostIDs.remove(postID)
   }
 
   func markIfDisappearedPastTop(_ post: Post, readOnScroll: Bool) {
+    ScrollPerfDiagnostics.bump("auroraRead.disappearCheck")
     guard readOnScroll, isScrollingDown, FeedScrollWorkCoordinator.shared.isScrolling else { return }
     guard visiblePostIDs.contains(post.id) else { return }
+    ScrollPerfDiagnostics.bump("auroraRead.markSeen.disappear")
     FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
   }
 
   func markCrossedPostsIfNeeded(offsetY: CGFloat, visiblePosts: [Post], readOnScroll: Bool) {
-    let scrollingDown = previousScrollOffsetY.map { offsetY > $0 } ?? false
-    isScrollingDown = scrollingDown
-    defer {
-      previousScrollOffsetY = offsetY
-      previousFrameByID = latestFrameByID
+    ScrollPerfDiagnostics.measure("auroraRead.crossedCheck", slowThresholdMs: 4, slowMessage: "Read-on-scroll crossed-post check was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "trackedFrames": "\(latestFrameByID.count)"]) {
+      let scrollingDown = previousScrollOffsetY.map { offsetY > $0 } ?? false
+      isScrollingDown = scrollingDown
+      defer {
+        previousScrollOffsetY = offsetY
+        previousFrameByID = latestFrameByID
+      }
+
+      guard readOnScroll, scrollingDown else { return }
+
+      let crossedIDs: Set<String> = Set(latestFrameByID.compactMap { id, frame in
+        guard let previousFrame = previousFrameByID[id] else { return nil }
+        return previousFrame.maxY > 0 && frame.maxY <= 0 ? id : nil
+      })
+      guard !crossedIDs.isEmpty else { return }
+
+      for _ in crossedIDs {
+        ScrollPerfDiagnostics.bump("auroraRead.markSeen.crossed")
+      }
+      visiblePosts
+        .filter { crossedIDs.contains($0.id) }
+        .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
     }
-
-    guard readOnScroll, scrollingDown else { return }
-
-    let crossedIDs: Set<String> = Set(latestFrameByID.compactMap { id, frame in
-      guard let previousFrame = previousFrameByID[id] else { return nil }
-      return previousFrame.maxY > 0 && frame.maxY <= 0 ? id : nil
-    })
-    guard !crossedIDs.isEmpty else { return }
-
-    visiblePosts
-      .filter { crossedIDs.contains($0.id) }
-      .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
   }
 }
 
@@ -115,6 +124,7 @@ struct AuroraFeed: View {
   }
 
   var body: some View {
+    let _ = ScrollPerfDiagnostics.bump("auroraFeed.body")
     let visiblePosts = model.visiblePosts
     // Decode the Codable PostLink settings ONCE per body eval (not per scroll frame in
     // onOffsetChange, nor per card in the ForEach background / card body). The plain
@@ -132,7 +142,9 @@ struct AuroraFeed: View {
         selection: $selectedPostID,
         scrollPosition: $scrollPositionID,
         onOffsetChange: { offsetY in
-          readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
+          ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
+            readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
+          }
         }
       ) {
           if let community {
@@ -175,13 +187,19 @@ struct AuroraFeed: View {
                 .tint(.green)
               }
               .onAppear {
+                ScrollPerfDiagnostics.bump("auroraFeed.rowAppear")
                 if post.id == visiblePosts.last?.id {
+                  ScrollPerfDiagnostics.event(
+                    "Aurora feed load-more triggered",
+                    metadata: ["post": post.id, "visiblePosts": "\(visiblePosts.count)", "sort": sort.rawVal.value]
+                  )
                   Task { @MainActor in
                     await model.loadMore(sort: sort, contentWidth: contentWidth)
                   }
                 }
               }
               .onDisappear {
+                ScrollPerfDiagnostics.bump("auroraFeed.rowDisappear")
                 readOnScrollTracker.markIfDisappearedPastTop(post, readOnScroll: cardSettings.readOnScroll)
                 readOnScrollTracker.remove(postID: post.id)
               }
@@ -210,7 +228,23 @@ struct AuroraFeed: View {
       .padding(.bottom, 12)
     }
     .task(id: model.feedIdentity) { @MainActor in
+      ScrollPerfDiagnostics.event(
+        "Aurora feed task started",
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)"]
+      )
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
+    }
+    .onAppear {
+      ScrollPerfDiagnostics.event(
+        "Aurora feed appeared",
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
+      )
+    }
+    .onDisappear {
+      ScrollPerfDiagnostics.event(
+        "Aurora feed disappeared",
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
+      )
     }
     .onChange(of: sort) { _, newSort in
       Task { @MainActor in await model.reload(sort: newSort, contentWidth: contentWidth) }

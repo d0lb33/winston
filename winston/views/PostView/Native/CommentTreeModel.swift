@@ -112,6 +112,7 @@ final class CommentTreeModel {
 
   /// Install a freshly fetched root comment forest.
   func setRoots(_ comments: [Comment]) {
+    let start = ScrollPerfDiagnostics.now()
     comments.forEach { $0.parentWinston = rootArray }
     rootArray.data = comments
     relativeTimeCache.removeAll(keepingCapacity: true)
@@ -120,6 +121,13 @@ final class CommentTreeModel {
     observeTree()
     rebuild(force: true)
     scheduleWarmCollapseMetrics()
+    ScrollPerfDiagnostics.recordDuration(
+      category: "commentTree.setRoots",
+      message: "Comment roots install was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 20,
+      metadata: ["post": postID, "rootCount": "\(comments.count)", "rowCount": "\(rows.count)"]
+    )
   }
 
   func toggleCollapse(_ id: String) {
@@ -159,51 +167,84 @@ final class CommentTreeModel {
   }
 
   private func setRowsWithCollapseAnimation(_ rows: [CommentRow]) {
+    let oldCount = self.rows.count
+    let start = ScrollPerfDiagnostics.now()
     withAnimation(.snappy(duration: 0.18)) {
       self.rows = rows
     }
+    let elapsed = ScrollPerfDiagnostics.now() - start
+    ScrollPerfDiagnostics.bump("commentTree.collapsePublish", nanos: elapsed)
+    ScrollPerfDiagnostics.recordDuration(
+      category: "commentTree.collapsePublish",
+      message: "Comment collapse row publish was slow",
+      elapsedNanos: elapsed,
+      thresholdMs: 8,
+      metadata: ["post": postID, "oldRows": "\(oldCount)", "newRows": "\(rows.count)"]
+    )
   }
 
   private func rows(collapsing row: CommentRow, at index: Int) -> [CommentRow] {
-    var out = rows
-    out[index] = row.withCollapseState(true, hiddenReplyCount: descendantCount(for: row.comment))
+    ScrollPerfDiagnostics.measure("commentTree.rowsCollapsing", slowThresholdMs: 8, slowMessage: "Comment collapse slice was slow", metadata: ["post": postID, "row": row.id, "depth": "\(row.depth)"]) {
+      var out = rows
+      out[index] = row.withCollapseState(true, hiddenReplyCount: descendantCount(for: row.comment))
 
-    let firstDescendantIndex = index + 1
-    guard firstDescendantIndex < out.endIndex else { return out }
+      let firstDescendantIndex = index + 1
+      guard firstDescendantIndex < out.endIndex else { return out }
 
-    let endIndex = out[firstDescendantIndex...].firstIndex { $0.depth <= row.depth } ?? out.endIndex
-    if firstDescendantIndex < endIndex {
-      out.removeSubrange(firstDescendantIndex..<endIndex)
+      let endIndex = out[firstDescendantIndex...].firstIndex { $0.depth <= row.depth } ?? out.endIndex
+      if firstDescendantIndex < endIndex {
+        out.removeSubrange(firstDescendantIndex..<endIndex)
+      }
+      return out
     }
-    return out
   }
 
   private func rows(expanding row: CommentRow, at index: Int) -> [CommentRow] {
-    var out = rows
-    out[index] = row.withCollapseState(false, hiddenReplyCount: 0)
+    ScrollPerfDiagnostics.measure("commentTree.rowsExpanding", slowThresholdMs: 8, slowMessage: "Comment expand slice was slow", metadata: ["post": postID, "row": row.id, "depth": "\(row.depth)"]) {
+      var out = rows
+      out[index] = row.withCollapseState(false, hiddenReplyCount: 0)
 
-    var inserted: [CommentRow] = []
-    flatten(row.comment.childrenWinston.data, depth: row.depth + 1, parent: row.comment, into: &inserted)
-    if !inserted.isEmpty {
-      out.insert(contentsOf: inserted, at: index + 1)
+      var inserted: [CommentRow] = []
+      flatten(row.comment.childrenWinston.data, depth: row.depth + 1, parent: row.comment, into: &inserted)
+      if !inserted.isEmpty {
+        out.insert(contentsOf: inserted, at: index + 1)
+      }
+      return out
     }
-    return out
   }
 
   /// Recompute the flattened visible rows. With `force == false`, the result is
   /// only published when the layout signature changed (cheap no-op on content
   /// changes such as votes).
   func rebuild(force: Bool = false, invalidateCollapseMetrics: Bool = false) {
+    let start = ScrollPerfDiagnostics.now()
+    let oldRowCount = rows.count
     if invalidateCollapseMetrics {
+      ScrollPerfDiagnostics.bump("commentTree.invalidateCollapseMetrics")
       descendantCountCache.removeAll(keepingCapacity: true)
     }
-    let out = computeRows()
-    if force || !Self.layoutEqual(out, rows) {
+    let out = ScrollPerfDiagnostics.measure("commentTree.computeRows", slowThresholdMs: 12, slowMessage: "Comment row flatten was slow", metadata: ["post": postID, "oldRows": "\(oldRowCount)"]) {
+      computeRows()
+    }
+    let shouldPublish = force || ScrollPerfDiagnostics.measure("commentTree.layoutCompare", slowThresholdMs: 4, slowMessage: "Comment layout comparison was slow", metadata: ["post": postID, "oldRows": "\(rows.count)", "newRows": "\(out.count)"]) {
+      !Self.layoutEqual(out, rows)
+    }
+    if shouldPublish {
+      ScrollPerfDiagnostics.bump("commentTree.rowsPublish")
       rows = out
+    } else {
+      ScrollPerfDiagnostics.bump("commentTree.rowsNoop")
     }
     if invalidateCollapseMetrics {
       scheduleWarmCollapseMetrics()
     }
+    ScrollPerfDiagnostics.recordDuration(
+      category: "commentTree.rebuild",
+      message: "Comment tree rebuild was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 16,
+      metadata: ["post": postID, "force": "\(force)", "oldRows": "\(oldRowCount)", "newRows": "\(out.count)", "published": "\(shouldPublish)"]
+    )
   }
 
   private func computeRows() -> [CommentRow] {
@@ -225,6 +266,7 @@ final class CommentTreeModel {
   }
 
   private func scheduleStructuralRebuild() {
+    ScrollPerfDiagnostics.bump("commentTree.structuralRebuildScheduled")
     // Child changes fire roughly one-per-runloop during scroll — each comment's vote /
     // seen / avatar (winstonData) update bubbles up through ObservableArray. Debounce so a
     // burst collapses into ONE flatten after it settles, instead of re-flattening the whole
@@ -232,6 +274,7 @@ final class CommentTreeModel {
     // load-more) call rebuild() directly, so this path is only a backstop and the small
     // delay is invisible.
     DispatchQueue.main.debounce(delay: 0.12, context: rebuildContext) { [weak self] in
+      ScrollPerfDiagnostics.bump("commentTree.structuralRebuildRun")
       self?.rebuild()
     }
   }
@@ -283,8 +326,10 @@ final class CommentTreeModel {
   }
 
   private func warmCollapseMetrics() {
-    for node in rootArray.data where node.kind != "more" {
-      _ = descendantCount(for: node)
+    ScrollPerfDiagnostics.measure("commentTree.warmCollapseMetrics", slowThresholdMs: 12, slowMessage: "Comment collapse metric warmup was slow", metadata: ["post": postID, "rootCount": "\(rootArray.data.count)"]) {
+      for node in rootArray.data where node.kind != "more" {
+        _ = descendantCount(for: node)
+      }
     }
   }
 
@@ -346,6 +391,7 @@ final class CommentTreeModel {
   /// off the per-collapse rebuild path.
   private func cachedRelative(_ id: String, _ created: Double?) -> String {
     if let cached = relativeTimeCache[id] { return cached }
+    ScrollPerfDiagnostics.bump("commentTree.relativeTimeMiss")
     let value = relativeString(created)
     relativeTimeCache[id] = value
     return value

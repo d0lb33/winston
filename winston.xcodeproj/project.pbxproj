@@ -129,31 +129,6 @@
 		EC1906F12A552A6800A0300E /* BehaviorPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1906F02A552A6800A0300E /* BehaviorPanel.swift */; };
 		EC1906F52A55B88500A0300E /* nestComments.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1906F42A55B88500A0300E /* nestComments.swift */; };
 		EC1AB2CE2B0FE20800247971 /* StringJSONConversions.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1AB2CD2B0FE20800247971 /* StringJSONConversions.swift */; };
-		EC1AC99A2B1FEB0200674B31 /* openInWinston.e7e2aad9.js in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC97E2B1FEB0200674B31 /* openInWinston.e7e2aad9.js */; };
-		EC1AC99B2B1FEB0200674B31 /* WinstonApiHelper.b37faa57.css in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC97F2B1FEB0200674B31 /* WinstonApiHelper.b37faa57.css */; };
-		EC1AC99C2B1FEB0200674B31 /* WinstonApiHelper.5c5223a0.js in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9802B1FEB0200674B31 /* WinstonApiHelper.5c5223a0.js */; };
-		EC1AC99D2B1FEB0200674B31 /* side-winston.3141c099.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9812B1FEB0200674B31 /* side-winston.3141c099.png */; };
-		EC1AC99E2B1FEB0200674B31 /* background.26caa449.js in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9822B1FEB0200674B31 /* background.26caa449.js */; };
-		EC1AC99F2B1FEB0200674B31 /* openWinstonEverywhere.cc510c68.js in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9832B1FEB0200674B31 /* openWinstonEverywhere.cc510c68.js */; };
-		EC1AC9A02B1FEB0200674B31 /* popup.dc9af302.html in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9842B1FEB0200674B31 /* popup.dc9af302.html */; };
-		EC1AC9A12B1FEB0200674B31 /* toolbar-icon-38.f748fbf5.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9852B1FEB0200674B31 /* toolbar-icon-38.f748fbf5.png */; };
-		EC1AC9A22B1FEB0200674B31 /* toolbar-icon-16.9cddc2a3.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9862B1FEB0200674B31 /* toolbar-icon-16.9cddc2a3.png */; };
-		EC1AC9A32B1FEB0200674B31 /* icon-128.06d7293e.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9872B1FEB0200674B31 /* icon-128.06d7293e.png */; };
-		EC1AC9A42B1FEB0200674B31 /* icon-512.fa271110.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9882B1FEB0200674B31 /* icon-512.fa271110.png */; };
-		EC1AC9A52B1FEB0200674B31 /* common.9c015fef.js in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9892B1FEB0200674B31 /* common.9c015fef.js */; };
-		EC1AC9A62B1FEB0200674B31 /* toolbar-icon-19.ab3fc3de.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98A2B1FEB0200674B31 /* toolbar-icon-19.ab3fc3de.png */; };
-		EC1AC9A72B1FEB0200674B31 /* icon-48.71058295.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98B2B1FEB0200674B31 /* icon-48.71058295.png */; };
-		EC1AC9A82B1FEB0200674B31 /* icon-256.cad47425.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98C2B1FEB0200674B31 /* icon-256.cad47425.png */; };
-		EC1AC9A92B1FEB0200674B31 /* toolbar-icon-32.1cbb4524.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98D2B1FEB0200674B31 /* toolbar-icon-32.1cbb4524.png */; };
-		EC1AC9AA2B1FEB0200674B31 /* toolbar-icon-72.89c57b78.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98E2B1FEB0200674B31 /* toolbar-icon-72.89c57b78.png */; };
-		EC1AC9AB2B1FEB0200674B31 /* manifest.json in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC98F2B1FEB0200674B31 /* manifest.json */; };
-		EC1AC9AC2B1FEB0200674B31 /* toolbar-icon-48.7ad754b6.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9902B1FEB0200674B31 /* toolbar-icon-48.7ad754b6.png */; };
-		EC1AC9AD2B1FEB0200674B31 /* icon-96.b672d854.png in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9912B1FEB0200674B31 /* icon-96.b672d854.png */; };
-		EC1AC9AF2B1FEB0200674B31 /* openInWinstonBannerStyles.970adf4b.css in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9952B1FEB0200674B31 /* openInWinstonBannerStyles.970adf4b.css */; };
-		EC1AC9B02B1FEB0200674B31 /* icon-banner.334f83c4.svg in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9962B1FEB0200674B31 /* icon-banner.334f83c4.svg */; };
-		EC1AC9B12B1FEB0200674B31 /* icon-link.ea5c3354.svg in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9972B1FEB0200674B31 /* icon-link.ea5c3354.svg */; };
-		EC1AC9B22B1FEB0200674B31 /* icon-assistant.12d68324.svg in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9982B1FEB0200674B31 /* icon-assistant.12d68324.svg */; };
-		EC1AC9B32B1FEB0200674B31 /* popup.4386a3af.css in Resources */ = {isa = PBXBuildFile; fileRef = EC1AC9992B1FEB0200674B31 /* popup.4386a3af.css */; };
 		EC1AC9B82B200ACD00674B31 /* wait.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1AC9B72B200ACD00674B31 /* wait.swift */; };
 		EC1AC9BA2B21283F00674B31 /* WithCredentialOnly.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1AC9B92B21283F00674B31 /* WithCredentialOnly.swift */; };
 		EC1D0F0A2B13431B00A4FEA5 /* AccountSwitcherTarget.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC1D0F092B13431B00A4FEA5 /* AccountSwitcherTarget.swift */; };
@@ -342,10 +317,7 @@
 		ECA5E6482AA5D36E00F6C7A5 /* resetApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA5E6472AA5D36E00F6C7A5 /* resetApp.swift */; };
 		ECA86A812AB94DA200C31EC6 /* SubredditsStack.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECA86A802AB94DA200C31EC6 /* SubredditsStack.swift */; };
 		ECAA23822A9EC34100874731 /* inlineSymbol.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECAA23812A9EC34100874731 /* inlineSymbol.swift */; };
-		ECAA35532AFE550900C0C232 /* SwiftUIIntrospect in Frameworks */ = {isa = PBXBuildFile; productRef = ECAA35522AFE550900C0C232 /* SwiftUIIntrospect */; };
 		ECAA8B5A2A75004300D9D636 /* redditURLParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECAA8B592A75004300D9D636 /* redditURLParser.swift */; };
-		ECAA8B682A75261000D9D636 /* SafariWebExtensionHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECAA8B672A75261000D9D636 /* SafariWebExtensionHandler.swift */; };
-		ECAA8B7D2A75261000D9D636 /* winston-everywhere.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = ECAA8B652A75261000D9D636 /* winston-everywhere.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		ECAA8B842A76421000D9D636 /* YouTubePlayerKit in Frameworks */ = {isa = PBXBuildFile; productRef = ECAA8B832A76421000D9D636 /* YouTubePlayerKit */; };
 		ECAA8B872A76473A00D9D636 /* PreviewLinkContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECAA8B862A76473A00D9D636 /* PreviewLinkContent.swift */; };
 		ECAA8B892A764A3C00D9D636 /* YTMediaPost.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECAA8B882A764A3C00D9D636 /* YTMediaPost.swift */; };
@@ -443,7 +415,6 @@
 		ECF5B3052AC837F500355589 /* IconManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF5B3042AC837F500355589 /* IconManager.swift */; };
 		ECF5B3072AC83AE600355589 /* getAppIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF5B3062AC83AE600355589 /* getAppIcon.swift */; };
 		ECF5B3092AC83C8E00355589 /* AppIconSetting.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF5B3082AC83C8E00355589 /* AppIconSetting.swift */; };
-		ECF72AE72B267CE20078AD0B /* _locales in Resources */ = {isa = PBXBuildFile; fileRef = ECF72AE62B267CE20078AD0B /* _locales */; };
 		ECF72AEA2B2681290078AD0B /* Router.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF72AE92B2681290078AD0B /* Router.swift */; };
 		ECF82A152B214DE300CBF45D /* ActionButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF82A142B214DE300CBF45D /* ActionButton.swift */; };
 		ECF82A172B21664100CBF45D /* ThemedForegroundBG.swift in Sources */ = {isa = PBXBuildFile; fileRef = ECF82A162B21664100CBF45D /* ThemedForegroundBG.swift */; };
@@ -466,13 +437,6 @@
 			remoteGlobalIDString = EC593AD32A4673B2002D6454;
 			remoteInfo = winston;
 		};
-		ECAA8B7B2A75261000D9D636 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = EC593ACC2A4673B2002D6454 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = ECAA8B642A75261000D9D636;
-			remoteInfo = "winston-everywhere";
-		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -482,7 +446,6 @@
 			dstPath = "";
 			dstSubfolderSpec = 13;
 			files = (
-				ECAA8B7D2A75261000D9D636 /* winston-everywhere.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -547,10 +510,7 @@
 		659FDEA72A87798300103414 /* VoteButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoteButton.swift; sourceTree = "<group>"; };
 		65AA535C2A8BB27900275299 /* FAQPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FAQPanel.swift; sourceTree = "<group>"; };
 		65C169EB2AFFA60B007764D5 /* isImageUrl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = isImageUrl.swift; sourceTree = "<group>"; };
-		65C3A1C32B136430004609CA /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		65C3A1C62B136430004609CA /* de */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = de; path = de.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		65C3A1C82B136445004609CA /* fr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fr; path = fr.lproj/InfoPlist.strings; sourceTree = "<group>"; };
-		65C3A1C92B136460004609CA /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		65C3A1CA2B136460004609CA /* it */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = it; path = it.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		65CDA3612ACB0EB50001EC44 /* ZoomableImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ZoomableImageView.swift; sourceTree = "<group>"; };
 		65CDA3632ACB0F140001EC44 /* ShareSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareSheet.swift; sourceTree = "<group>"; };
@@ -610,32 +570,6 @@
 		EC1906F02A552A6800A0300E /* BehaviorPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BehaviorPanel.swift; sourceTree = "<group>"; };
 		EC1906F42A55B88500A0300E /* nestComments.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = nestComments.swift; sourceTree = "<group>"; };
 		EC1AB2CD2B0FE20800247971 /* StringJSONConversions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StringJSONConversions.swift; sourceTree = "<group>"; };
-		EC1AC8962B1B6DA600674B31 /* src */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = src; path = "winston-everywhere/src"; sourceTree = SOURCE_ROOT; };
-		EC1AC97E2B1FEB0200674B31 /* openInWinston.e7e2aad9.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = openInWinston.e7e2aad9.js; sourceTree = "<group>"; };
-		EC1AC97F2B1FEB0200674B31 /* WinstonApiHelper.b37faa57.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = WinstonApiHelper.b37faa57.css; sourceTree = "<group>"; };
-		EC1AC9802B1FEB0200674B31 /* WinstonApiHelper.5c5223a0.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = WinstonApiHelper.5c5223a0.js; sourceTree = "<group>"; };
-		EC1AC9812B1FEB0200674B31 /* side-winston.3141c099.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "side-winston.3141c099.png"; sourceTree = "<group>"; };
-		EC1AC9822B1FEB0200674B31 /* background.26caa449.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = background.26caa449.js; sourceTree = "<group>"; };
-		EC1AC9832B1FEB0200674B31 /* openWinstonEverywhere.cc510c68.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = openWinstonEverywhere.cc510c68.js; sourceTree = "<group>"; };
-		EC1AC9842B1FEB0200674B31 /* popup.dc9af302.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = popup.dc9af302.html; sourceTree = "<group>"; };
-		EC1AC9852B1FEB0200674B31 /* toolbar-icon-38.f748fbf5.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-38.f748fbf5.png"; sourceTree = "<group>"; };
-		EC1AC9862B1FEB0200674B31 /* toolbar-icon-16.9cddc2a3.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-16.9cddc2a3.png"; sourceTree = "<group>"; };
-		EC1AC9872B1FEB0200674B31 /* icon-128.06d7293e.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-128.06d7293e.png"; sourceTree = "<group>"; };
-		EC1AC9882B1FEB0200674B31 /* icon-512.fa271110.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-512.fa271110.png"; sourceTree = "<group>"; };
-		EC1AC9892B1FEB0200674B31 /* common.9c015fef.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = common.9c015fef.js; sourceTree = "<group>"; };
-		EC1AC98A2B1FEB0200674B31 /* toolbar-icon-19.ab3fc3de.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-19.ab3fc3de.png"; sourceTree = "<group>"; };
-		EC1AC98B2B1FEB0200674B31 /* icon-48.71058295.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-48.71058295.png"; sourceTree = "<group>"; };
-		EC1AC98C2B1FEB0200674B31 /* icon-256.cad47425.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-256.cad47425.png"; sourceTree = "<group>"; };
-		EC1AC98D2B1FEB0200674B31 /* toolbar-icon-32.1cbb4524.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-32.1cbb4524.png"; sourceTree = "<group>"; };
-		EC1AC98E2B1FEB0200674B31 /* toolbar-icon-72.89c57b78.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-72.89c57b78.png"; sourceTree = "<group>"; };
-		EC1AC98F2B1FEB0200674B31 /* manifest.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = manifest.json; sourceTree = "<group>"; };
-		EC1AC9902B1FEB0200674B31 /* toolbar-icon-48.7ad754b6.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "toolbar-icon-48.7ad754b6.png"; sourceTree = "<group>"; };
-		EC1AC9912B1FEB0200674B31 /* icon-96.b672d854.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "icon-96.b672d854.png"; sourceTree = "<group>"; };
-		EC1AC9952B1FEB0200674B31 /* openInWinstonBannerStyles.970adf4b.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = openInWinstonBannerStyles.970adf4b.css; sourceTree = "<group>"; };
-		EC1AC9962B1FEB0200674B31 /* icon-banner.334f83c4.svg */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "icon-banner.334f83c4.svg"; sourceTree = "<group>"; };
-		EC1AC9972B1FEB0200674B31 /* icon-link.ea5c3354.svg */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "icon-link.ea5c3354.svg"; sourceTree = "<group>"; };
-		EC1AC9982B1FEB0200674B31 /* icon-assistant.12d68324.svg */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = "icon-assistant.12d68324.svg"; sourceTree = "<group>"; };
-		EC1AC9992B1FEB0200674B31 /* popup.4386a3af.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = popup.4386a3af.css; sourceTree = "<group>"; };
 		EC1AC9B72B200ACD00674B31 /* wait.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = wait.swift; sourceTree = "<group>"; };
 		EC1AC9B92B21283F00674B31 /* WithCredentialOnly.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WithCredentialOnly.swift; sourceTree = "<group>"; };
 		EC1D0F092B13431B00A4FEA5 /* AccountSwitcherTarget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AccountSwitcherTarget.swift; sourceTree = "<group>"; };
@@ -652,10 +586,6 @@
 		EC2760802B2AD9E600ADCE26 /* concurrentMap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = concurrentMap.swift; sourceTree = "<group>"; };
 		EC2760822B2ADFD100ADCE26 /* ConcurrentRunner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConcurrentRunner.swift; sourceTree = "<group>"; };
 		EC2830EE2AC330F00042BE65 /* PreviewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewModel.swift; sourceTree = "<group>"; };
-		EC2CD94F2B1B3D770040EF85 /* package-lock.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = "package-lock.json"; sourceTree = "<group>"; };
-		EC2CD9502B1B3D770040EF85 /* package.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = package.json; sourceTree = "<group>"; };
-		EC2CD9512B1B3D770040EF85 /* .parcelrc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = .parcelrc; sourceTree = "<group>"; };
-		EC2CD9522B1B3D770040EF85 /* .prettierrc */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = .prettierrc; sourceTree = "<group>"; };
 		EC2D275B2A4FBF00006444D6 /* ShrinkOnTap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShrinkOnTap.swift; sourceTree = "<group>"; };
 		EC2D275D2A4FC512006444D6 /* TappableView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TappableView.swift; sourceTree = "<group>"; };
 		EC2D27642A4FCE42006444D6 /* SubredditInfo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubredditInfo.swift; sourceTree = "<group>"; };
@@ -814,9 +744,6 @@
 		ECA86A802AB94DA200C31EC6 /* SubredditsStack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubredditsStack.swift; sourceTree = "<group>"; };
 		ECAA23812A9EC34100874731 /* inlineSymbol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = inlineSymbol.swift; sourceTree = "<group>"; };
 		ECAA8B592A75004300D9D636 /* redditURLParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = redditURLParser.swift; sourceTree = "<group>"; };
-		ECAA8B652A75261000D9D636 /* winston-everywhere.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = "winston-everywhere.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
-		ECAA8B672A75261000D9D636 /* SafariWebExtensionHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SafariWebExtensionHandler.swift; sourceTree = "<group>"; };
-		ECAA8B7A2A75261000D9D636 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		ECAA8B862A76473A00D9D636 /* PreviewLinkContent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PreviewLinkContent.swift; sourceTree = "<group>"; };
 		ECAA8B882A764A3C00D9D636 /* YTMediaPost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YTMediaPost.swift; sourceTree = "<group>"; };
 		ECAA8B8A2A766E3900D9D636 /* ListBigBtn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListBigBtn.swift; sourceTree = "<group>"; };
@@ -908,7 +835,6 @@
 		ECF5B3042AC837F500355589 /* IconManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconManager.swift; sourceTree = "<group>"; };
 		ECF5B3062AC83AE600355589 /* getAppIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = getAppIcon.swift; sourceTree = "<group>"; };
 		ECF5B3082AC83C8E00355589 /* AppIconSetting.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSetting.swift; sourceTree = "<group>"; };
-		ECF72AE62B267CE20078AD0B /* _locales */ = {isa = PBXFileReference; lastKnownFileType = folder; path = _locales; sourceTree = "<group>"; };
 		ECF72AE92B2681290078AD0B /* Router.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = Router.swift; sourceTree = "<group>"; };
 		ECF82A142B214DE300CBF45D /* ActionButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActionButton.swift; sourceTree = "<group>"; };
 		ECF82A162B21664100CBF45D /* ThemedForegroundBG.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemedForegroundBG.swift; sourceTree = "<group>"; };
@@ -967,14 +893,6 @@
 				6514FFEC2AFD01520051D264 /* WhatsNewKit in Frameworks */,
 				EC9269F22A51A732003F33B1 /* HighlightedTextEditor in Frameworks */,
 				ECA370102B480FC900C73CB0 /* WrappingHStack in Frameworks */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-		ECAA8B622A75261000D9D636 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				ECAA35532AFE550900C0C232 /* SwiftUIIntrospect in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1098,7 +1016,6 @@
 			children = (
 				8E38386BDC712A28050D148C /* NavigationModelTests.swift */,
 			);
-			name = winstonTests;
 			path = winstonTests;
 			sourceTree = "<group>";
 		};
@@ -1157,39 +1074,6 @@
 				ECF5B3082AC83C8E00355589 /* AppIconSetting.swift */,
 			);
 			path = views;
-			sourceTree = "<group>";
-		};
-		EC1AC97D2B1FEB0200674B31 /* dist */ = {
-			isa = PBXGroup;
-			children = (
-				EC1AC97E2B1FEB0200674B31 /* openInWinston.e7e2aad9.js */,
-				EC1AC97F2B1FEB0200674B31 /* WinstonApiHelper.b37faa57.css */,
-				EC1AC9802B1FEB0200674B31 /* WinstonApiHelper.5c5223a0.js */,
-				EC1AC9812B1FEB0200674B31 /* side-winston.3141c099.png */,
-				EC1AC9822B1FEB0200674B31 /* background.26caa449.js */,
-				EC1AC9832B1FEB0200674B31 /* openWinstonEverywhere.cc510c68.js */,
-				EC1AC9842B1FEB0200674B31 /* popup.dc9af302.html */,
-				EC1AC9852B1FEB0200674B31 /* toolbar-icon-38.f748fbf5.png */,
-				EC1AC9862B1FEB0200674B31 /* toolbar-icon-16.9cddc2a3.png */,
-				EC1AC9872B1FEB0200674B31 /* icon-128.06d7293e.png */,
-				EC1AC9882B1FEB0200674B31 /* icon-512.fa271110.png */,
-				EC1AC9892B1FEB0200674B31 /* common.9c015fef.js */,
-				EC1AC98A2B1FEB0200674B31 /* toolbar-icon-19.ab3fc3de.png */,
-				EC1AC98B2B1FEB0200674B31 /* icon-48.71058295.png */,
-				EC1AC98C2B1FEB0200674B31 /* icon-256.cad47425.png */,
-				EC1AC98D2B1FEB0200674B31 /* toolbar-icon-32.1cbb4524.png */,
-				EC1AC98E2B1FEB0200674B31 /* toolbar-icon-72.89c57b78.png */,
-				EC1AC98F2B1FEB0200674B31 /* manifest.json */,
-				EC1AC9902B1FEB0200674B31 /* toolbar-icon-48.7ad754b6.png */,
-				ECF72AE62B267CE20078AD0B /* _locales */,
-				EC1AC9912B1FEB0200674B31 /* icon-96.b672d854.png */,
-				EC1AC9952B1FEB0200674B31 /* openInWinstonBannerStyles.970adf4b.css */,
-				EC1AC9962B1FEB0200674B31 /* icon-banner.334f83c4.svg */,
-				EC1AC9972B1FEB0200674B31 /* icon-link.ea5c3354.svg */,
-				EC1AC9982B1FEB0200674B31 /* icon-assistant.12d68324.svg */,
-				EC1AC9992B1FEB0200674B31 /* popup.4386a3af.css */,
-			);
-			path = dist;
 			sourceTree = "<group>";
 		};
 		EC200C842A7795A800E69543 /* PostView */ = {
@@ -1322,7 +1206,6 @@
 				ECA30A152A5FA06D00BB19D1 /* TestFlight */,
 				EC22A3152A5B74AC0062A112 /* ci_scripts */,
 				EC593AD62A4673B2002D6454 /* winston */,
-				ECAA8B662A75261000D9D636 /* winston-everywhere */,
 				EC6CBE342A7D6E760089EAA0 /* LICENSE.md */,
 				EC6CBE322A7D6BF80089EAA0 /* README.md */,
 				65DC42D62B12696000E78C27 /* Localizable.xcstrings */,
@@ -1336,7 +1219,6 @@
 			isa = PBXGroup;
 			children = (
 				EC593AD42A4673B2002D6454 /* winston.app */,
-				ECAA8B652A75261000D9D636 /* winston-everywhere.appex */,
 				99C4BB00417341DE062FD364 /* winstonTests.xctest */,
 			);
 			name = Products;
@@ -1734,22 +1616,6 @@
 			path = TestFlight;
 			sourceTree = "<group>";
 		};
-		ECAA8B662A75261000D9D636 /* winston-everywhere */ = {
-			isa = PBXGroup;
-			children = (
-				EC1AC97D2B1FEB0200674B31 /* dist */,
-				EC1AC8962B1B6DA600674B31 /* src */,
-				EC2CD9512B1B3D770040EF85 /* .parcelrc */,
-				EC2CD94F2B1B3D770040EF85 /* package-lock.json */,
-				EC2CD9502B1B3D770040EF85 /* package.json */,
-				EC2CD9522B1B3D770040EF85 /* .prettierrc */,
-				ECAA8B672A75261000D9D636 /* SafariWebExtensionHandler.swift */,
-				ECAA8B7A2A75261000D9D636 /* Info.plist */,
-				65C3A1C22B136430004609CA /* InfoPlist.strings */,
-			);
-			path = "winston-everywhere";
-			sourceTree = "<group>";
-		};
 		ECAA8B852A76470A00D9D636 /* PreviewLink */ = {
 			isa = PBXGroup;
 			children = (
@@ -2067,7 +1933,6 @@
 			buildRules = (
 			);
 			dependencies = (
-				ECAA8B7C2A75261000D9D636 /* PBXTargetDependency */,
 			);
 			name = winston;
 			packageProductDependencies = (
@@ -2106,27 +1971,6 @@
 			productReference = EC593AD42A4673B2002D6454 /* winston.app */;
 			productType = "com.apple.product-type.application";
 		};
-		ECAA8B642A75261000D9D636 /* winston-everywhere */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = ECAA8B7E2A75261000D9D636 /* Build configuration list for PBXNativeTarget "winston-everywhere" */;
-			buildPhases = (
-				EC2CD98C2B1B447A0040EF85 /* ShellScript */,
-				ECAA8B612A75261000D9D636 /* Sources */,
-				ECAA8B622A75261000D9D636 /* Frameworks */,
-				ECAA8B632A75261000D9D636 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = "winston-everywhere";
-			packageProductDependencies = (
-				ECAA35522AFE550900C0C232 /* SwiftUIIntrospect */,
-			);
-			productName = "winston-everywhere";
-			productReference = ECAA8B652A75261000D9D636 /* winston-everywhere.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -2138,9 +1982,6 @@
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					EC593AD32A4673B2002D6454 = {
-						CreatedOnToolsVersion = 14.3.1;
-					};
-					ECAA8B642A75261000D9D636 = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
 				};
@@ -2158,7 +1999,7 @@
 			);
 			mainGroup = EC593ACB2A4673B2002D6454;
 			packageReferences = (
-				BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "SwiftRedditPOC" */,
+				BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */,
 				EC593AFE2A47AFC1002D6454 /* XCRemoteSwiftPackageReference "Defaults" */,
 				CAFE000000000000000000A1 /* XCRemoteSwiftPackageReference "Pulse" */,
 				EC593B072A47B42D002D6454 /* XCRemoteSwiftPackageReference "KeychainAccess" */,
@@ -2192,7 +2033,6 @@
 			projectRoot = "";
 			targets = (
 				EC593AD32A4673B2002D6454 /* winston */,
-				ECAA8B642A75261000D9D636 /* winston-everywhere */,
 				B665D23E51AD7434F429AAD1 /* winstonTests */,
 			);
 		};
@@ -2245,60 +2085,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		ECAA8B632A75261000D9D636 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				EC1AC9A22B1FEB0200674B31 /* toolbar-icon-16.9cddc2a3.png in Resources */,
-				EC1AC9B32B1FEB0200674B31 /* popup.4386a3af.css in Resources */,
-				EC1AC99D2B1FEB0200674B31 /* side-winston.3141c099.png in Resources */,
-				EC1AC9B02B1FEB0200674B31 /* icon-banner.334f83c4.svg in Resources */,
-				EC1AC99B2B1FEB0200674B31 /* WinstonApiHelper.b37faa57.css in Resources */,
-				EC1AC9AA2B1FEB0200674B31 /* toolbar-icon-72.89c57b78.png in Resources */,
-				EC1AC9AB2B1FEB0200674B31 /* manifest.json in Resources */,
-				EC1AC9A62B1FEB0200674B31 /* toolbar-icon-19.ab3fc3de.png in Resources */,
-				EC1AC9A32B1FEB0200674B31 /* icon-128.06d7293e.png in Resources */,
-				EC1AC9A12B1FEB0200674B31 /* toolbar-icon-38.f748fbf5.png in Resources */,
-				EC1AC9A82B1FEB0200674B31 /* icon-256.cad47425.png in Resources */,
-				EC1AC9A72B1FEB0200674B31 /* icon-48.71058295.png in Resources */,
-				EC1AC99C2B1FEB0200674B31 /* WinstonApiHelper.5c5223a0.js in Resources */,
-				EC1AC9A02B1FEB0200674B31 /* popup.dc9af302.html in Resources */,
-				EC1AC9AD2B1FEB0200674B31 /* icon-96.b672d854.png in Resources */,
-				EC1AC9A52B1FEB0200674B31 /* common.9c015fef.js in Resources */,
-				EC1AC9AF2B1FEB0200674B31 /* openInWinstonBannerStyles.970adf4b.css in Resources */,
-				EC1AC9AC2B1FEB0200674B31 /* toolbar-icon-48.7ad754b6.png in Resources */,
-				EC1AC9B22B1FEB0200674B31 /* icon-assistant.12d68324.svg in Resources */,
-				EC1AC99A2B1FEB0200674B31 /* openInWinston.e7e2aad9.js in Resources */,
-				EC1AC9B12B1FEB0200674B31 /* icon-link.ea5c3354.svg in Resources */,
-				EC1AC9A42B1FEB0200674B31 /* icon-512.fa271110.png in Resources */,
-				EC1AC99E2B1FEB0200674B31 /* background.26caa449.js in Resources */,
-				EC1AC99F2B1FEB0200674B31 /* openWinstonEverywhere.cc510c68.js in Resources */,
-				ECF72AE72B267CE20078AD0B /* _locales in Resources */,
-				EC1AC9A92B1FEB0200674B31 /* toolbar-icon-32.1cbb4524.png in Resources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXResourcesBuildPhase section */
-
-/* Begin PBXShellScriptBuildPhase section */
-		EC2CD98C2B1B447A0040EF85 /* ShellScript */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 12;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/zsh;
-			shellScript = "# Type a script or drag a script file from your workspace to insert its path.\nsource ~/.zshrc\ncd \"$PROJECT_DIR\"/winston-everywhere\nnpm install\nnpm run build\n\nFOLDER_PATH=\"${PROJECT_DIR}/winston-everywhere/dist\"\n\nfind \"${FOLDER_PATH}\" -type f > \"${FOLDER_PATH}/filelist.xcfilelist\"\n";
-		};
-/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		DF37052589289F5E268D6916 /* Sources */ = {
@@ -2670,14 +2457,6 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		ECAA8B612A75261000D9D636 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				ECAA8B682A75261000D9D636 /* SafariWebExtensionHandler.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -2687,24 +2466,9 @@
 			target = EC593AD32A4673B2002D6454 /* winston */;
 			targetProxy = B7E0D91E4EE747DB1B431AFA /* PBXContainerItemProxy */;
 		};
-		ECAA8B7C2A75261000D9D636 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = ECAA8B642A75261000D9D636 /* winston-everywhere */;
-			targetProxy = ECAA8B7B2A75261000D9D636 /* PBXContainerItemProxy */;
-		};
 /* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
-		65C3A1C22B136430004609CA /* InfoPlist.strings */ = {
-			isa = PBXVariantGroup;
-			children = (
-				65C3A1C32B136430004609CA /* de */,
-				65C3A1C82B136445004609CA /* fr */,
-				65C3A1C92B136460004609CA /* it */,
-			);
-			name = InfoPlist.strings;
-			sourceTree = "<group>";
-		};
 		65C3A1C52B136430004609CA /* InfoPlist.strings */ = {
 			isa = PBXVariantGroup;
 			children = (
@@ -2896,8 +2660,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = winston/winston.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = AKYP3P2CJJ;
 				ENABLE_PREVIEWS = NO;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/**";
 				GENERATE_INFOPLIST_FILE = YES;
@@ -2921,6 +2687,7 @@
 				MARKETING_VERSION = 1.1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = d0lb33.winston;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -2938,8 +2705,10 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
 				CODE_SIGN_ENTITLEMENTS = winston/winston.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = AKYP3P2CJJ;
 				ENABLE_PREVIEWS = NO;
 				FRAMEWORK_SEARCH_PATHS = "$(SRCROOT)/**";
 				GENERATE_INFOPLIST_FILE = YES;
@@ -2963,73 +2732,8 @@
 				MARKETING_VERSION = 1.1.2;
 				PRODUCT_BUNDLE_IDENTIFIER = d0lb33.winston;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				SCAN_ALL_SOURCE_FILES_FOR_INCLUDES = NO;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Release;
-		};
-		ECAA8B7F2A75261000D9D636 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "winston-everywhere/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Winston Everywhere";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				LIBRARY_SEARCH_PATHS = "";
-				MARKETING_VERSION = 1.1.2;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "d0lb33.winston.winston-everywhere";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
-				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
-		ECAA8B802A75261000D9D636 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_IDENTITY = "Apple Development";
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 2;
-				ENABLE_USER_SCRIPT_SANDBOXING = NO;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = "winston-everywhere/Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Winston Everywhere";
-				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				LIBRARY_SEARCH_PATHS = "";
-				MARKETING_VERSION = 1.1.2;
-				OTHER_LDFLAGS = (
-					"-framework",
-					SafariServices,
-				);
-				PRODUCT_BUNDLE_IDENTIFIER = "d0lb33.winston.winston-everywhere";
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				PROVISIONING_PROFILE_SPECIFIER = "";
-				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -3057,15 +2761,6 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		ECAA8B7E2A75261000D9D636 /* Build configuration list for PBXNativeTarget "winston-everywhere" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				ECAA8B7F2A75261000D9D636 /* Debug */,
-				ECAA8B802A75261000D9D636 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		FE95100C74BE5692A584E483 /* Build configuration list for PBXNativeTarget "winstonTests" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -3078,7 +2773,7 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "SwiftRedditPOC" */ = {
+		BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = RedditAPIResearch/SwiftRedditPOC;
 		};
@@ -3321,7 +3016,7 @@
 		};
 		BEEF000000000000000000A2 /* RedditPOC */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "SwiftRedditPOC" */;
+			package = BEEF000000000000000000A1 /* XCLocalSwiftPackageReference "RedditAPIResearch/SwiftRedditPOC" */;
 			productName = RedditPOC;
 		};
 		CAFE000000000000000000A2 /* Pulse */ = {
@@ -3428,11 +3123,6 @@
 			isa = XCSwiftPackageProductDependency;
 			package = ECA3700E2B480FC900C73CB0 /* XCRemoteSwiftPackageReference "WrappingHStack" */;
 			productName = WrappingHStack;
-		};
-		ECAA35522AFE550900C0C232 /* SwiftUIIntrospect */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = EC08543B2A4CFE1C00E88389 /* XCRemoteSwiftPackageReference "swiftui-introspect" */;
-			productName = SwiftUIIntrospect;
 		};
 		ECAA8B832A76421000D9D636 /* YouTubePlayerKit */ = {
 			isa = XCSwiftPackageProductDependency;

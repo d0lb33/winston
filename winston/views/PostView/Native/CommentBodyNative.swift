@@ -50,8 +50,13 @@ struct CommentBodyNative: View {
   @State private var postDimensions = PostDimensions.zero
 
   var body: some View {
-    let sourceMarkdown = Self.spoilerProcessedMarkdown(markdown, showSpoiler: showSpoiler)
-    let parts = Self.parts(from: sourceMarkdown)
+    let _ = ScrollPerfDiagnostics.bump("commentBody.body")
+    let sourceMarkdown = ScrollPerfDiagnostics.measure("commentBody.spoilerProcess", slowThresholdMs: 3, slowMessage: "Comment spoiler preprocessing was slow") {
+      Self.spoilerProcessedMarkdown(markdown, showSpoiler: showSpoiler)
+    }
+    let parts = ScrollPerfDiagnostics.measure("commentBody.parts", slowThresholdMs: 4, slowMessage: "Comment text/media split was slow", metadata: ["context": diagnosticContext, "chars": "\(sourceMarkdown.count)"]) {
+      Self.parts(from: sourceMarkdown)
+    }
 
     VStack(alignment: .leading, spacing: 8) {
       ForEach(Array(parts.enumerated()), id: \.offset) { _, part in
@@ -59,25 +64,30 @@ struct CommentBodyNative: View {
         case .text(let text):
           tappableMarkdownText(text)
         case .media(let url):
-          if availableWidth >= 1, let media = mediaExtractor(url: url, compact: false, contentWidth: availableWidth, diagnosticContext: diagnosticContext) {
-            MediaPresenter(
-              postDimensions: $postDimensions,
-              controller: nil,
-              postTitle: postTitle,
-              badgeKit: badgeKit,
-              avatarImageRequest: avatarImageRequest,
-              markAsSeen: nil,
-              cornerRadius: cornerRadius,
-              blurPostLinkNSFW: false,
-              media: media,
-              compact: false,
-              contentWidth: availableWidth,
-              maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
-              resetVideo: { _ in },
-              diagnosticContext: diagnosticContext
-            )
-            .contentShape(Rectangle())
-            .diagnosticTapTarget("comment media", color: .purple)
+          if availableWidth >= 1 {
+            let media = ScrollPerfDiagnostics.measure("commentBody.mediaExtractor", slowThresholdMs: 4, slowMessage: "Comment inline media extraction was slow", metadata: ["context": diagnosticContext, "urlHost": url.host ?? "nil"]) {
+              mediaExtractor(url: url, compact: false, contentWidth: availableWidth, diagnosticContext: diagnosticContext)
+            }
+            if let media {
+              MediaPresenter(
+                postDimensions: $postDimensions,
+                controller: nil,
+                postTitle: postTitle,
+                badgeKit: badgeKit,
+                avatarImageRequest: avatarImageRequest,
+                markAsSeen: nil,
+                cornerRadius: cornerRadius,
+                blurPostLinkNSFW: false,
+                media: media,
+                compact: false,
+                contentWidth: availableWidth,
+                maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
+                resetVideo: { _ in },
+                diagnosticContext: diagnosticContext
+              )
+              .contentShape(Rectangle())
+              .diagnosticTapTarget("comment media", color: .purple)
+            }
           }
         }
       }
@@ -97,7 +107,8 @@ struct CommentBodyNative: View {
   }
 
   private func markdownText(_ text: String) -> some View {
-    Markdown(MarkdownUtil.formatForMarkdown(text, showSpoiler: showSpoiler))
+    ScrollPerfDiagnostics.bump("commentBody.markdownText")
+    return Markdown(MarkdownUtil.formatForMarkdown(text, showSpoiler: showSpoiler))
       .markdownTheme(.winstonMarkdown(fontSize: fontSize, lineSpacing: lineSpacing))
       .fixedSize(horizontal: false, vertical: true)
   }
@@ -181,6 +192,7 @@ struct CommentBodyNative: View {
   }
 
   private static func regexMatches(pattern: String, in text: String) -> [NSTextCheckingResult] {
+    ScrollPerfDiagnostics.bump("commentBody.regex")
     guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return [] }
     return regex.matches(in: text, range: NSRange(location: 0, length: text.utf16.count))
   }

@@ -39,8 +39,22 @@ struct RedditTwoColumnShell<Source: View>: View {
     tab != nil && nav.contentPath.isEmpty && (hSize == .regular || nav.preferredColumn == .sidebar)
   }
 
+  private var isSourceColumnVisibleForTabInteraction: Bool {
+    tab != nil && (hSize == .regular || nav.preferredColumn == .sidebar)
+  }
+
   private var isDetailVisibleForTabInteraction: Bool {
     tab != nil && nav.detailPost != nil && hSize != .regular && nav.preferredColumn == .detail
+  }
+
+  private var sourceDestinationTabInteractionContext: TabInteractionContext? {
+    guard let tab, isSourceColumnVisibleForTabInteraction else { return nil }
+    return TabInteractionContext(tab: tab, center: tabInteractions)
+  }
+
+  private var detailTabInteractionContext: TabInteractionContext? {
+    guard let tab, isDetailVisibleForTabInteraction else { return nil }
+    return TabInteractionContext(tab: tab, center: tabInteractions)
   }
 
   private var sourceRootOwnerID: TabInteractionOwnerID? {
@@ -54,23 +68,21 @@ struct RedditTwoColumnShell<Source: View>: View {
       NavigationStack(path: $nav.contentPath) {
         source(nav)
           .redditNavigation(nav, origin: .content)
-          .redditDestinations(nav, origin: .content)
+          .redditDestinations(nav, origin: .content, tabInteractionContext: sourceDestinationTabInteractionContext)
       }
       .navigationSplitViewColumnWidth(min: 360, ideal: 440)
     } detail: {
       NavigationStack(path: $nav.detailPath) {
         ColumnDetailContent(
           nav: nav,
-          tabInteractionTab: isDetailVisibleForTabInteraction ? tab : nil,
-          tabInteractions: isDetailVisibleForTabInteraction ? tabInteractions : nil,
-          tabInteractionRequest: isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil
+          tabInteractionTab: detailTabInteractionContext?.tab,
+          tabInteractions: detailTabInteractionContext?.center,
+          tabInteractionRequest: detailTabInteractionContext?.request
         )
           .redditNavigation(nav, origin: .detail)
-          .redditDestinations(nav, origin: .detail)
+          .redditDestinations(nav, origin: .detail, tabInteractionContext: detailTabInteractionContext)
       }
-      .environment(\.tabInteractionTab, isDetailVisibleForTabInteraction ? tab : nil)
-      .environment(\.tabInteractionCenter, isDetailVisibleForTabInteraction ? tabInteractions : nil)
-      .environment(\.tabInteractionRequest, isDetailVisibleForTabInteraction ? tab.flatMap { tabInteractions.requests[$0] } : nil)
+      .tabInteractionContext(detailTabInteractionContext)
     }
     .navigationSplitViewStyle(.balanced)
     .environment(\.auroraTheme, auroraTheme)
@@ -110,7 +122,8 @@ struct RedditTwoColumnShell<Source: View>: View {
     )
     switch request.kind {
     case .scrollToTop:
-      guard isSourceRootVisibleForTabInteraction || isDetailVisibleForTabInteraction else {
+      let hasActiveOwner = tab.map { tabInteractions.hasActiveOwner(for: $0) } ?? false
+      guard isSourceRootVisibleForTabInteraction || isDetailVisibleForTabInteraction || hasActiveOwner else {
         AppDiagnostics.asyncBreadcrumb(
           "Split tab scroll request routed to back",
           metadata: splitTabInteractionMetadata(request: request, branch: "scrollToTop.routedToBack")

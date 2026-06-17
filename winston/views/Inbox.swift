@@ -26,6 +26,10 @@ struct Inbox: View {
   private var isRootVisibleForTabInteraction: Bool {
     nav.path.isEmpty
   }
+
+  private var tabInteractionContext: TabInteractionContext {
+    TabInteractionContext(tab: .inbox, center: tabInteractions)
+  }
   
   func fetch(_ loadMore: Bool = false, _ force: Bool = false) async {
     if loading || loadingMore { return }
@@ -104,7 +108,7 @@ struct Inbox: View {
       )
       .auroraListChrome()
       .redditNavigation(nav, origin: .content)
-      .redditDestinations(nav, origin: .content)
+      .redditDestinations(nav, origin: .content, tabInteractionContext: tabInteractionContext)
       .loader(loading)
       .onAppear {
         synchronizeTabInteractionOwner()
@@ -126,9 +130,7 @@ struct Inbox: View {
       }
       .navigationTitle("Inbox")
     }
-    .environment(\.tabInteractionTab, Nav.TabIdentifier.inbox)
-    .environment(\.tabInteractionCenter, tabInteractions)
-    .environment(\.tabInteractionRequest, tabInteractions.requests[.inbox])
+    .tabInteractionContext(tabInteractionContext)
     .routerDeepLinkInbox(
       router: router,
       consume: {
@@ -157,7 +159,7 @@ struct Inbox: View {
     )
     switch request.kind {
     case .scrollToTop:
-      if !nav.path.isEmpty && !isPostDestinationVisible {
+      if !nav.path.isEmpty && !isPostDestinationVisible && !tabInteractions.hasActiveOwner(for: .inbox) {
         let didGoBack = nav.goBackOneStep()
         AppDiagnostics.asyncBreadcrumb(
           "tabInteraction.inboxGoBackResult",

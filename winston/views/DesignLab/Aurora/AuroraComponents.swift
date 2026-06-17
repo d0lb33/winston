@@ -515,6 +515,7 @@ struct AuroraPostCardRow: View {
   }
 
   var body: some View {
+    let _ = ScrollPerfDiagnostics.bump("auroraPostCardRow.body")
     VStack(alignment: .leading, spacing: 0) {
       if rowWidth == nil {
         Color.clear
@@ -552,6 +553,12 @@ struct AuroraPostCardRow: View {
     .modifier(AuroraPostCardRowTapModifier(onSelect: onSelect))
     .diagnosticTapTarget(onSelect == nil ? "post row" : "post row open", color: .pink)
     .environment(\.auroraCardSettings, settings ?? AuroraCardSettings(Defaults[.PostLinkDefSettings]))
+    .onAppear {
+      ScrollPerfDiagnostics.bump("auroraPostCardRow.appear")
+    }
+    .onDisappear {
+      ScrollPerfDiagnostics.bump("auroraPostCardRow.disappear")
+    }
   }
 }
 
@@ -644,7 +651,15 @@ private struct AuroraPostCardSurface: View {
   }
 
   private func markAsRead() async {
+    let start = ScrollPerfDiagnostics.now()
     await post.toggleSeen(true)
+    ScrollPerfDiagnostics.recordDuration(
+      category: "auroraCard.markAsRead",
+      message: "Aurora card mark-as-read was slow",
+      elapsedNanos: ScrollPerfDiagnostics.now() - start,
+      thresholdMs: 20,
+      metadata: ["post": post.id]
+    )
   }
 
   var body: some View {
@@ -755,6 +770,10 @@ private struct AuroraPostCardSurface: View {
   }
 
   private func navigate(_ destination: NavDest) {
+    ScrollPerfDiagnostics.event(
+      "Aurora card navigation",
+      metadata: ["post": post.id, "destination": destination.diagnosticsName, "compact": "\(hSize == .compact)"]
+    )
     if hSize == .compact, let onCompactNavigate {
       onCompactNavigate(destination)
     } else {
@@ -809,6 +828,7 @@ private struct AuroraPostCardSurface: View {
   }
 
   private var hasDisplayMedia: Bool {
+    ScrollPerfDiagnostics.bump("auroraCard.hasDisplayMedia")
     guard !disableFeedMedia else { return false }
     guard let media = winstonData.extractedMediaForcedNormal else { return false }
     if case .link = media { return false }
@@ -817,10 +837,12 @@ private struct AuroraPostCardSurface: View {
 
   @ViewBuilder
   private func mediaBlock(_ data: PostData) -> some View {
+    let _ = ScrollPerfDiagnostics.bump("auroraCard.mediaBlock")
     if disableFeedMedia {
       EmptyView()
     } else if let media = winstonData.extractedMediaForcedNormal {
       if case .repost(let repost) = media {
+        let _ = ScrollPerfDiagnostics.bump("auroraCard.media.repost")
         AuroraCrosspostCard(
           repost: repost,
           outerPostID: post.id,
@@ -828,6 +850,7 @@ private struct AuroraPostCardSurface: View {
           onCompactNavigate: onCompactNavigate
         )
       } else {
+        let _ = ScrollPerfDiagnostics.bump("auroraCard.media.native")
         PostRowMediaNative(
           postID: post.id,
           postTitle: data.title,

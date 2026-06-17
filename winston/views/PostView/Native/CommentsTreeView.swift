@@ -48,6 +48,7 @@ struct CommentsTreeView: View {
   }
 
   var body: some View {
+    let _ = ScrollPerfDiagnostics.bump("commentsTree.body")
     if loading && model.rows.isEmpty {
       HStack {
         Spacer()
@@ -86,7 +87,31 @@ struct CommentsTreeView: View {
           maxMediaHeightPct: maxMediaHeightPct,
           contentWidth: contentWidth
         )
+        .onAppear {
+          ScrollPerfDiagnostics.bump(row.kind.appearDiagnosticsCategory)
+        }
+        .onDisappear {
+          ScrollPerfDiagnostics.bump(row.kind.disappearDiagnosticsCategory)
+        }
       }
+    }
+  }
+}
+
+private extension CommentRowKind {
+  var appearDiagnosticsCategory: String {
+    switch self {
+    case .comment: return "commentRow.appear.comment"
+    case .more: return "commentRow.appear.more"
+    case .continueThread: return "commentRow.appear.continue"
+    }
+  }
+
+  var disappearDiagnosticsCategory: String {
+    switch self {
+    case .comment: return "commentRow.disappear.comment"
+    case .more: return "commentRow.disappear.more"
+    case .continueThread: return "commentRow.disappear.continue"
     }
   }
 }

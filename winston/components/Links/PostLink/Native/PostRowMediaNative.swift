@@ -137,7 +137,7 @@ struct PostRowMediaNative: View, Equatable {
   }
 
   var body: some View {
-    let _ = ScrollPerfProbe.shared.bump("postRowMediaNativeBody")
+    let _ = ScrollPerfDiagnostics.bump("postRowMediaNativeBody")
     MediaPresenter(
       postDimensions: $dims,
       controller: nil,
@@ -158,5 +158,41 @@ struct PostRowMediaNative: View, Equatable {
     )
     .allowsHitTesting(isMediaTappable || media.alwaysAllowsInlineNavigation)
     .diagnosticTapTarget(isMediaTappable || media.alwaysAllowsInlineNavigation ? "feed media" : "feed media disabled", color: .purple)
+    .onAppear {
+      ScrollPerfDiagnostics.bump(mediaAppearDiagnosticsCategory)
+    }
+    .onDisappear {
+      ScrollPerfDiagnostics.bump(mediaDisappearDiagnosticsCategory)
+    }
+  }
+
+  private var mediaAppearDiagnosticsCategory: String {
+    switch media {
+    case .video: return "postRowMediaNative.appear.video"
+    case .streamable: return "postRowMediaNative.appear.streamable"
+    case .imgs: return "postRowMediaNative.appear.imgs"
+    case .yt: return "postRowMediaNative.appear.yt"
+    case .link: return "postRowMediaNative.appear.link"
+    case .repost: return "postRowMediaNative.appear.repost"
+    case .post: return "postRowMediaNative.appear.post"
+    case .comment: return "postRowMediaNative.appear.comment"
+    case .subreddit: return "postRowMediaNative.appear.subreddit"
+    case .user: return "postRowMediaNative.appear.user"
+    }
+  }
+
+  private var mediaDisappearDiagnosticsCategory: String {
+    switch media {
+    case .video: return "postRowMediaNative.disappear.video"
+    case .streamable: return "postRowMediaNative.disappear.streamable"
+    case .imgs: return "postRowMediaNative.disappear.imgs"
+    case .yt: return "postRowMediaNative.disappear.yt"
+    case .link: return "postRowMediaNative.disappear.link"
+    case .repost: return "postRowMediaNative.disappear.repost"
+    case .post: return "postRowMediaNative.disappear.post"
+    case .comment: return "postRowMediaNative.disappear.comment"
+    case .subreddit: return "postRowMediaNative.disappear.subreddit"
+    case .user: return "postRowMediaNative.disappear.user"
+    }
   }
 }

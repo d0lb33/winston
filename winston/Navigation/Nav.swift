@@ -190,6 +190,26 @@ extension TabInteractionOwnerID {
     case .settings: return .settingsRoot
     }
   }
+
+  static func scrollRoot(topID: String, scope: String?) -> TabInteractionOwnerID {
+    guard let scope, !scope.isEmpty else {
+      return TabInteractionOwnerID(topID)
+    }
+    return TabInteractionOwnerID("\(scope).\(topID)")
+  }
+}
+
+struct TabInteractionContext {
+  let tab: Nav.TabIdentifier
+  let center: TabInteractionCenter
+  let request: TabInteractionRequest?
+
+  @MainActor
+  init(tab: Nav.TabIdentifier, center: TabInteractionCenter) {
+    self.tab = tab
+    self.center = center
+    self.request = center.requests[tab]
+  }
 }
 
 private struct TabInteractionTabKey: EnvironmentKey {
@@ -202,6 +222,10 @@ private struct TabInteractionCenterKey: EnvironmentKey {
 
 private struct TabInteractionRequestKey: EnvironmentKey {
   static let defaultValue: TabInteractionRequest? = nil
+}
+
+private struct TabInteractionOwnerScopeKey: EnvironmentKey {
+  static let defaultValue: String? = nil
 }
 
 extension EnvironmentValues {
@@ -218,6 +242,20 @@ extension EnvironmentValues {
   var tabInteractionRequest: TabInteractionRequest? {
     get { self[TabInteractionRequestKey.self] }
     set { self[TabInteractionRequestKey.self] = newValue }
+  }
+
+  var tabInteractionOwnerScope: String? {
+    get { self[TabInteractionOwnerScopeKey.self] }
+    set { self[TabInteractionOwnerScopeKey.self] = newValue }
+  }
+}
+
+extension View {
+  func tabInteractionContext(_ context: TabInteractionContext?) -> some View {
+    self
+      .environment(\.tabInteractionTab, context?.tab)
+      .environment(\.tabInteractionCenter, context?.center)
+      .environment(\.tabInteractionRequest, context?.request)
   }
 }
 
@@ -267,18 +305,7 @@ final class TabInteractionCenter: ObservableObject {
   func activateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier, initialIsAtTop: Bool = false) {
     let previousOwner = scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
     let previousIsAtTop = scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
-    guard scrollOwnerStateByTab[tab]?.ownerID != ownerID else {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.ownerActivateSkipped",
-        metadata: [
-          "tab": tab.rawValue,
-          "owner": ownerID.rawValue,
-          "reason": "alreadyActive",
-          "isAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
-        ]
-      )
-      return
-    }
+    guard scrollOwnerStateByTab[tab]?.ownerID != ownerID else { return }
     scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: ownerID, isAtTop: initialIsAtTop)
     ownerActivationDateByOwner[ownerID] = Date()
     lastScrollOffsetByOwner.removeValue(forKey: ownerID)
@@ -296,18 +323,7 @@ final class TabInteractionCenter: ObservableObject {
   }
 
   func deactivateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) {
-    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else {
-      AppDiagnostics.asyncBreadcrumb(
-        "tabInteraction.ownerDeactivateSkipped",
-        metadata: [
-          "tab": tab.rawValue,
-          "owner": ownerID.rawValue,
-          "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
-          "reason": "notActive"
-        ]
-      )
-      return
-    }
+    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
     let previousIsAtTop = scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
     scrollOwnerStateByTab.removeValue(forKey: tab)
     lastScrollOffsetByOwner.removeValue(forKey: ownerID)
@@ -382,6 +398,10 @@ final class TabInteractionCenter: ObservableObject {
 
   func isActiveOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) -> Bool {
     scrollOwnerStateByTab[tab]?.ownerID == ownerID
+  }
+
+  func hasActiveOwner(for tab: Nav.TabIdentifier) -> Bool {
+    scrollOwnerStateByTab[tab] != nil
   }
 
   func canOwnerHandleRequest(_ request: TabInteractionRequest, ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) -> Bool {
@@ -526,7 +546,7 @@ final class TabInteractionCenter: ObservableObject {
 
 struct TabScrollRoot<Selection: Hashable, Content: View>: View {
   private let topID: String
-  private let ownerID: TabInteractionOwnerID
+  private let explicitOwnerID: TabInteractionOwnerID?
   private let tab: Nav.TabIdentifier?
   private let tabInteractions: TabInteractionCenter?
   private let request: TabInteractionRequest?
@@ -535,6 +555,10 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
   private let onResetToRoot: (() -> Void)?
   private let onOffsetChange: (CGFloat) -> Void
   private let content: () -> Content
+  @Environment(\.tabInteractionTab) private var environmentTab
+  @Environment(\.tabInteractionCenter) private var environmentTabInteractions
+  @Environment(\.tabInteractionRequest) private var environmentRequest
+  @Environment(\.tabInteractionOwnerScope) private var ownerScope
 
   init(
     topID: String,
@@ -549,7 +573,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.topID = topID
-    self.ownerID = ownerID ?? TabInteractionOwnerID(topID)
+    self.explicitOwnerID = ownerID
     self.tab = tab
     self.tabInteractions = tabInteractions
     self.request = request
@@ -561,6 +585,11 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
   }
 
   var body: some View {
+    let ownerID = resolvedOwnerID
+    let tab = effectiveTab
+    let tabInteractions = effectiveTabInteractions
+    let request = effectiveRequest
+
     ScrollViewReader { proxy in
       TabScrollList(selection: selection, scrollPosition: scrollPosition) {
         Color.clear
@@ -584,44 +613,24 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
         onOffsetChange(newOffsetY)
       }
       .onAppear {
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.scrollRootAppear",
-          metadata: ["tab": tab?.rawValue ?? "none", "owner": ownerID.rawValue, "topID": topID]
-        )
-        activateOwner()
+        activateOwner(ownerID, tab: tab, tabInteractions: tabInteractions)
       }
       .onDisappear {
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.scrollRootDisappear",
-          metadata: ["tab": tab?.rawValue ?? "none", "owner": ownerID.rawValue, "topID": topID]
-        )
-        deactivateOwner()
+        deactivateOwner(ownerID, tab: tab, tabInteractions: tabInteractions)
       }
       .onChange(of: tab) { oldTab, newTab in
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.scrollRootTabChanged",
-          metadata: [
-            "owner": ownerID.rawValue,
-            "oldTab": oldTab?.rawValue ?? "none",
-            "newTab": newTab?.rawValue ?? "none"
-          ]
-        )
         if let oldTab, let tabInteractions {
           tabInteractions.deactivateScrollOwner(ownerID, for: oldTab)
         }
         if newTab != nil {
-          activateOwner()
+          activateOwner(ownerID, tab: newTab, tabInteractions: tabInteractions)
         }
       }
       .onChange(of: ownerID) { oldOwnerID, _ in
-        AppDiagnostics.asyncBreadcrumb(
-          "tabInteraction.scrollRootOwnerChanged",
-          metadata: ["tab": tab?.rawValue ?? "none", "oldOwner": oldOwnerID.rawValue, "newOwner": ownerID.rawValue]
-        )
         if let tab, let tabInteractions {
           tabInteractions.deactivateScrollOwner(oldOwnerID, for: tab)
         }
-        activateOwner()
+        activateOwner(ownerID, tab: tab, tabInteractions: tabInteractions)
       }
       .onChange(of: request) { _, request in
         guard let request else { return }
@@ -668,12 +677,28 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
     }
   }
 
-  private func activateOwner() {
+  private var effectiveTab: Nav.TabIdentifier? {
+    tab ?? environmentTab
+  }
+
+  private var effectiveTabInteractions: TabInteractionCenter? {
+    tabInteractions ?? environmentTabInteractions
+  }
+
+  private var effectiveRequest: TabInteractionRequest? {
+    request ?? environmentRequest
+  }
+
+  private var resolvedOwnerID: TabInteractionOwnerID {
+    explicitOwnerID ?? TabInteractionOwnerID.scrollRoot(topID: topID, scope: ownerScope)
+  }
+
+  private func activateOwner(_ ownerID: TabInteractionOwnerID, tab: Nav.TabIdentifier?, tabInteractions: TabInteractionCenter?) {
     guard let tab, let tabInteractions else { return }
     tabInteractions.activateScrollOwner(ownerID, for: tab, initialIsAtTop: false)
   }
 
-  private func deactivateOwner() {
+  private func deactivateOwner(_ ownerID: TabInteractionOwnerID, tab: Nav.TabIdentifier?, tabInteractions: TabInteractionCenter?) {
     guard let tab, let tabInteractions else { return }
     tabInteractions.deactivateScrollOwner(ownerID, for: tab)
   }
@@ -691,7 +716,7 @@ extension TabScrollRoot where Selection == Never {
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.topID = topID
-    self.ownerID = ownerID ?? TabInteractionOwnerID(topID)
+    self.explicitOwnerID = ownerID
     self.tab = tab
     self.tabInteractions = tabInteractions
     self.request = request

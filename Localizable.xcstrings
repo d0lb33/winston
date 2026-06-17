@@ -892,6 +892,9 @@
     "Collapsed, %lld hidden replies" : {
 
     },
+    "Collect Scroll/Hitch Diagnostics" : {
+
+    },
     "Colored Usernames" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -1106,9 +1109,6 @@
           }
         }
       }
-    },
-    "Debug HUD" : {
-
     },
     "Default Launch Feed" : {
       "localizations" : {
@@ -3763,6 +3763,9 @@
       }
     },
     "Show hide-read action in feed tools" : {
+
+    },
+    "Show Mini Debug HUD" : {
 
     },
     "Show Self Text" : {
