@@ -80,6 +80,45 @@ struct ApolloReadHistoryImporterTests {
   }
 }
 
+// MARK: - Aurora sidebar communities
+
+struct AuroraSidebarCommunitySortTests {
+  @Test("community sort key normalizes display name")
+  func communitySortKeyNormalizesDisplayName() {
+    let key = AuroraSidebarCommunitySort.sortKey(displayName: "  R/Swift  ", name: nil, uuid: nil)
+
+    #expect(key == "swift")
+  }
+
+  @Test("community sort key falls back to name then uuid")
+  func communitySortKeyFallsBackToNameThenUUID() {
+    #expect(AuroraSidebarCommunitySort.sortKey(displayName: nil, name: "r/Apple", uuid: "t5_apple") == "apple")
+    #expect(AuroraSidebarCommunitySort.sortKey(displayName: "", name: nil, uuid: "t5_swift") == "t5_swift")
+  }
+
+  @Test("community sort orders alphabetically with uuid tie breaker")
+  func communitySortOrdersAlphabeticallyWithTieBreaker() {
+    let communities: [(displayName: String?, name: String?, uuid: String?)] = [
+      ("r/swift", nil, "t5_swift_b"),
+      ("r/apple", nil, "t5_apple"),
+      ("Swift", nil, "t5_swift_a")
+    ]
+
+    let sorted = communities.sorted {
+      AuroraSidebarCommunitySort.precedes(
+        lhsDisplayName: $0.displayName,
+        lhsName: $0.name,
+        lhsUUID: $0.uuid,
+        rhsDisplayName: $1.displayName,
+        rhsName: $1.name,
+        rhsUUID: $1.uuid
+      )
+    }
+
+    #expect(sorted.map { $0.uuid } == ["t5_apple", "t5_swift_a", "t5_swift_b"])
+  }
+}
+
 // MARK: - PostsNav (three-column: communities | feed | post+comments)
 
 @MainActor

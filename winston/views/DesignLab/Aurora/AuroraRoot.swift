@@ -365,6 +365,14 @@ struct AuroraRoot: View {
 
   // MARK: - Sidebar
 
+  private var subscribedCommunities: [CachedSub] {
+    sortedSidebarCommunities(subs.filter { $0.user_is_subscriber && $0.uuid != nil })
+  }
+
+  private var favoriteCommunities: [CachedSub] {
+    subscribedCommunities.filter(\.user_has_favorited)
+  }
+
   private var sidebar: some View {
     @Bindable var posts = posts
 
@@ -389,11 +397,20 @@ struct AuroraRoot: View {
           }
         }
       }
+      if !favoriteCommunities.isEmpty {
+        Section("Favorites") {
+          ForEach(favoriteCommunities, id: \.uuid) { sub in
+            AuroraSidebarCommunityRow(cachedSub: sub)
+              .tag(sub.uuid ?? "")
+              .listRowBackground(Color.clear)
+          }
+        }
+      }
       Section("Communities") {
-        ForEach(subs.filter { $0.user_is_subscriber && $0.uuid != nil }, id: \.uuid) { sub in
+        ForEach(subscribedCommunities, id: \.uuid) { sub in
           AuroraSidebarCommunityRow(cachedSub: sub)
-          .tag(sub.uuid ?? "")
-          .listRowBackground(Color.clear)
+            .tag(sub.uuid ?? "")
+            .listRowBackground(Color.clear)
         }
       }
     }
@@ -402,6 +419,19 @@ struct AuroraRoot: View {
     .navigationTitle("Aurora")
     .refreshable {
       await refreshSubscriptions()
+    }
+  }
+
+  private func sortedSidebarCommunities(_ communities: [CachedSub]) -> [CachedSub] {
+    communities.sorted { lhs, rhs in
+      AuroraSidebarCommunitySort.precedes(
+        lhsDisplayName: lhs.display_name,
+        lhsName: lhs.name,
+        lhsUUID: lhs.uuid,
+        rhsDisplayName: rhs.display_name,
+        rhsName: rhs.name,
+        rhsUUID: rhs.uuid
+      )
     }
   }
 
@@ -441,6 +471,33 @@ struct AuroraRoot: View {
     savedListSummaries = SavedListsStore.shared.favoriteLists()
   }
 
+}
+
+enum AuroraSidebarCommunitySort {
+  static func sortKey(displayName: String?, name: String?, uuid: String?) -> String {
+    let rawValue = [displayName, name, uuid]
+      .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+      .first { !$0.isEmpty } ?? ""
+    let hasSubredditPrefix = rawValue.range(of: "r/", options: [.anchored, .caseInsensitive]) != nil
+    let unprefixed = hasSubredditPrefix ? String(rawValue.dropFirst(2)) : rawValue
+    return unprefixed.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: .current)
+  }
+
+  static func precedes(
+    lhsDisplayName: String?,
+    lhsName: String?,
+    lhsUUID: String?,
+    rhsDisplayName: String?,
+    rhsName: String?,
+    rhsUUID: String?
+  ) -> Bool {
+    let lhsKey = sortKey(displayName: lhsDisplayName, name: lhsName, uuid: lhsUUID)
+    let rhsKey = sortKey(displayName: rhsDisplayName, name: rhsName, uuid: rhsUUID)
+    if lhsKey == rhsKey {
+      return (lhsUUID ?? "") < (rhsUUID ?? "")
+    }
+    return lhsKey.localizedStandardCompare(rhsKey) == .orderedAscending
+  }
 }
 
 extension View {
