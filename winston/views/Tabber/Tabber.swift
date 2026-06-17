@@ -23,6 +23,7 @@ struct Tabber: View, Equatable {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(TabBarMetrics.self) private var tabBarMetrics
   @Default(.AppearanceDefSettings) private var appearanceDefSettings
+  @Default(.VideoDefSettings) private var videoDefSettings
   
   init(theme: WinstonTheme) {
     Tabber.updateTabAndNavBar(tabTheme: theme.general.tabBarBG, navTheme: theme.general.navPanelBG)
@@ -97,6 +98,7 @@ struct Tabber: View, Equatable {
     }
     .background(TabBarReselectAccessor(tabInteractions: tabInteractions, accountSwitcher: accountSwitcher, meTabTitle: meTabTitle).allowsHitTesting(false))
     .environmentObject(tabInteractions)
+    .environment(\.videoDefSettings, videoDefSettings)
     .onAppear {
       tabInteractions.selectedTabChanged(to: nav.activeTab)
       DispatchQueue.main.async {

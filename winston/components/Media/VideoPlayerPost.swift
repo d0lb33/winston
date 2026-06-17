@@ -6,6 +6,17 @@ import AVFoundation
 import Combine
 import Nuke
 
+private struct VideoDefSettingsEnvironmentKey: EnvironmentKey {
+  static let defaultValue = Defaults[.VideoDefSettings]
+}
+
+extension EnvironmentValues {
+  var videoDefSettings: VideoDefSettings {
+    get { self[VideoDefSettingsEnvironmentKey.self] }
+    set { self[VideoDefSettingsEnvironmentKey.self] = newValue }
+  }
+}
+
 final class SharedVideo: Equatable {
   static func == (lhs: SharedVideo, rhs: SharedVideo) -> Bool {
     lhs.url == rhs.url && lhs.downloadURL == rhs.downloadURL && lhs.posterURL == rhs.posterURL && lhs.size == rhs.size
@@ -23,9 +34,29 @@ final class SharedVideo: Equatable {
   private var _player: AVPlayer?
   var player: AVPlayer {
     if let existing = _player { return existing }
+    let createStarted = CACurrentMediaTime()
     let newPlayer = ScrollPerfProbe.shared.measure("avPlayerCreate") { AVPlayer(url: url) }
+    let createElapsedMs = (CACurrentMediaTime() - createStarted) * 1000
     newPlayer.volume = 0.0
     _player = newPlayer
+    if createElapsedMs >= 25 {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.video",
+        message: "SharedVideo player creation slow",
+        metadata: AVPlayerRepresentable.playerViewMetadata(
+          player: newPlayer,
+          view: nil,
+          extra: SharedVideo.cacheDiagnosticsMetadata(
+            url: url,
+            size: size,
+            downloadURL: downloadURL,
+            posterURL: posterURL,
+            cacheKey: SharedVideo.cacheKey(url: url, size: size, downloadURL: downloadURL, posterURL: posterURL)
+          ).merging(["createElapsedMs": String(format: "%.1f", createElapsedMs)]) { _, new in new }
+        )
+      )
+    }
     if AppDiagnostics.isEnabled(.debug, category: "ui.video.cache") {
       AppDiagnostics.asyncRecord(
         .debug,
@@ -146,7 +177,7 @@ struct VideoPlayerPost: View, Equatable {
   /// backdrop and the poster both stay until this flips, so the poster→video handoff never
   /// reveals an empty/grey gap. Reset when the row is reused for a different video.
   @State private var playerReadyForDisplay = false
-  @Default(.VideoDefSettings) private var videoDefSettings
+  @Environment(\.videoDefSettings) private var videoDefSettings
   @Environment(\.scenePhase) private var scenePhase
   @Environment(\.inlineVideoCoordinateSpace) private var inlineVideoCoordinateSpace
   @Namespace private var videoNS

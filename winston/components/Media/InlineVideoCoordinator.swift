@@ -436,6 +436,8 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var playbackStates: [String: InlineVideoPlaybackState] = [:]
   @ObservationIgnored private var prefetchVideoKeys: Set<String> = []
   @ObservationIgnored private var activeSince: [String: CFTimeInterval] = [:]
+  @ObservationIgnored private var attachStartedAt: [String: CFTimeInterval] = [:]
+  @ObservationIgnored private var attachCompletedAt: [String: CFTimeInterval] = [:]
   @ObservationIgnored private var lastActiveChangeTime: CFTimeInterval = 0
   @ObservationIgnored private var registeredVideos: [String: InlineVideoRegistration] = [:]
   @ObservationIgnored private var navigationPreservedKeys: Set<String> = []
@@ -563,18 +565,133 @@ final class InlineVideoCoordinator {
 
   func recordFirstFrameReady(key: String, sharedVideo: SharedVideo) {
     guard let started = activeSince[key] else { return }
+    let now = CACurrentMediaTime()
     let elapsedMs = (CACurrentMediaTime() - started) * 1000
+    let attachStartedElapsedMs = attachStartedAt[key].map { (now - $0) * 1000 }
+    let attachCompletedElapsedMs = attachCompletedAt[key].map { (now - $0) * 1000 }
     activeSince.removeValue(forKey: key)
+    attachStartedAt.removeValue(forKey: key)
+    attachCompletedAt.removeValue(forKey: key)
+    let level: DiagnosticLevel = elapsedMs >= 500 ? .warning : .info
+    AppDiagnostics.asyncRecord(
+      level,
+      category: "ui.video",
+      message: "Inline video first frame ready",
+      metadata: inlineStageMetadata(
+        key: key,
+        sharedVideo: sharedVideo,
+        player: sharedVideo.isPlayerLoaded ? sharedVideo.player : nil,
+        extra: [
+          "timeToFirstFrameMs": String(format: "%.1f", elapsedMs),
+          "attachStartedToFirstFrameMs": attachStartedElapsedMs.map { String(format: "%.1f", $0) } ?? "nil",
+          "attachCompletedToFirstFrameMs": attachCompletedElapsedMs.map { String(format: "%.1f", $0) } ?? "nil"
+        ]
+      )
+    )
+  }
+
+  func recordInlineAttachStarted(
+    key: String,
+    sharedVideo: SharedVideo,
+    wasPlayerLoaded: Bool,
+    autoplay: Bool,
+    muted: Bool,
+    loop: Bool
+  ) {
+    attachStartedAt[key] = CACurrentMediaTime()
     AppDiagnostics.asyncRecord(
       .info,
       category: "ui.video",
-      message: "Inline video first frame ready",
-      metadata: [
-        "feedItemKey": "\(key.hashValue)",
-        "timeToFirstFrameMs": String(format: "%.1f", elapsedMs),
-        "playerLoaded": "\(sharedVideo.isPlayerLoaded)"
-      ]
+      message: "Inline playback attach started",
+      metadata: inlineStageMetadata(
+        key: key,
+        sharedVideo: sharedVideo,
+        player: wasPlayerLoaded ? sharedVideo.player : nil,
+        extra: [
+          "playerLoadedBeforeAttach": "\(wasPlayerLoaded)",
+          "autoplay": "\(autoplay)",
+          "muted": "\(muted)",
+          "loop": "\(loop)"
+        ]
+      )
     )
+  }
+
+  func recordInlineAttachCompleted(
+    key: String,
+    sharedVideo: SharedVideo,
+    player: AVPlayer,
+    wasPlayerLoaded: Bool,
+    attachElapsedMs: Double
+  ) {
+    attachCompletedAt[key] = CACurrentMediaTime()
+    let level: DiagnosticLevel = attachElapsedMs >= 50 ? .warning : .info
+    AppDiagnostics.asyncRecord(
+      level,
+      category: "ui.video",
+      message: "Inline playback attach completed",
+      metadata: inlineStageMetadata(
+        key: key,
+        sharedVideo: sharedVideo,
+        player: player,
+        extra: [
+          "playerLoadedBeforeAttach": "\(wasPlayerLoaded)",
+          "attachElapsedMs": String(format: "%.1f", attachElapsedMs)
+        ]
+      )
+    )
+  }
+
+  func recordInlineFirstFrameStillWaiting(key: String, sharedVideo: SharedVideo) {
+    guard activeVideoKey == key, activeSince[key] != nil else { return }
+    AppDiagnostics.asyncRecord(
+      .warning,
+      category: "ui.video",
+      message: "Inline video first frame still waiting",
+      metadata: inlineStageMetadata(
+        key: key,
+        sharedVideo: sharedVideo,
+        player: sharedVideo.isPlayerLoaded ? sharedVideo.player : nil
+      )
+    )
+  }
+
+  private func inlineStageMetadata(
+    key: String,
+    sharedVideo: SharedVideo,
+    player: AVPlayer?,
+    extra: [String: String] = [:]
+  ) -> [String: String] {
+    let cacheKey = SharedVideo.cacheKey(
+      url: sharedVideo.url,
+      size: sharedVideo.size,
+      downloadURL: sharedVideo.downloadURL,
+      posterURL: sharedVideo.posterURL
+    )
+    let now = CACurrentMediaTime()
+    var metadata: [String: String] = [
+      "feedItemKey": "\(key.hashValue)",
+      "cacheKeyHash": "\(cacheKey.hashValue)",
+      "urlHash": "\(sharedVideo.url.absoluteString.hashValue)",
+      "downloadURLHash": sharedVideo.downloadURL.map { "\($0.absoluteString.hashValue)" } ?? "nil",
+      "posterURLHash": sharedVideo.posterURL.map { "\($0.absoluteString.hashValue)" } ?? "nil",
+      "videoSize": "\(sharedVideo.size.width)x\(sharedVideo.size.height)",
+      "playerLoaded": "\(sharedVideo.isPlayerLoaded)",
+      "activeElapsedMs": activeSince[key].map { String(format: "%.1f", (now - $0) * 1000) } ?? "nil",
+      "attachStartedElapsedMs": attachStartedAt[key].map { String(format: "%.1f", (now - $0) * 1000) } ?? "nil",
+      "attachCompletedElapsedMs": attachCompletedAt[key].map { String(format: "%.1f", (now - $0) * 1000) } ?? "nil",
+      "isActive": "\(activeVideoKey == key)",
+      "isScrolling": "\(isScrolling)",
+      "isFastScrolling": "\(isFastScrolling)",
+      "activeVisible": activeVisibilityDescription,
+      "visibleCount": "\(latestVisibilities.count)",
+      "registeredCount": "\(registeredVideos.count)"
+    ]
+    metadata.merge(
+      AVPlayerRepresentable.playerViewMetadata(player: player, view: nil)
+    ) { _, new in new }
+    metadata.merge(extra) { _, new in new }
+    return metadata
   }
 
   /// Cheap per-frame sink for row visibility. Any actually visible video is eligible;
@@ -1069,6 +1186,17 @@ private final class InlinePlaybackResourceController {
   private init() {}
 
   func attach(key: String, video: SharedVideo, muted: Bool, loop: Bool, autoplay: Bool) -> AVPlayer {
+    let attachStarted = CACurrentMediaTime()
+    let wasPlayerLoaded = video.isPlayerLoaded
+    InlineVideoCoordinator.shared.recordInlineAttachStarted(
+      key: key,
+      sharedVideo: video,
+      wasPlayerLoaded: wasPlayerLoaded,
+      autoplay: autoplay,
+      muted: muted,
+      loop: loop
+    )
+
     if activeKey != key {
       detach()
       ScrollPerfProbe.shared.bump("inlineResourceCreate")
@@ -1090,6 +1218,16 @@ private final class InlinePlaybackResourceController {
       player.pause()
     }
 
+    InlineVideoCoordinator.shared.recordInlineAttachCompleted(
+      key: key,
+      sharedVideo: video,
+      player: player,
+      wasPlayerLoaded: wasPlayerLoaded,
+      attachElapsedMs: (CACurrentMediaTime() - attachStarted) * 1000
+    )
+    doThisAfter(0.5) {
+      InlineVideoCoordinator.shared.recordInlineFirstFrameStillWaiting(key: key, sharedVideo: video)
+    }
     return player
   }
 
@@ -1130,7 +1268,7 @@ private final class InlinePlaybackResourceController {
 }
 
 struct InlinePlaybackHost: View {
-  @Default(.VideoDefSettings) private var videoDefSettings
+  @Environment(\.videoDefSettings) private var videoDefSettings
   private let coordinator = InlineVideoCoordinator.shared
 
   var body: some View {
