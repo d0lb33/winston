@@ -29,6 +29,7 @@ private final class AuroraReadOnScrollTracker {
 
   func markIfDisappearedPastTop(_ post: Post, readOnScroll: Bool) {
     guard readOnScroll, isScrollingDown, FeedScrollWorkCoordinator.shared.isScrolling else { return }
+    guard let maxY = latestMaxYByID[post.id], maxY <= 0 else { return }
     FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
   }
 

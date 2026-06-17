@@ -455,7 +455,9 @@ extension Post {
   func setLocalSeenState(_ seen: Bool) {
     guard (data?.winstonSeen ?? false) != seen else { return }
 
-    withAnimation {
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
       ScrollPerfProbe.shared.bump("postSeenOptimistic")
       var newData = data
       newData?.winstonSeen = seen
