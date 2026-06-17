@@ -168,6 +168,24 @@ struct TabInteractionOwnerID: Hashable, Equatable, CustomStringConvertible, Expr
   var description: String { rawValue }
 }
 
+extension TabInteractionOwnerID {
+  static let postsFeed = TabInteractionOwnerID("aurora-feed-top")
+  static let searchRoot = TabInteractionOwnerID("search-top")
+  static let meRoot = TabInteractionOwnerID("user-view-top")
+  static let inboxRoot = TabInteractionOwnerID("inbox-top")
+  static let settingsRoot = TabInteractionOwnerID("settings.settings-top")
+
+  static func sourceRoot(for tab: Nav.TabIdentifier) -> TabInteractionOwnerID? {
+    switch tab {
+    case .search: return .searchRoot
+    case .me: return .meRoot
+    case .inbox: return .inboxRoot
+    case .posts: return .postsFeed
+    case .settings: return .settingsRoot
+    }
+  }
+}
+
 private struct TabInteractionTabKey: EnvironmentKey {
   static let defaultValue: Nav.TabIdentifier? = nil
 }
@@ -215,7 +233,7 @@ final class TabInteractionCenter: ObservableObject {
   func selectedTabChanged(to tab: Nav.TabIdentifier) {
     lastTap = nil
     if scrollOwnerStateByTab[tab] == nil {
-      scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: legacyOwnerID(for: tab), isAtTop: true)
+      scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: legacyOwnerID(for: tab), isAtTop: false)
     }
   }
 
@@ -377,9 +395,6 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
         guard tab.map({ tabInteractions?.isActiveOwner(ownerID, for: $0) == true }) ?? false else { return }
         withAnimation(.snappy) {
           proxy.scrollTo(topID, anchor: .top)
-        }
-        if let tab, let tabInteractions {
-          tabInteractions.setIsAtTop(tab, true, ownerID: ownerID)
         }
       }
     }

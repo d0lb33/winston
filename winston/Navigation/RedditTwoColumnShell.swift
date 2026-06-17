@@ -43,6 +43,10 @@ struct RedditTwoColumnShell<Source: View>: View {
     tab != nil && nav.detailPost != nil && hSize != .regular && nav.preferredColumn == .detail
   }
 
+  private var sourceRootOwnerID: TabInteractionOwnerID? {
+    tab.flatMap { TabInteractionOwnerID.sourceRoot(for: $0) }
+  }
+
   var body: some View {
     @Bindable var nav = nav
 
@@ -73,13 +77,28 @@ struct RedditTwoColumnShell<Source: View>: View {
     .tint(auroraTheme.accent)
     .fontDesign(auroraTheme.fontDesign)
     .preferredColorScheme(auroraTheme.colorScheme)
+    .onAppear {
+      synchronizeTabInteractionOwner()
+    }
     .routerDeepLinkInbox(
       router: router,
-      consume: { nav.consumeDeepLink(path: $0) },
-      onRootReset: { nav.reset() }
+      consume: {
+        nav.consumeDeepLink(path: $0)
+        synchronizeTabInteractionOwner()
+      },
+      onRootReset: {
+        nav.reset()
+        synchronizeTabInteractionOwner()
+      }
     )
     .onChange(of: tab.flatMap { tabInteractions.requests[$0] }) { _, request in
       handleTabInteractionRequest(request)
+    }
+    .onChange(of: isSourceRootVisibleForTabInteraction) { _, _ in
+      synchronizeTabInteractionOwner()
+    }
+    .onChange(of: isDetailVisibleForTabInteraction) { _, _ in
+      synchronizeTabInteractionOwner()
     }
   }
 
@@ -98,14 +117,24 @@ struct RedditTwoColumnShell<Source: View>: View {
             "hasDetailPost": "\(nav.detailPost != nil)"
           ]
         )
-        _ = nav.goBackOneStep()
+        if nav.goBackOneStep() {
+          synchronizeTabInteractionOwner()
+        }
         return
       }
     case .goBack:
-      _ = nav.goBackOneStep()
+      if nav.goBackOneStep() {
+        synchronizeTabInteractionOwner()
+      }
     case .resetToRoot:
       nav.reset()
+      synchronizeTabInteractionOwner()
     }
+  }
+
+  private func synchronizeTabInteractionOwner() {
+    guard let tab, isSourceRootVisibleForTabInteraction, let sourceRootOwnerID else { return }
+    tabInteractions.activateScrollOwner(sourceRootOwnerID, for: tab, initialIsAtTop: false)
   }
 
 }

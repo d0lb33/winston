@@ -82,14 +82,27 @@ struct Settings: View {
     }
     .onAppear {
       AppDiagnostics.shared.breadcrumb("Opened Settings root")
+      synchronizeSettingsTabInteractionOwner()
     }
     .routerDeepLinkInbox(
       router: router,
-      consume: { nav.consumeDeepLink(path: $0) },
-      onRootReset: { nav.reset() }
+      consume: {
+        nav.consumeDeepLink(path: $0)
+        synchronizeSettingsTabInteractionOwner()
+      },
+      onRootReset: {
+        nav.reset()
+        synchronizeSettingsTabInteractionOwner()
+      }
     )
     .onChange(of: tabInteractions.requests[.settings]) { _, request in
       handleTabInteractionRequest(request)
+    }
+    .onChange(of: isSidebarVisibleForTabInteraction) { _, _ in
+      synchronizeSettingsTabInteractionOwner()
+    }
+    .onChange(of: isDetailScrollOwnerForTabInteraction) { _, _ in
+      synchronizeSettingsTabInteractionOwner()
     }
   }
 
@@ -98,14 +111,24 @@ struct Settings: View {
     switch request.kind {
     case .scrollToTop:
       guard isSidebarVisibleForTabInteraction || isDetailScrollOwnerForTabInteraction else {
-        _ = nav.goBackOneStep()
+        if nav.goBackOneStep() {
+          synchronizeSettingsTabInteractionOwner()
+        }
         return
       }
     case .goBack:
-      _ = nav.goBackOneStep()
+      if nav.goBackOneStep() {
+        synchronizeSettingsTabInteractionOwner()
+      }
     case .resetToRoot:
       nav.reset()
+      synchronizeSettingsTabInteractionOwner()
     }
+  }
+
+  private func synchronizeSettingsTabInteractionOwner() {
+    guard isSidebarVisibleForTabInteraction else { return }
+    tabInteractions.activateScrollOwner(.settingsRoot, for: .settings, initialIsAtTop: false)
   }
 
 }

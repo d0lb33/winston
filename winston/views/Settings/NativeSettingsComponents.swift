@@ -54,7 +54,7 @@ struct SettingsPanelScrollRoot<Content: View>: View {
     @ViewBuilder content: @escaping () -> Content
   ) {
     self.topID = topID
-    self.ownerID = TabInteractionOwnerID("settings.\(topID)")
+    self.ownerID = topID == "settings-top" ? .settingsRoot : TabInteractionOwnerID("settings.\(topID)")
     self.explicitIsTabInteractionOwner = isTabInteractionOwner
     self.onResetToRoot = onResetToRoot
     self.content = content
@@ -98,7 +98,6 @@ struct SettingsPanelScrollRoot<Content: View>: View {
       withAnimation(.snappy) {
         scrollPosition.scrollTo(edge: .top)
       }
-      tabInteractions.setIsAtTop(.settings, true, ownerID: ownerID)
     }
   }
 

@@ -22,6 +22,10 @@ struct Inbox: View {
   @State private var loadingMore = false
   @Default(.GeneralDefSettings) private var generalDefSettings
   @EnvironmentObject private var tabInteractions: TabInteractionCenter
+
+  private var isRootVisibleForTabInteraction: Bool {
+    nav.path.isEmpty
+  }
   
   func fetch(_ loadMore: Bool = false, _ force: Bool = false) async {
     if loading || loadingMore { return }
@@ -103,6 +107,7 @@ struct Inbox: View {
       .redditDestinations(nav, origin: .content)
       .loader(loading)
       .onAppear {
+        synchronizeTabInteractionOwner()
         Task(priority: .background) {
           await fetch()
         }
@@ -126,9 +131,18 @@ struct Inbox: View {
     .environment(\.tabInteractionRequest, tabInteractions.requests[.inbox])
     .routerDeepLinkInbox(
       router: router,
-      consume: { nav.consumeDeepLink(path: $0) },
-      onRootReset: { nav.reset() }
+      consume: {
+        nav.consumeDeepLink(path: $0)
+        synchronizeTabInteractionOwner()
+      },
+      onRootReset: {
+        nav.reset()
+        synchronizeTabInteractionOwner()
+      }
     )
+    .onChange(of: isRootVisibleForTabInteraction) { _, _ in
+      synchronizeTabInteractionOwner()
+    }
   }
 
   private var isPostDestinationVisible: Bool {
@@ -140,13 +154,23 @@ struct Inbox: View {
     switch request.kind {
     case .scrollToTop:
       if !nav.path.isEmpty && !isPostDestinationVisible {
-        _ = nav.goBackOneStep()
+        if nav.goBackOneStep() {
+          synchronizeTabInteractionOwner()
+        }
       }
     case .goBack:
-      _ = nav.goBackOneStep()
+      if nav.goBackOneStep() {
+        synchronizeTabInteractionOwner()
+      }
     case .resetToRoot:
       nav.reset()
+      synchronizeTabInteractionOwner()
     }
+  }
+
+  private func synchronizeTabInteractionOwner() {
+    guard isRootVisibleForTabInteraction else { return }
+    tabInteractions.activateScrollOwner(.inboxRoot, for: .inbox, initialIsAtTop: false)
   }
 }
 

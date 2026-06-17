@@ -194,7 +194,6 @@ struct AuroraPostDetail: View {
           withAnimation(.snappy) {
             proxy.scrollTo(Self.topID, anchor: .top)
           }
-          effectiveTabInteractions?.setIsAtTop(effectiveTabInteractionTab, true, ownerID: effectiveTabInteractionOwnerID)
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }

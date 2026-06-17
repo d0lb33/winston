@@ -106,6 +106,7 @@ struct AccountItem: View {
 struct AccountsEmptyView: View {
   @Environment(\.settingsPanelIsTabInteractionOwner) private var isTabInteractionOwner
   @EnvironmentObject private var tabInteractions: TabInteractionCenter
+  private let ownerID = TabInteractionOwnerID("settings.accounts-empty")
 
   var body: some View {
     VStack(spacing: 20) {
@@ -132,14 +133,22 @@ struct AccountsEmptyView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding()
     .onAppear {
-      if isTabInteractionOwner {
-        tabInteractions.setIsAtTop(.settings, true)
-      }
+      activateOwnerIfNeeded()
+    }
+    .onDisappear {
+      tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
     }
     .onChange(of: isTabInteractionOwner) { _, isOwner in
       if isOwner {
-        tabInteractions.setIsAtTop(.settings, true)
+        activateOwnerIfNeeded()
+      } else {
+        tabInteractions.deactivateScrollOwner(ownerID, for: .settings)
       }
     }
+  }
+
+  private func activateOwnerIfNeeded() {
+    guard isTabInteractionOwner else { return }
+    tabInteractions.activateScrollOwner(ownerID, for: .settings, initialIsAtTop: true)
   }
 }

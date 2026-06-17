@@ -328,6 +328,30 @@ struct TabInteractionCenterTests {
     #expect(center.requests[.posts]?.kind == .goBack)
   }
 
+  @Test("newly selected tab defaults to scroll instead of back")
+  func newlySelectedTabDefaultsToScrollInsteadOfBack() {
+    let center = TabInteractionCenter()
+    center.selectedTabChanged(to: .search)
+
+    center.selectedTabTappedAgain(.search)
+
+    #expect(center.requests[.search]?.kind == .scrollToTop)
+  }
+
+  @Test("active owner only goes back after confirmed top geometry")
+  func activeOwnerOnlyGoesBackAfterConfirmedTopGeometry() async throws {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("search-top", for: .search, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.search)
+    #expect(center.requests[.search]?.kind == .scrollToTop)
+
+    center.setIsAtTop(.search, true, ownerID: "search-top")
+    try await Task.sleep(for: .milliseconds(350))
+    center.selectedTabTappedAgain(.search)
+    #expect(center.requests[.search]?.kind == .goBack)
+  }
+
   @Test("hidden owner cannot overwrite active owner top state")
   func hiddenOwnerWritesAreIgnored() {
     let center = TabInteractionCenter()

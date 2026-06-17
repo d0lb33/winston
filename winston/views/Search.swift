@@ -1031,7 +1031,6 @@ struct Search: View {
       searchQuery.text = ""
     }
     model.loadNullState(force: true)
-    tabInteractions.setIsAtTop(.search, true)
   }
 
 }

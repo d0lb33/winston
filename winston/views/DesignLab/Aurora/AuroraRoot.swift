@@ -26,8 +26,6 @@ import Defaults
 import CoreData
 
 struct AuroraRoot: View {
-  private static let feedTabInteractionOwnerID = TabInteractionOwnerID("aurora-feed-top")
-
   @ObservedObject var router: Router
   let accountID: UUID?
   /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
@@ -226,7 +224,7 @@ struct AuroraRoot: View {
 
   private func synchronizePostsTabInteractionOwner() {
     guard isFeedRootVisibleForTabInteraction else { return }
-    tabInteractions.activateScrollOwner(Self.feedTabInteractionOwnerID, for: .posts, initialIsAtTop: false)
+    tabInteractions.activateScrollOwner(.postsFeed, for: .posts, initialIsAtTop: false)
   }
 
   // MARK: - Columns
