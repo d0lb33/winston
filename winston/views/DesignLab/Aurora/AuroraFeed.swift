@@ -11,19 +11,6 @@
 import SwiftUI
 import Defaults
 
-private struct AuroraReadCandidate: Equatable {
-  let id: String
-  let maxY: CGFloat
-}
-
-private struct AuroraReadCandidatePreferenceKey: PreferenceKey {
-  static var defaultValue: [AuroraReadCandidate] = []
-
-  static func reduce(value: inout [AuroraReadCandidate], nextValue: () -> [AuroraReadCandidate]) {
-    value.append(contentsOf: nextValue())
-  }
-}
-
 struct AuroraFeed: View {
   private static let topID = "aurora-feed-top"
 
@@ -98,12 +85,15 @@ struct AuroraFeed: View {
               .tag(post.id)
               .background {
                 if cardSettings.readOnScroll {
-                  GeometryReader { proxy in
-                    Color.clear.preference(
-                      key: AuroraReadCandidatePreferenceKey.self,
-                      value: [AuroraReadCandidate(id: post.id, maxY: proxy.frame(in: .named("auroraFeed")).maxY)]
-                    )
-                  }
+                  Color.clear
+                    .onGeometryChange(for: CGFloat.self) { proxy in
+                      proxy.frame(in: .named("auroraFeed")).maxY
+                    } action: { maxY in
+                      latestReadCandidateMaxYByID[post.id] = maxY
+                    }
+                    .onDisappear {
+                      latestReadCandidateMaxYByID.removeValue(forKey: post.id)
+                    }
                 }
               }
               .listRowBackground(Color.clear)
@@ -123,7 +113,9 @@ struct AuroraFeed: View {
               }
               .onAppear {
                 if post.id == visiblePosts.last?.id {
-                  scheduleLoadMore(sort: sort, contentWidth: contentWidth)
+                  Task { @MainActor in
+                    await model.loadMore(sort: sort, contentWidth: contentWidth)
+                  }
                 }
               }
           }
@@ -137,9 +129,6 @@ struct AuroraFeed: View {
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
       .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed", posts: visiblePosts)
-      .onPreferenceChange(AuroraReadCandidatePreferenceKey.self) { candidates in
-        latestReadCandidateMaxYByID = Dictionary(candidates.map { ($0.id, $0.maxY) }, uniquingKeysWith: min)
-      }
       .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
       .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
     }
@@ -179,14 +168,6 @@ struct AuroraFeed: View {
     visiblePosts
       .filter { crossedIDs.contains($0.id) }
       .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
-  }
-
-  private func scheduleLoadMore(sort: SubListingSortOption, contentWidth: CGFloat) {
-    FeedScrollWorkCoordinator.shared.performWhenIdle(key: "aurora.loadMore.\(model.feedIdentity)") {
-      Task { @MainActor in
-        await model.loadMore(sort: sort, contentWidth: contentWidth)
-      }
-    }
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {

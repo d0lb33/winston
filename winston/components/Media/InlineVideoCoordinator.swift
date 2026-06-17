@@ -33,7 +33,6 @@ final class FeedScrollWorkCoordinator {
   private var scheduledWorkItems: [String: DispatchWorkItem] = [:]
   private var pendingWork: [String: () -> Void] = [:]
   private var pendingSeenPosts: [String: Post] = [:]
-  private var idleContinuations: [CheckedContinuation<Void, Never>] = []
 
   var shouldDeferWork: Bool { isScrolling || isSettling }
 
@@ -60,13 +59,6 @@ final class FeedScrollWorkCoordinator {
 
     guard !shouldDeferWork else { return }
     schedulePendingWork(key: key, delay: delay ?? 0)
-  }
-
-  func waitUntilIdle() async {
-    guard shouldDeferWork else { return }
-    await withCheckedContinuation { continuation in
-      idleContinuations.append(continuation)
-    }
   }
 
   func cancel(key: String) {
@@ -100,7 +92,6 @@ final class FeedScrollWorkCoordinator {
     workItems.values.forEach { $0() }
 
     flushPendingSeenPosts()
-    resumeIdleWaiters()
   }
 
   private func scheduleIdleFlush(delay: TimeInterval? = nil) {
@@ -154,12 +145,6 @@ final class FeedScrollWorkCoordinator {
   private func cancelScheduledWorkItems() {
     scheduledWorkItems.values.forEach { $0.cancel() }
     scheduledWorkItems.removeAll(keepingCapacity: true)
-  }
-
-  private func resumeIdleWaiters() {
-    let waiters = idleContinuations
-    idleContinuations.removeAll(keepingCapacity: true)
-    waiters.forEach { $0.resume() }
   }
 }
 
@@ -432,9 +417,10 @@ final class InlineVideoCoordinator {
   // Latest per-row visibility and viewport height, updated as the feed reports geometry.
   // ObservationIgnored: written every frame during scroll — must not invalidate views.
   @ObservationIgnored private var latestVisibilities: [InlineVideoVisibility] = []
+  @ObservationIgnored private var latestVisibilityByKey: [String: InlineVideoVisibility] = [:]
   @ObservationIgnored var viewportHeight: CGFloat = 1
-  @ObservationIgnored private var lastVisibilityMeanY: CGFloat?
-  @ObservationIgnored private var lastVisibilityTimestamp: TimeInterval?
+  @ObservationIgnored private var lastScrollOffsetY: CGFloat?
+  @ObservationIgnored private var lastScrollOffsetTimestamp: TimeInterval?
   @ObservationIgnored private var lastScrollDeltaY: CGFloat = 0
   @ObservationIgnored private var playbackStates: [String: InlineVideoPlaybackState] = [:]
   @ObservationIgnored private var prefetchVideoKeys: Set<String> = []
@@ -448,7 +434,7 @@ final class InlineVideoCoordinator {
   private init() {}
 
   var movingTowardLaterPosts: Bool {
-    lastScrollDeltaY <= 0
+    lastScrollDeltaY >= 0
   }
 
   func state(for key: String) -> InlineVideoPlaybackState {
@@ -513,9 +499,50 @@ final class InlineVideoCoordinator {
   /// when multiple videos are visible, the one nearest the viewport center plays.
   @discardableResult
   func updateVisibilities(_ visibilities: [InlineVideoVisibility]) -> [InlineVideoVisibility] {
+    latestVisibilityByKey = Dictionary(
+      visibilities.map { normalizedVisibility($0) }.map { ($0.key, $0) },
+      uniquingKeysWith: { _, newest in newest }
+    )
+    return processLatestVisibilities()
+  }
+
+  @discardableResult
+  func updateVisibility(_ visibility: InlineVideoVisibility) -> [InlineVideoVisibility] {
+    latestVisibilityByKey[visibility.key] = normalizedVisibility(visibility)
+    return processLatestVisibilities()
+  }
+
+  @discardableResult
+  func removeVisibility(for key: String) -> [InlineVideoVisibility] {
+    latestVisibilityByKey.removeValue(forKey: key)
+    return processLatestVisibilities()
+  }
+
+  func updateScrollOffset(_ offsetY: CGFloat) {
+    let now = Date.timeIntervalSinceReferenceDate
+    defer {
+      lastScrollOffsetY = offsetY
+      lastScrollOffsetTimestamp = now
+    }
+
+    guard isScrolling, let lastScrollOffsetY, let lastScrollOffsetTimestamp else {
+      setFastScrolling(false)
+      return
+    }
+
+    let elapsed = max(now - lastScrollOffsetTimestamp, 0.001)
+    let delta = offsetY - lastScrollOffsetY
+    lastScrollDeltaY = delta
+    setFastScrolling(abs(delta) / elapsed > fastScrollVelocityThreshold)
+  }
+
+  private func normalizedVisibility(_ visibility: InlineVideoVisibility) -> InlineVideoVisibility {
+    visibility.normalized(viewportHeight: viewportHeight)
+  }
+
+  private func processLatestVisibilities() -> [InlineVideoVisibility] {
     ScrollPerfProbe.shared.bump("inlineCenterUpdate")
-    latestVisibilities = visibilities.map { $0.normalized(viewportHeight: viewportHeight) }.sorted { $0.midY < $1.midY }
-    updateScrollVelocity(from: latestVisibilities)
+    latestVisibilities = latestVisibilityByKey.values.sorted { $0.midY < $1.midY }
     updateVisibleFractions()
     pauseActiveIfNeeded()
 
@@ -551,30 +578,6 @@ final class InlineVideoCoordinator {
       isFastScrolling = false
       updateWarmVideoKeys()
     }
-  }
-
-  private func updateScrollVelocity(from visibilities: [InlineVideoVisibility]) {
-    guard !visibilities.isEmpty else {
-      setFastScrolling(false)
-      return
-    }
-
-    let meanY = visibilities.reduce(CGFloat.zero) { $0 + $1.midY } / CGFloat(visibilities.count)
-    let now = Date.timeIntervalSinceReferenceDate
-    defer {
-      lastVisibilityMeanY = meanY
-      lastVisibilityTimestamp = now
-    }
-
-    guard isScrolling, let lastVisibilityMeanY, let lastVisibilityTimestamp else {
-      setFastScrolling(false)
-      return
-    }
-
-    let elapsed = max(now - lastVisibilityTimestamp, 0.001)
-    let delta = meanY - lastVisibilityMeanY
-    lastScrollDeltaY = delta
-    setFastScrolling(abs(delta) / elapsed > fastScrollVelocityThreshold)
   }
 
   private func setFastScrolling(_ fast: Bool) {
@@ -721,13 +724,6 @@ struct InlineVideoVisibility: Equatable {
   }
 }
 
-struct InlineVideoVisibilityPreferenceKey: PreferenceKey {
-  static var defaultValue: [InlineVideoVisibility] = []
-  static func reduce(value: inout [InlineVideoVisibility], nextValue: () -> [InlineVideoVisibility]) {
-    value.append(contentsOf: nextValue())
-  }
-}
-
 /// Reports a row's vertical visibility so the feed can elect and pause inline video.
 /// No-op for non-video rows so image/text feeds pay nothing.
 private struct InlineVideoVisibilityTracker: ViewModifier {
@@ -737,23 +733,25 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
 
   func body(content: Content) -> some View {
     if enabled {
-      content.background(
-        GeometryReader { geo in
-          let frame = geo.frame(in: .named(coordinateSpace))
+      content
+        .onGeometryChange(for: InlineVideoVisibility?.self) { geo in
           let viewportHeight = InlineVideoCoordinator.shared.viewportHeight
-          let visibility = InlineVideoVisibility(
+          guard viewportHeight > 1 else { return nil }
+          let frame = geo.frame(in: .named(coordinateSpace))
+          return InlineVideoVisibility(
             key: key,
             minY: frame.minY,
             maxY: frame.maxY,
             viewportHeight: viewportHeight,
             visibleFraction: 0
           ).normalized(viewportHeight: viewportHeight)
-          Color.clear.preference(
-            key: InlineVideoVisibilityPreferenceKey.self,
-            value: [visibility]
-          )
+        } action: { visibility in
+          guard let visibility else { return }
+          InlineVideoCoordinator.shared.updateVisibility(visibility)
         }
-      )
+        .onDisappear {
+          InlineVideoCoordinator.shared.removeVisibility(for: key)
+        }
     } else {
       content
     }
@@ -796,22 +794,17 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
           }
         }
       }
-      .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, newHeight in
-        if newHeight > 0 { InlineVideoCoordinator.shared.viewportHeight = newHeight }
-      }
-      .onPreferenceChange(InlineVideoVisibilityPreferenceKey.self) { visibilities in
-        let normalized = InlineVideoCoordinator.shared.updateVisibilities(visibilities)
-        MediaPrefetchCoordinator.shared.updateFeedWindow(
-          posts: posts,
-          visibilities: normalized,
-          movingTowardLaterPosts: InlineVideoCoordinator.shared.movingTowardLaterPosts,
-          isFastScrolling: InlineVideoCoordinator.shared.isFastScrolling
+      .onScrollGeometryChange(for: FeedScrollGeometrySnapshot.self) { geometry in
+        FeedScrollGeometrySnapshot(
+          viewportHeight: geometry.containerSize.height,
+          offsetY: geometry.contentOffset.y
         )
-        guard !InlineVideoCoordinator.shared.isScrolling else { return }
-        FeedScrollWorkCoordinator.shared.performWhenIdle(key: "inlineVideo.elect.\(coordinateSpace)") {
-          InlineVideoCoordinator.shared.electCenteredVideo()
-          InlineVideoCoordinator.shared.updatePrefetchTargetsFromCurrentWindow(posts: posts)
+      } action: { _, snapshot in
+        if snapshot.viewportHeight > 0 {
+          InlineVideoCoordinator.shared.viewportHeight = snapshot.viewportHeight
         }
+        InlineVideoCoordinator.shared.updateScrollOffset(snapshot.offsetY)
+        InlineVideoCoordinator.shared.updatePrefetchTargetsFromCurrentWindow(posts: posts)
       }
       .onChange(of: scenePhase) { _, newPhase in
         if newPhase != .active {
@@ -822,4 +815,9 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
         FeedScrollWorkCoordinator.shared.flushPendingWork()
       }
   }
+}
+
+private struct FeedScrollGeometrySnapshot: Equatable {
+  let viewportHeight: CGFloat
+  let offsetY: CGFloat
 }
