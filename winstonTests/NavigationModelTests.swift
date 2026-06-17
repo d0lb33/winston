@@ -352,6 +352,17 @@ struct TabInteractionCenterTests {
     #expect(center.requests[.search]?.kind == .goBack)
   }
 
+  @Test("active owner requests tab bar reveal when scrolling upward")
+  func activeOwnerRequestsTabBarRevealWhenScrollingUpward() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("search-top", for: .search, initialIsAtTop: false)
+
+    center.recordScrollOffset(120, for: .search, ownerID: "search-top")
+    center.recordScrollOffset(116, for: .search, ownerID: "search-top")
+
+    #expect(center.tabBarRevealRequest?.tab == .search)
+  }
+
   @Test("hidden owner cannot overwrite active owner top state")
   func hiddenOwnerWritesAreIgnored() {
     let center = TabInteractionCenter()

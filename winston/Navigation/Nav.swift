@@ -154,6 +154,11 @@ struct TabInteractionRequest: Equatable {
   let kind: TabInteractionRequestKind
 }
 
+struct TabBarRevealRequest: Equatable {
+  let id = UUID()
+  let tab: Nav.TabIdentifier
+}
+
 struct TabInteractionOwnerID: Hashable, Equatable, CustomStringConvertible, ExpressibleByStringLiteral {
   let rawValue: String
 
@@ -218,6 +223,7 @@ extension EnvironmentValues {
 @MainActor
 final class TabInteractionCenter: ObservableObject {
   @Published private(set) var requests: [Nav.TabIdentifier: TabInteractionRequest] = [:]
+  @Published private(set) var tabBarRevealRequest: TabBarRevealRequest?
 
   private struct ScrollOwnerState {
     var ownerID: TabInteractionOwnerID
@@ -225,10 +231,14 @@ final class TabInteractionCenter: ObservableObject {
   }
 
   private var scrollOwnerStateByTab: [Nav.TabIdentifier: ScrollOwnerState] = [:]
+  private var lastScrollOffsetByOwner: [TabInteractionOwnerID: CGFloat] = [:]
+  private var lastTabBarRevealDateByTab: [Nav.TabIdentifier: Date] = [:]
   private var lastTap: (tab: Nav.TabIdentifier, date: Date)?
   private var lastReselectEvent: (tab: Nav.TabIdentifier, date: Date)?
   private let doubleTapInterval: TimeInterval = 0.3
   private let duplicateEventInterval: TimeInterval = 0.05
+  private let scrollUpRevealThreshold: CGFloat = 1.5
+  private let tabBarRevealThrottleInterval: TimeInterval = 0.18
 
   func selectedTabChanged(to tab: Nav.TabIdentifier) {
     lastTap = nil
@@ -240,6 +250,7 @@ final class TabInteractionCenter: ObservableObject {
   func activateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier, initialIsAtTop: Bool = false) {
     guard scrollOwnerStateByTab[tab]?.ownerID != ownerID else { return }
     scrollOwnerStateByTab[tab] = ScrollOwnerState(ownerID: ownerID, isAtTop: initialIsAtTop)
+    lastScrollOffsetByOwner.removeValue(forKey: ownerID)
     AppDiagnostics.asyncBreadcrumb(
       "Tab interaction owner activated",
       metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue, "isAtTop": "\(initialIsAtTop)"]
@@ -249,6 +260,7 @@ final class TabInteractionCenter: ObservableObject {
   func deactivateScrollOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) {
     guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
     scrollOwnerStateByTab.removeValue(forKey: tab)
+    lastScrollOffsetByOwner.removeValue(forKey: ownerID)
     AppDiagnostics.asyncBreadcrumb(
       "Tab interaction owner deactivated",
       metadata: ["tab": tab.rawValue, "owner": ownerID.rawValue]
@@ -263,6 +275,16 @@ final class TabInteractionCenter: ObservableObject {
   func setIsAtTop(_ tab: Nav.TabIdentifier, _ isAtTop: Bool, ownerID: TabInteractionOwnerID) {
     guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
     scrollOwnerStateByTab[tab]?.isAtTop = isAtTop
+  }
+
+  func recordScrollOffset(_ offsetY: CGFloat, for tab: Nav.TabIdentifier, ownerID: TabInteractionOwnerID) {
+    guard scrollOwnerStateByTab[tab]?.ownerID == ownerID else { return }
+    if let previousOffset = lastScrollOffsetByOwner[ownerID],
+       offsetY < previousOffset - scrollUpRevealThreshold {
+      revealTabBar(for: tab)
+    }
+    lastScrollOffsetByOwner[ownerID] = offsetY
+    scrollOwnerStateByTab[tab]?.isAtTop = offsetY <= 4
   }
 
   func isActiveOwner(_ ownerID: TabInteractionOwnerID, for tab: Nav.TabIdentifier) -> Bool {
@@ -304,6 +326,17 @@ final class TabInteractionCenter: ObservableObject {
       "Tab interaction request",
       metadata: ["tab": tab.rawValue, "kind": "\(kind)"]
     )
+  }
+
+  private func revealTabBar(for tab: Nav.TabIdentifier) {
+    let now = Date()
+    if let lastDate = lastTabBarRevealDateByTab[tab],
+       now.timeIntervalSince(lastDate) < tabBarRevealThrottleInterval {
+      return
+    }
+    lastTabBarRevealDateByTab[tab] = now
+    tabBarRevealRequest = TabBarRevealRequest(tab: tab)
+    AppDiagnostics.asyncBreadcrumb("Tab bar reveal requested", metadata: ["tab": tab.rawValue])
   }
 }
 
@@ -362,7 +395,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
         geometry.contentOffset.y
       } action: { _, newOffsetY in
         if let tab, let tabInteractions {
-          tabInteractions.setIsAtTop(tab, newOffsetY <= 4, ownerID: ownerID)
+          tabInteractions.recordScrollOffset(newOffsetY, for: tab, ownerID: ownerID)
         }
         onOffsetChange(newOffsetY)
       }

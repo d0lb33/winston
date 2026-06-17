@@ -156,7 +156,7 @@ struct AuroraPostDetail: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, newOffsetY in
-          updateTabInteractionTopState(newOffsetY <= 4)
+          recordTabInteractionScrollOffset(newOffsetY)
         }
         .onAppear {
           activateTabInteractionOwner()
@@ -202,9 +202,9 @@ struct AuroraPostDetail: View {
     }
   }
 
-  private func updateTabInteractionTopState(_ isAtTop: Bool) {
+  private func recordTabInteractionScrollOffset(_ offsetY: CGFloat) {
     guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
-    effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, isAtTop, ownerID: effectiveTabInteractionOwnerID)
+    effectiveTabInteractions.recordScrollOffset(offsetY, for: effectiveTabInteractionTab, ownerID: effectiveTabInteractionOwnerID)
   }
 
   private func activateTabInteractionOwner() {

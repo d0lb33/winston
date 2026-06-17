@@ -73,7 +73,7 @@ struct SettingsPanelScrollRoot<Content: View>: View {
     .onScrollGeometryChange(for: CGFloat.self) { geometry in
       geometry.contentOffset.y
     } action: { _, newOffsetY in
-      updateTabInteractionTopState(newOffsetY <= 4)
+      recordTabInteractionScrollOffset(newOffsetY)
     }
     .onAppear {
       activateOwnerIfNeeded()
@@ -101,9 +101,9 @@ struct SettingsPanelScrollRoot<Content: View>: View {
     }
   }
 
-  private func updateTabInteractionTopState(_ isAtTop: Bool) {
+  private func recordTabInteractionScrollOffset(_ offsetY: CGFloat) {
     guard isTabInteractionOwner else { return }
-    tabInteractions.setIsAtTop(.settings, isAtTop, ownerID: ownerID)
+    tabInteractions.recordScrollOffset(offsetY, for: .settings, ownerID: ownerID)
   }
 
   private func activateOwnerIfNeeded() {
