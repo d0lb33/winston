@@ -155,11 +155,6 @@ struct TabInteractionRequest: Equatable {
   let kind: TabInteractionRequestKind
 }
 
-struct TabBarRevealRequest: Equatable {
-  let id = UUID()
-  let tab: Nav.TabIdentifier
-}
-
 struct TabInteractionOwnerID: Hashable, Equatable, CustomStringConvertible, ExpressibleByStringLiteral {
   let rawValue: String
 
@@ -262,7 +257,6 @@ extension View {
 @MainActor
 final class TabInteractionCenter: ObservableObject {
   @Published private(set) var requests: [Nav.TabIdentifier: TabInteractionRequest] = [:]
-  @Published private(set) var tabBarRevealRequest: TabBarRevealRequest?
 
   private struct ScrollOwnerState {
     var ownerID: TabInteractionOwnerID
@@ -274,13 +268,10 @@ final class TabInteractionCenter: ObservableObject {
   private var lastTopStateByOwner: [TabInteractionOwnerID: Bool] = [:]
   private var ownerActivationDateByOwner: [TabInteractionOwnerID: Date] = [:]
   private var lastIgnoredScrollLogDateByOwner: [TabInteractionOwnerID: Date] = [:]
-  private var lastTabBarRevealDateByTab: [Nav.TabIdentifier: Date] = [:]
   private var lastTap: (tab: Nav.TabIdentifier, date: Date)?
   private var lastReselectEvent: (tab: Nav.TabIdentifier, date: Date)?
   private let doubleTapInterval: TimeInterval = 0.3
   private let duplicateEventInterval: TimeInterval = 0.05
-  private let scrollUpRevealThreshold: CGFloat = 1.5
-  private let tabBarRevealThrottleInterval: TimeInterval = 0.18
   private let ignoredScrollLogThrottleInterval: TimeInterval = 1.0
 
   func selectedTabChanged(to tab: Nav.TabIdentifier) {
@@ -374,10 +365,6 @@ final class TabInteractionCenter: ObservableObject {
       return
     }
     let previousOffset = lastScrollOffsetByOwner[ownerID]
-    if let previousOffset,
-       offsetY < previousOffset - scrollUpRevealThreshold {
-      revealTabBar(for: tab)
-    }
     lastScrollOffsetByOwner[ownerID] = offsetY
     let isAtTop = offsetY <= 4
     scrollOwnerStateByTab[tab]?.isAtTop = isAtTop
@@ -497,23 +484,6 @@ final class TabInteractionCenter: ObservableObject {
           "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none",
           "activeIsAtTop": scrollOwnerStateByTab[tab].map { "\($0.isAtTop)" } ?? "nil"
         ]
-    )
-  }
-
-  private func revealTabBar(for tab: Nav.TabIdentifier) {
-    let now = Date()
-    if let lastDate = lastTabBarRevealDateByTab[tab],
-       now.timeIntervalSince(lastDate) < tabBarRevealThrottleInterval {
-      return
-    }
-    lastTabBarRevealDateByTab[tab] = now
-    tabBarRevealRequest = TabBarRevealRequest(tab: tab)
-    AppDiagnostics.asyncBreadcrumb(
-      "Tab bar reveal requested",
-      metadata: [
-        "tab": tab.rawValue,
-        "activeOwner": scrollOwnerStateByTab[tab]?.ownerID.rawValue ?? "none"
-      ]
     )
   }
 

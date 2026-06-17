@@ -157,7 +157,6 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
     context.coordinator.transmitter = accountSwitcher
     context.coordinator.meTabTitle = meTabTitle
     context.coordinator.attachIfPossible(from: uiView)
-    context.coordinator.handleTabBarRevealRequest(from: uiView)
   }
 
   func makeCoordinator() -> Coordinator {
@@ -190,7 +189,6 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
     private var attachedControls: [UIControl] = []
     private weak var meLongPressControl: UIControl?
     private var meLongPress: UILongPressGestureRecognizer?
-    private var lastHandledTabBarRevealRequestID: UUID?
     private let haptics = UIImpactFeedbackGenerator(style: .soft)
     private var attachAttempts = 0
     private let maxAttachAttempts = 8
@@ -213,15 +211,6 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
       }
 
       attach(to: tabBarController.tabBar)
-    }
-
-    func handleTabBarRevealRequest(from view: UIView) {
-      guard let request = tabInteractions?.tabBarRevealRequest,
-            lastHandledTabBarRevealRequestID != request.id else { return }
-      lastHandledTabBarRevealRequestID = request.id
-
-      guard let tabBarController = findTabBarController(from: view) else { return }
-      revealTabBar(tabBarController, tab: request.tab)
     }
 
     func detach() {
@@ -259,12 +248,6 @@ private struct TabBarReselectAccessor: UIViewRepresentable {
       }
 
       attachAttempts = 0
-    }
-
-    private func revealTabBar(_ tabBarController: UITabBarController, tab: Nav.TabIdentifier) {
-      guard #available(iOS 18.0, *) else { return }
-      tabBarController.setTabBarHidden(false, animated: true)
-      AppDiagnostics.asyncBreadcrumb("Tab bar reveal performed", metadata: ["tab": tab.rawValue])
     }
 
     // MARK: Account switcher — long-press the Me tab control
