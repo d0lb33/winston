@@ -1250,6 +1250,117 @@ private final class InlinePlaybackResourceController {
   }
 }
 
+struct InlineRowPlaybackLayerHost: View {
+  let key: String
+  let sharedVideo: SharedVideo
+  let shouldMount: Bool
+  let muted: Bool
+  let loop: Bool
+  let autoplay: Bool
+  let cornerRadius: CGFloat
+  let size: CGSize
+  var onReadyForDisplay: (() -> Void)?
+
+  @State private var player: AVPlayer?
+  @State private var attachedKey: String?
+  @State private var readyForDisplay = false
+  @State private var attachGeneration = UUID()
+  @State private var attachTask: Task<Void, Never>?
+
+  private var attachmentID: String {
+    [
+      key,
+      sharedVideo.url.absoluteString,
+      sharedVideo.downloadURL?.absoluteString ?? "",
+      sharedVideo.posterURL?.absoluteString ?? "",
+      "\(sharedVideo.size.width)x\(sharedVideo.size.height)",
+      "\(muted)",
+      "\(loop)",
+      "\(autoplay)",
+      "\(shouldMount)"
+    ].joined(separator: "|")
+  }
+
+  var body: some View {
+    ReusableInlineAVPlayerLayerRepresentable(
+      player: player,
+      videoGravity: .resizeAspectFill,
+      cornerRadius: cornerRadius,
+      diagnosticPrefix: "inlineRowHost",
+      onReadyForDisplay: {
+        guard attachedKey == key else { return }
+        readyForDisplay = true
+        InlineVideoCoordinator.shared.setHostHasFrame(true, for: key)
+        InlineVideoCoordinator.shared.recordFirstFrameReady(key: key, sharedVideo: sharedVideo)
+        onReadyForDisplay?()
+      }
+    )
+    .frame(width: size.width, height: size.height)
+    .opacity(readyForDisplay && shouldMount ? 1 : 0)
+    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    .allowsHitTesting(false)
+    .onAppear {
+      scheduleAttachment()
+    }
+    .onChange(of: attachmentID) { _, _ in
+      scheduleAttachment()
+    }
+    .onDisappear {
+      detachAttached()
+    }
+  }
+
+  private func scheduleAttachment() {
+    attachTask?.cancel()
+    let generation = UUID()
+    attachGeneration = generation
+    readyForDisplay = false
+    if let attachedKey {
+      InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
+    }
+
+    guard shouldMount else {
+      detachAttached()
+      return
+    }
+
+    ScrollPerfProbe.shared.bump("inlineRowHost.playerSwapScheduled")
+    attachTask = Task { @MainActor in
+      await Task.yield()
+      guard !Task.isCancelled, attachGeneration == generation else { return }
+      let attachedPlayer = InlinePlaybackResourceController.shared.attach(
+        key: key,
+        video: sharedVideo,
+        muted: muted,
+        loop: loop,
+        autoplay: autoplay
+      )
+      guard !Task.isCancelled, attachGeneration == generation else { return }
+      attachedKey = key
+      player = attachedPlayer
+      ScrollPerfProbe.shared.bump("inlineRowHost.playerSwap")
+    }
+  }
+
+  private func detachAttached() {
+    attachTask?.cancel()
+    attachTask = nil
+    attachGeneration = UUID()
+    readyForDisplay = false
+    guard let attachedKey else {
+      player = nil
+      return
+    }
+    InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
+    InlinePlaybackResourceController.shared.detach(
+      key: attachedKey,
+      preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == attachedKey || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: attachedKey)
+    )
+    self.attachedKey = nil
+    player = nil
+  }
+}
+
 struct InlinePlaybackHost: View {
   @Environment(\.videoDefSettings) private var videoDefSettings
   private let coordinator = InlineVideoCoordinator.shared
@@ -1339,6 +1450,7 @@ private struct InlinePlaybackLayerContainer: View {
         player: player,
         videoGravity: .resizeAspectFill,
         cornerRadius: cornerRadius,
+        diagnosticPrefix: "inlineReusableHost",
         onReadyForDisplay: {
           guard let renderState, attachedKey == renderState.key else { return }
           readyForDisplay = true
@@ -1425,6 +1537,7 @@ private struct ReusableInlineAVPlayerLayerRepresentable: UIViewRepresentable {
   let player: AVPlayer?
   let videoGravity: AVLayerVideoGravity
   let cornerRadius: CGFloat
+  let diagnosticPrefix: String
   var onReadyForDisplay: (() -> Void)?
 
   func makeCoordinator() -> Coordinator {
@@ -1432,8 +1545,8 @@ private struct ReusableInlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 
   func makeUIView(context: Context) -> PlayerLayerView {
-    ScrollPerfProbe.shared.bump("inlineReusableHost.make")
-    let view = PlayerLayerView()
+    ScrollPerfProbe.shared.bump("\(diagnosticPrefix).make")
+    let view = PlayerLayerView(diagnosticPrefix: diagnosticPrefix)
     view.backgroundColor = .clear
     view.playerLayer.player = player
     view.playerLayer.videoGravity = videoGravity
@@ -1444,10 +1557,10 @@ private struct ReusableInlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 
   func updateUIView(_ uiView: PlayerLayerView, context: Context) {
-    ScrollPerfProbe.shared.bump("inlineReusableHost.update")
+    ScrollPerfProbe.shared.bump("\(diagnosticPrefix).update")
     context.coordinator.onReadyForDisplay = onReadyForDisplay
     if uiView.playerLayer.player !== player {
-      ScrollPerfProbe.shared.bump("inlineReusableHost.playerLayerPlayerSet")
+      ScrollPerfProbe.shared.bump("\(diagnosticPrefix).playerLayerPlayerSet")
       uiView.playerLayer.player = player
     }
     if uiView.playerLayer.videoGravity != videoGravity {
@@ -1481,20 +1594,29 @@ private struct ReusableInlineAVPlayerLayerRepresentable: UIViewRepresentable {
 
   final class PlayerLayerView: UIView {
     let playerLayer = AVPlayerLayer()
+    let diagnosticPrefix: String
+
+    init(diagnosticPrefix: String) {
+      self.diagnosticPrefix = diagnosticPrefix
+      super.init(frame: .zero)
+      configureLayers()
+    }
 
     override init(frame: CGRect) {
+      self.diagnosticPrefix = "inlineReusableHost"
       super.init(frame: frame)
       configureLayers()
     }
 
     required init?(coder: NSCoder) {
+      self.diagnosticPrefix = "inlineReusableHost"
       super.init(coder: coder)
       configureLayers()
     }
 
     override func layoutSubviews() {
       super.layoutSubviews()
-      ScrollPerfProbe.shared.bump("inlineReusableHost.frameUpdate")
+      ScrollPerfProbe.shared.bump("\(diagnosticPrefix).frameUpdate")
       CATransaction.begin()
       CATransaction.setDisableActions(true)
       playerLayer.frame = bounds

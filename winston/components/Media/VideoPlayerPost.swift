@@ -377,7 +377,19 @@ struct VideoPlayerPost: View, Equatable {
   @ViewBuilder
   func inlineVideoLayer(sharedVideo: SharedVideo, videoSize: CGSize) -> some View {
     Group {
-      if !usesGlobalInlinePlayback && mountPlayer && !fullscreen {
+      if usesGlobalInlinePlayback, let feedItemKey {
+        InlineRowPlaybackLayerHost(
+          key: feedItemKey,
+          sharedVideo: sharedVideo,
+          shouldMount: mountPlayer && !fullscreen,
+          muted: muteVideos,
+          loop: loopVideos,
+          autoplay: shouldPlayInline,
+          cornerRadius: inlineCornerRadius,
+          size: videoSize,
+          onReadyForDisplay: { handlePlayerReadyForDisplay(sharedVideo) }
+        )
+      } else if mountPlayer && !fullscreen {
         InlineAVPlayerLayerRepresentable(
           player: sharedVideo.player,
           videoGravity: .resizeAspectFill,
