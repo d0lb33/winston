@@ -186,7 +186,7 @@ struct VideoPlayerPost: View, Equatable {
   private var loopVideos: Bool { videoDefSettings.loop }
   private var muteVideos: Bool { videoDefSettings.mute }
   private var pauseBackgroundAudioOnFullscreen: Bool { videoDefSettings.pauseBGAudioOnFullscreen }
-  private var usesGlobalInlinePlayback: Bool { feedItemKey != nil }
+  private var usesCoordinatedInlinePlayback: Bool { feedItemKey != nil }
 
   /// Whether this inline player should be actively playing right now. In a gated feed
   /// (feedItemKey != nil) only the current active video plays. Scrolling does not pause
@@ -199,12 +199,11 @@ struct VideoPlayerPost: View, Equatable {
     return playInline
   }
 
-  /// Whether to mount the live AVPlayer layer at all. Off-center feed videos render only
-  /// their poster — never instantiating an AVPlayer — so a video-heavy feed no longer
-  /// loads dozens of HLS assets at once (the CoreMedia lock storm). The active (centered)
-  /// video, the fullscreen one, and non-feed usages mount as before.
+  /// Whether to mount the local non-feed AVPlayer layer. Coordinated feed rows use
+  /// `InlineRowPlaybackLayerHost` so the row can own compositing while the coordinator
+  /// still gates which row attaches the shared player.
   private var shouldMountPlayer: Bool {
-    guard !usesGlobalInlinePlayback else { return false }
+    guard !usesCoordinatedInlinePlayback else { return false }
     return fullscreen || mountPlayer || hasRenderedInlineFrame
   }
 
@@ -263,6 +262,7 @@ struct VideoPlayerPost: View, Equatable {
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
+        .nsfw(inlineBlurNSFW, smallIcon: compact, size: videoSize)
         .contentShape(Rectangle())
         .trackInlineVideoCenter(
           key: feedItemKey ?? "",
@@ -310,6 +310,7 @@ struct VideoPlayerPost: View, Equatable {
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
+        .nsfw(inlineBlurNSFW, smallIcon: compact, size: videoSize)
         .contentShape(Rectangle())
         .trackInlineVideoCenter(
           key: feedItemKey ?? "",
@@ -360,7 +361,7 @@ struct VideoPlayerPost: View, Equatable {
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
     if playInline != desiredPlay { playInline = desiredPlay }
     if hostHasFrame != (state?.hostHasFrame ?? false) { hostHasFrame = state?.hostHasFrame ?? false }
-    if usesGlobalInlinePlayback { return }
+    if usesCoordinatedInlinePlayback { return }
     applyInlinePlaybackState(sharedVideo)
   }
 
@@ -377,7 +378,7 @@ struct VideoPlayerPost: View, Equatable {
   @ViewBuilder
   func inlineVideoLayer(sharedVideo: SharedVideo, videoSize: CGSize) -> some View {
     Group {
-      if usesGlobalInlinePlayback, let feedItemKey {
+      if usesCoordinatedInlinePlayback, let feedItemKey {
         InlineRowPlaybackLayerHost(
           key: feedItemKey,
           sharedVideo: sharedVideo,
@@ -413,7 +414,7 @@ struct VideoPlayerPost: View, Equatable {
   /// grey can never appear on TOP of a hiding poster, only behind it.
   @ViewBuilder
   func inlineVideoPlaceholder() -> some View {
-    if !playerReadyForDisplay && !(usesGlobalInlinePlayback && hostHasFrame) {
+    if !playerReadyForDisplay && !(usesCoordinatedInlinePlayback && hostHasFrame) {
       RR(inlineCornerRadius, Color.primary.opacity(0.06))
         .overlay(
           Image(systemName: "play.circle.fill")
@@ -450,7 +451,7 @@ struct VideoPlayerPost: View, Equatable {
 
   @ViewBuilder
   func videoPoster(sharedVideo: SharedVideo, size: CGSize) -> some View {
-    if usesGlobalInlinePlayback && hostHasFrame {
+    if usesCoordinatedInlinePlayback && hostHasFrame {
       Color.clear
     } else if let posterURL = sharedVideo.posterURL, showInlinePoster, !posterUnavailable {
       let request = winstonImageRequest(
@@ -546,9 +547,9 @@ struct VideoPlayerPost: View, Equatable {
     let desiredMount = shouldMountPlayer
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
 
-    // Feed rows are passive poster/static surfaces. The single live AVPlayerLayer is
-    // mounted by InlinePlaybackHost above the feed, using the registered SharedVideo.
-    guard !usesGlobalInlinePlayback else { return }
+    // Feed rows are coordinated by InlineVideoCoordinator. The row keeps a passive layer
+    // host and only the active/warm row attaches the shared player.
+    guard !usesCoordinatedInlinePlayback else { return }
 
     // Off-center feed videos are poster-only: do NOT touch sharedVideo.player here, since
     // accessing it would create an AVPlayer (and load its HLS asset). Only the mounted
@@ -584,7 +585,7 @@ struct VideoPlayerPost: View, Equatable {
   /// Re-evaluate playback against the current coordinator state. Called when the
   /// active video or warm set changes. The poster only returns on disappear.
   func applyInlinePlaybackState(_ sharedVideo: SharedVideo) {
-    guard !usesGlobalInlinePlayback else { return }
+    guard !usesCoordinatedInlinePlayback else { return }
     guard !fullscreen else { return }
     guard shouldMountPlayer else {
       if sharedVideo.isPlayerLoaded {
@@ -704,7 +705,7 @@ struct VideoPlayerPost: View, Equatable {
   func handleInlineDisappear(_ sharedVideo: SharedVideo) {
     posterHideGeneration = UUID()
     removeObserver()
-    if usesGlobalInlinePlayback {
+    if usesCoordinatedInlinePlayback {
       if let feedItemKey {
         if InlineVideoCoordinator.shared.isScrolling {
           InlineVideoCoordinator.shared.unregisterVideo(for: feedItemKey, sharedVideo: sharedVideo)

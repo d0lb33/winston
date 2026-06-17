@@ -417,8 +417,9 @@ final class InlineVideoCoordinator {
 
   /// The feed-item key (post id) of the single video allowed to autoplay inline.
   private(set) var activeVideoKey: String?
-  /// The active media surface, in the feed coordinate space. The global host observes
-  /// this value and moves one AVPlayerLayer over the elected row's passive poster.
+  /// The active media surface, in the feed coordinate space. Kept for diagnostics and
+  /// for the legacy reusable host path; the active feed video is now rendered by a
+  /// row-local host so it composites naturally with SwiftUI navigation chrome.
   private(set) var activeSurface: InlineVideoSurfaceSnapshot?
   /// Non-nil while fullscreen owns the active player's visual surface.
   private(set) var fullscreenVideoKey: String?
@@ -527,6 +528,12 @@ final class InlineVideoCoordinator {
 
   func consumeNavigationPreservation(for key: String) -> Bool {
     navigationPreservedKeys.remove(key) != nil
+  }
+
+  func shouldPreservePlaybackOnLayerDetach(key: String) -> Bool {
+    fullscreenVideoKey == key ||
+      consumeNavigationPreservation(for: key) ||
+      (activeVideoKey == key && !isScrolling)
   }
 
   func setActive(_ key: String?) {
@@ -1354,7 +1361,7 @@ struct InlineRowPlaybackLayerHost: View {
     InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
     InlinePlaybackResourceController.shared.detach(
       key: attachedKey,
-      preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == attachedKey || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: attachedKey)
+      preserveForFullscreen: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
     )
     self.attachedKey = nil
     player = nil
@@ -1526,7 +1533,7 @@ private struct InlinePlaybackLayerContainer: View {
     InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
     InlinePlaybackResourceController.shared.detach(
       key: attachedKey,
-      preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == attachedKey || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: attachedKey)
+      preserveForFullscreen: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
     )
     self.attachedKey = nil
     player = nil

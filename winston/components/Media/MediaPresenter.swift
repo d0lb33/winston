@@ -79,7 +79,6 @@ struct MediaPresenter: View, Equatable {
       let _ = ScrollPerfDiagnostics.bump("mediaPresenter.video")
       if !showURLInstead {
         VideoPlayerPost(controller: controller, cachedVideo: sharedVideo, markAsSeen: markAsSeen, compact: compact, contentWidth: contentWidth, url: sharedVideo.url, resetVideo: resetVideo, maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage, diagnosticContext: diagnosticContext, feedItemKey: feedItemKey, inlineBlurNSFW: over18 && blurPostLinkNSFW, inlineCornerRadius: cornerRadius)
-          .nsfw(over18 && blurPostLinkNSFW, smallIcon: compact, size: postDimensions.mediaSize)
       }
       
     case .streamable(_):
