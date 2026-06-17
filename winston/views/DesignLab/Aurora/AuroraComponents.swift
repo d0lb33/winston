@@ -550,6 +550,7 @@ struct AuroraPostCardRow: View {
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
     .modifier(AuroraPostCardRowTapModifier(onSelect: onSelect))
+    .diagnosticTapTarget(onSelect == nil ? "post row" : "post row open", color: .pink)
     .environment(\.auroraCardSettings, settings ?? AuroraCardSettings(Defaults[.PostLinkDefSettings]))
   }
 }
@@ -659,6 +660,7 @@ private struct AuroraPostCardSurface: View {
             }
           }
           .buttonStyle(.borderless)
+          .diagnosticTapTarget("post subreddit", color: .blue)
           Text("· \(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))")
             .font(.caption).foregroundStyle(.secondary)
           Spacer()
@@ -667,23 +669,32 @@ private struct AuroraPostCardSurface: View {
           }
         }
         .opacity(readOpacity)
+        .zIndex(2)
 
         Text(data.title)
           .font(.headline)
           .foregroundStyle(.primary)
           .fixedSize(horizontal: false, vertical: true)
           .opacity(readOpacity)
+          .contentShape(Rectangle())
+          .zIndex(2)
 
         if !data.selftext.isEmpty, !hasDisplayMedia {
           Text(data.selftext).font(.subheadline).foregroundStyle(.secondary).lineLimit(4)
             .opacity(readOpacity)
+            .contentShape(Rectangle())
+            .zIndex(2)
         }
 
         mediaBlock(data)
+          .clipped()
+          .contentShape(Rectangle())
+          .zIndex(0)
 
         if let flair = flairWithoutEmojis(str: data.link_flair_text)?.first, !flair.isEmpty {
           AuroraFlair(text: flair)
             .opacity(readOpacity)
+            .zIndex(2)
         }
 
         HStack(spacing: 12) {
@@ -694,6 +705,7 @@ private struct AuroraPostCardSurface: View {
             }
           }
           .buttonStyle(.borderless)
+          .diagnosticTapTarget("post author", color: .blue)
           Spacer(minLength: 8)
           Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
             .font(.caption.weight(.medium)).foregroundStyle(.secondary)
@@ -706,6 +718,7 @@ private struct AuroraPostCardSurface: View {
           .buttonStyle(.borderless)
         }
         .opacity(readOpacity)
+        .zIndex(2)
       }
       .padding(cardPadding)
       .frame(width: cardWidth, alignment: .leading)
@@ -718,6 +731,7 @@ private struct AuroraPostCardSurface: View {
       )
       .contentShape(Rectangle())
       .modifier(AuroraPostCardRowTapModifier(onSelect: presentation.isEmbeddedCrosspost ? openPost : nil))
+      .diagnosticTapTarget(presentation.isEmbeddedCrosspost ? "embedded post open" : "post card", color: .pink)
       .modifier(AuroraConditionalContextMenu(isEnabled: presentation.showsContextMenu) {
         contextMenuItems(data)
       })
@@ -889,6 +903,7 @@ struct AuroraCrosspostCard: View {
         .padding(.horizontal, 2)
         .contentShape(Rectangle())
         .onTapGesture { openOriginalPost() }
+        .diagnosticTapTarget("feed crosspost link", color: .green)
 
         AuroraPostCardSurface(
           post: repost,

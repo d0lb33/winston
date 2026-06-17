@@ -59,6 +59,7 @@ struct PostHeaderNative: View {
             cornerRadius: 12
           )
           .equatable()
+          .diagnosticTapTarget("post link media", color: .purple)
         } else {
           PostMediaNative(
             postID: post.id,
@@ -73,6 +74,7 @@ struct PostHeaderNative: View {
             dimensions: $winstonData.postDimensionsForcedNormal
           )
           .equatable()
+          .diagnosticTapTarget("post media", color: .purple)
         }
       }
 
@@ -328,6 +330,7 @@ struct CrosspostCardNative: View {
         .onTapGesture {
           navigateRedditDestination(.reddit(.post(repost)), model: redditNavigationModel, origin: redditNavigationOrigin)
         }
+        .diagnosticTapTarget("crosspost link", color: .green)
 
         Text(data.title)
           .font(.subheadline.weight(.semibold))
@@ -357,6 +360,7 @@ struct CrosspostCardNative: View {
               resetVideo: nil
             )
             .equatable()
+            .diagnosticTapTarget("crosspost media", color: .purple)
           } else {
             PostMediaNative(
               postID: repost.id,
@@ -371,6 +375,7 @@ struct CrosspostCardNative: View {
               dimensions: $winstonData.postDimensionsForcedNormal
             )
             .equatable()
+            .diagnosticTapTarget("crosspost media", color: .purple)
           }
         }
 

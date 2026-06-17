@@ -77,6 +77,7 @@ struct CommentBodyNative: View {
               diagnosticContext: diagnosticContext
             )
             .contentShape(Rectangle())
+            .diagnosticTapTarget("comment media", color: .purple)
           }
         }
       }
@@ -109,6 +110,7 @@ struct CommentBodyNative: View {
             .fill(.clear)
             .contentShape(Rectangle())
             .onTapGesture(perform: onTextTap)
+            .diagnosticTapTarget("comment text collapse", color: .orange)
         }
     } else {
       markdownText(text)

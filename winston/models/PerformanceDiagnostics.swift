@@ -9,6 +9,7 @@
 import Foundation
 import MetricKit
 import QuartzCore
+import SwiftUI
 import UIKit
 import os
 
@@ -105,6 +106,44 @@ enum FeedMediaDiagnostics {
 
   static var isAuroraFeedMediaDisabled: Bool {
     UserDefaults.standard.bool(forKey: disableAuroraFeedMediaKey)
+  }
+}
+
+enum TapTargetDiagnostics {
+  static let defaultsKey = "diagnostics.showTapTargets"
+}
+
+private struct TapTargetDiagnosticModifier: ViewModifier {
+  @AppStorage(TapTargetDiagnostics.defaultsKey) private var enabled = false
+  let label: String
+  let color: Color
+
+  func body(content: Content) -> some View {
+    content.overlay(alignment: .topLeading) {
+      if enabled {
+        ZStack(alignment: .topLeading) {
+          RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .fill(color.opacity(0.10))
+          RoundedRectangle(cornerRadius: 4, style: .continuous)
+            .strokeBorder(color.opacity(0.95), style: StrokeStyle(lineWidth: 1.5, dash: [5, 3]))
+          Text(label)
+            .font(.caption2.weight(.bold))
+            .lineLimit(1)
+            .foregroundStyle(.white)
+            .padding(.horizontal, 4)
+            .padding(.vertical, 2)
+            .background(color.opacity(0.92), in: Capsule())
+            .padding(2)
+        }
+        .allowsHitTesting(false)
+      }
+    }
+  }
+}
+
+extension View {
+  func diagnosticTapTarget(_ label: String, color: Color = .pink) -> some View {
+    modifier(TapTargetDiagnosticModifier(label: label, color: color))
   }
 }
 

@@ -85,6 +85,7 @@ struct CommentRowView: View {
           .padding(.bottom, !collapsed && hasBody ? 6 : 0)
           .contentShape(Rectangle())
           .onTapGesture { toggleCollapse() }
+          .diagnosticTapTarget("comment collapse header", color: .orange)
         if !collapsed, hasBody, let body = data.body {
           CommentBodyNative(
             markdown: body,
@@ -103,6 +104,7 @@ struct CommentRowView: View {
       }
       .padding(.vertical, collapsed ? 8 : 10)
       .frame(maxWidth: .infinity, alignment: .leading)
+      .diagnosticTapTarget("comment collapse fallback", color: .orange)
       .background {
         // Covers row chrome and spacing without putting a gesture back on CommentBodyNative.
         Rectangle()
@@ -148,6 +150,7 @@ struct CommentRowView: View {
       }
       .accessibilityAddTraits(.isButton)
       .accessibilityHint(isCollapsed ? "" : "Opens profile")
+      .diagnosticTapTarget(isCollapsed ? "comment expand author" : "comment author profile", color: .blue)
 
       ForEach(headerChips(data, isOP: isOP, isCollapsed: isCollapsed)) { chip in
         chipView(chip)

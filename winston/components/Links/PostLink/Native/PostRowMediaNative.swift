@@ -157,5 +157,6 @@ struct PostRowMediaNative: View, Equatable {
       feedItemKey: feedItemKey
     )
     .allowsHitTesting(isMediaTappable || media.alwaysAllowsInlineNavigation)
+    .diagnosticTapTarget(isMediaTappable || media.alwaysAllowsInlineNavigation ? "feed media" : "feed media disabled", color: .purple)
   }
 }
