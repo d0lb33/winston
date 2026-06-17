@@ -436,13 +436,17 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var playbackStates: [String: InlineVideoPlaybackState] = [:]
   @ObservationIgnored private var prefetchVideoKeys: Set<String> = []
   @ObservationIgnored private var activeSince: [String: CFTimeInterval] = [:]
+  @ObservationIgnored private var lastActiveChangeTime: CFTimeInterval = 0
   @ObservationIgnored private var registeredVideos: [String: InlineVideoRegistration] = [:]
   @ObservationIgnored private var navigationPreservedKeys: Set<String> = []
 
   private let warmAheadCount = 1
   private let fastScrollVelocityThreshold: CGFloat = 2_200
-  private let playVisibleThreshold: CGFloat = 0.01
-  private let pauseVisibleThreshold: CGFloat = 0.01
+  private let playVisibleThreshold: CGFloat = 0.18
+  private let pauseVisibleThreshold: CGFloat = 0.04
+  private let activeSwitchVisibleFloor: CGFloat = 0.14
+  private let activeSwitchMinImprovement: CGFloat = 96
+  private let activeSwitchMinimumDwell: CFTimeInterval = 0.28
 
   private init() {}
 
@@ -515,6 +519,7 @@ final class InlineVideoCoordinator {
     }
     ScrollPerfProbe.shared.bump("inlineActiveChange")
     activeVideoKey = key
+    lastActiveChangeTime = CACurrentMediaTime()
     if let key {
       activeSince[key] = CACurrentMediaTime()
       if let state = playbackStates[key], state.hostHasFrame {
@@ -646,16 +651,49 @@ final class InlineVideoCoordinator {
   /// Called when the feed settles, or while slow scrolling.
   func electCenteredVideo(updateWarmSet: Bool = true) {
     let center = viewportFrameGlobal == .zero ? viewportHeight / 2 : viewportFrameGlobal.midY
-    let nearest = latestVisibilities
+    let nearestCandidate = latestVisibilities
       .filter { $0.visibleFraction >= playVisibleThreshold }
-      .min(by: { abs($0.midY - center) < abs($1.midY - center) })?.key
-    if let nearest {
-      setActive(nearest)
+      .min(by: { abs($0.midY - center) < abs($1.midY - center) })
+    guard let nearest = nearestCandidate else {
+      if updateWarmSet {
+        isFastScrolling = false
+        updateWarmVideoKeys()
+      }
+      return
+    }
+
+    if shouldSwitchActiveVideo(to: nearest, viewportCenter: center) {
+      setActive(nearest.key)
     }
     if updateWarmSet {
       isFastScrolling = false
       updateWarmVideoKeys()
     }
+  }
+
+  private func shouldSwitchActiveVideo(
+    to candidate: InlineVideoVisibility,
+    viewportCenter center: CGFloat
+  ) -> Bool {
+    guard let activeVideoKey else { return true }
+    guard candidate.key != activeVideoKey else { return false }
+    guard let activeVisibility = latestVisibilityByKey[activeVideoKey] else { return true }
+    guard activeVisibility.visibleFraction >= pauseVisibleThreshold else { return true }
+
+    let activeDistance = abs(activeVisibility.midY - center)
+    let candidateDistance = abs(candidate.midY - center)
+    if activeVisibility.visibleFraction >= activeSwitchVisibleFloor,
+       activeDistance <= candidateDistance + activeSwitchMinImprovement {
+      return false
+    }
+
+    let elapsed = CACurrentMediaTime() - lastActiveChangeTime
+    if elapsed < activeSwitchMinimumDwell,
+       activeVisibility.visibleFraction >= pauseVisibleThreshold {
+      return false
+    }
+
+    return true
   }
 
   private func setFastScrolling(_ fast: Bool) {
@@ -888,9 +926,6 @@ private struct InlineVideoFrameSnapshot: Equatable {
   let maxX: CGFloat
   let minY: CGFloat
   let maxY: CGFloat
-  let viewportMinY: CGFloat
-  let viewportMaxY: CGFloat
-  let viewportHeight: CGFloat
 }
 
 /// Reports a row's vertical visibility so the feed can elect and pause inline video.
@@ -905,19 +940,16 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
       content
         .onGeometryChange(for: InlineVideoFrameSnapshot.self) { geo in
           let frame = geo.frame(in: .global)
-          let viewport = InlineVideoCoordinator.shared.viewportFrameGlobal
-          let viewportHeight = max(viewport.height, InlineVideoCoordinator.shared.viewportHeight)
           return InlineVideoFrameSnapshot(
             minX: frame.minX,
             maxX: frame.maxX,
             minY: frame.minY,
-            maxY: frame.maxY,
-            viewportMinY: viewport.minY,
-            viewportMaxY: viewport.maxY,
-            viewportHeight: viewportHeight
+            maxY: frame.maxY
           )
         } action: { frame in
-          let viewportHeight = frame.viewportHeight
+          let coordinator = InlineVideoCoordinator.shared
+          let viewport = coordinator.viewportFrameGlobal
+          let viewportHeight = max(viewport.height, coordinator.viewportHeight)
           guard viewportHeight > 1 else { return }
           let visibility = InlineVideoVisibility(
             key: key,
@@ -926,11 +958,11 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
             minY: frame.minY,
             maxY: frame.maxY,
             viewportHeight: viewportHeight,
-            viewportMinY: frame.viewportMinY,
-            viewportMaxY: frame.viewportMaxY,
+            viewportMinY: viewport.minY,
+            viewportMaxY: viewport.maxY,
             visibleFraction: 0
           ).normalized(viewportHeight: viewportHeight)
-          InlineVideoCoordinator.shared.updateVisibility(visibility)
+          coordinator.updateVisibility(visibility)
         }
         .onDisappear {
           InlineVideoCoordinator.shared.preservePlaybackForNonScrollDisappearance(key: key)

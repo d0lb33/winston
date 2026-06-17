@@ -115,6 +115,11 @@ final class PostsNav: RedditNavigator {
   /// iPad row highlight and, when it maps to a feed post, the detail root.
   var selectedPostID: String?
 
+  /// The feed row nearest the top of the content column. `NavigationSplitView` can
+  /// temporarily remove the compact content column while detail is visible; keeping this
+  /// outside the feed view lets the list restore after an interactive back gesture.
+  var feedScrollPositionID: String?
+
   /// Explicit post for the detail root when it did not come from the feed list (a link
   /// tap, a deep link, a saved item).
   var detailPost: Post?
@@ -177,6 +182,7 @@ final class PostsNav: RedditNavigator {
   /// Clear the detail and any in-column pushes (e.g. when the sidebar feed changes).
   func resetContentAndDetail() {
     selectedPostID = nil
+    feedScrollPositionID = nil
     detailPost = nil
     detailHighlightID = nil
     contentPath = []

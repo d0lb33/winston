@@ -239,6 +239,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
   private let tabInteractions: TabInteractionCenter?
   private let request: TabInteractionRequest?
   private let selection: Binding<Selection?>?
+  private let scrollPosition: Binding<Selection?>?
   private let onResetToRoot: (() -> Void)?
   private let onOffsetChange: (CGFloat) -> Void
   private let content: () -> Content
@@ -249,6 +250,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
     tabInteractions: TabInteractionCenter?,
     request: TabInteractionRequest?,
     selection: Binding<Selection?>,
+    scrollPosition: Binding<Selection?>? = nil,
     onResetToRoot: (() -> Void)? = nil,
     onOffsetChange: @escaping (CGFloat) -> Void = { _ in },
     @ViewBuilder content: @escaping () -> Content
@@ -258,6 +260,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
     self.tabInteractions = tabInteractions
     self.request = request
     self.selection = selection
+    self.scrollPosition = scrollPosition
     self.onResetToRoot = onResetToRoot
     self.onOffsetChange = onOffsetChange
     self.content = content
@@ -265,7 +268,7 @@ struct TabScrollRoot<Selection: Hashable, Content: View>: View {
 
   var body: some View {
     ScrollViewReader { proxy in
-      TabScrollList(selection: selection) {
+      TabScrollList(selection: selection, scrollPosition: scrollPosition) {
         Color.clear
           .frame(height: 0)
           .id(topID)
@@ -323,6 +326,7 @@ extension TabScrollRoot where Selection == Never {
     self.tabInteractions = tabInteractions
     self.request = request
     self.selection = nil
+    self.scrollPosition = nil
     self.onResetToRoot = onResetToRoot
     self.onOffsetChange = onOffsetChange
     self.content = content
@@ -331,23 +335,37 @@ extension TabScrollRoot where Selection == Never {
 
 private struct TabScrollList<Selection: Hashable, Rows: View>: View {
   let selection: Binding<Selection?>?
+  let scrollPosition: Binding<Selection?>?
   let rows: () -> Rows
 
-  init(selection: Binding<Selection?>?, @ViewBuilder rows: @escaping () -> Rows) {
+  init(
+    selection: Binding<Selection?>?,
+    scrollPosition: Binding<Selection?>?,
+    @ViewBuilder rows: @escaping () -> Rows
+  ) {
     self.selection = selection
+    self.scrollPosition = scrollPosition
     self.rows = rows
   }
 
   @ViewBuilder
   var body: some View {
     if let selection {
-      List(selection: selection) {
-        rows()
-      }
+      scrollPositionedList(selection: selection)
     } else {
-      List {
-        rows()
-      }
+      scrollPositionedList(selection: nil)
+    }
+  }
+
+  @ViewBuilder
+  private func scrollPositionedList(selection: Binding<Selection?>?) -> some View {
+    let list = List(selection: selection) {
+      rows()
+    }
+    if let scrollPosition {
+      list.scrollPosition(id: scrollPosition)
+    } else {
+      list
     }
   }
 }

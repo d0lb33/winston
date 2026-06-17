@@ -248,7 +248,9 @@ struct AuroraRoot: View {
         .diagnosticScreen("aurora.saved")
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
-                 selectedPostID: selectedPostID, sort: $sort,
+                 selectedPostID: selectedPostID,
+                 scrollPositionID: $posts.feedScrollPositionID,
+                 sort: $sort,
                  tabInteractionTab: isFeedRootVisibleForTabInteraction ? .posts : nil,
                  tabInteractions: isFeedRootVisibleForTabInteraction ? tabInteractions : nil,
                  tabInteractionRequest: isFeedRootVisibleForTabInteraction ? tabInteractions.requests[.posts] : nil) { destination in

@@ -87,6 +87,7 @@ struct AuroraFeed: View {
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
 
+  @Binding private var scrollPositionID: String?
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
 
   init(
@@ -94,6 +95,7 @@ struct AuroraFeed: View {
     title: String,
     community: Subreddit?,
     selectedPostID: Binding<String?>,
+    scrollPositionID: Binding<String?>,
     sort: Binding<SubListingSortOption>,
     tabInteractionTab: Nav.TabIdentifier? = nil,
     tabInteractions: TabInteractionCenter? = nil,
@@ -104,6 +106,7 @@ struct AuroraFeed: View {
     self.title = title
     self.community = community
     self._selectedPostID = selectedPostID
+    self._scrollPositionID = scrollPositionID
     self._sort = sort
     self.tabInteractionTab = tabInteractionTab
     self.tabInteractions = tabInteractions
@@ -127,6 +130,7 @@ struct AuroraFeed: View {
         tabInteractions: tabInteractions,
         request: tabInteractionRequest,
         selection: $selectedPostID,
+        scrollPosition: $scrollPositionID,
         onOffsetChange: { offsetY in
           readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
         }
