@@ -57,7 +57,9 @@ private final class PostRefreshCoordinator {
 }
 
 extension Post {
-  static var prefetcher = ImagePrefetcher(pipeline: ImagePipeline.shared, destination: .memoryCache, maxConcurrentRequestCount: 10)
+  static var prefetcher = ImagePrefetcher(pipeline: ImagePipeline.shared, destination: .memoryCache, maxConcurrentRequestCount: 4)
+  private static let maxInitialFeedImagePrefetchRequests = 8
+  private static let maxInitialFeedVideoPosterPrefetchRequests = 3
   static var prefix = "t3"
   var selfPrefix: String { Self.prefix }
 
@@ -336,7 +338,7 @@ extension Post {
 
     RedditWire.shared.applyAvatars(toPosts: repostsAvatars, avatarSize: getEnabledTheme().postLinks.theme.badge.avatar.size)
 
-    var imgRequests: [ImageRequest] = posts.reduce(into: []) { prev, curr in
+    let imageRequests: [ImageRequest] = posts.reduce(into: []) { prev, curr in
       if case .imgs(let imgsExtracted) = curr.winstonData?.extractedMedia {
         let reqs = imgsExtracted.map { $0.request }
         prev = prev + reqs
@@ -348,11 +350,16 @@ extension Post {
       return winstonImageRequest(
         url: posterURL,
         processors: [ImageProcessors.ScaleFixer()],
-        priority: .high,
+        priority: .normal,
         thumbnail: nil
       )
     }
-    imgRequests.append(contentsOf: videoPosterRequests)
+    var imgRequests = Array(imageRequests.prefix(maxInitialFeedImagePrefetchRequests))
+    imgRequests.append(contentsOf: videoPosterRequests.prefix(maxInitialFeedVideoPosterPrefetchRequests))
+    let rawRequestCount = imageRequests.count + videoPosterRequests.count
+    if rawRequestCount > imgRequests.count {
+      ScrollPerfProbe.shared.bump("feedMediaPrefetch.limited")
+    }
     let mediaKinds = posts.prefix(8).map { post in
       "\(post.id):\(Post.diagnosticsMediaKind(post.winstonData?.extractedMedia))"
     }.joined(separator: ",")
@@ -369,6 +376,8 @@ extension Post {
       metadata: [
         "posts": "\(posts.count)",
         "requests": "\(imgRequests.count)",
+        "rawRequests": "\(rawRequestCount)",
+        "limitedRequests": "\(rawRequestCount > imgRequests.count)",
         "videoPosterRequests": "\(videoPosterRequests.count)",
         "firstMediaKinds": mediaKinds,
         "videoPosters": "\(videoPosterURLs.count)",

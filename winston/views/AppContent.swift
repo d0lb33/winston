@@ -15,6 +15,7 @@ struct AppContent: View {
   
   @Default(.ThemesDefSettings) private var themesDefSettings
   @Default(.GeneralDefSettings) private var generalDefSettings
+  @Default(.VideoDefSettings) private var videoDefSettings
   @Default(.auroraThemeID) private var auroraThemeID
 
   var selectedTheme: WinstonTheme { themesDefSettings.themesPresets.first { $0.id == themesDefSettings.selectedThemeID } ?? defaultTheme }
@@ -86,6 +87,7 @@ struct AppContent: View {
     .globalLoaderProvider()
     .environment(tabBarMetrics)
     .environment(\.useTheme, selectedTheme)
+    .environment(\.videoDefSettings, videoDefSettings)
     .environment(\.auroraTheme, auroraThemeID.theme)
     .preferredColorScheme(auroraThemeID.theme.colorScheme)
     .onAppear {
@@ -126,6 +128,11 @@ struct AppContent: View {
       @unknown default:
         print("default")
       }
+    }
+    .overlay(alignment: .topLeading) {
+      InlinePlaybackHost()
+        .allowsHitTesting(false)
+        .ignoresSafeArea(.container, edges: .bottom)
     }
     .blur(radius: lockBlur)
     .background {

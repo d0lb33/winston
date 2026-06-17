@@ -184,6 +184,7 @@ final class MediaPrefetchCoordinator {
   private var prewarmedVideoKeys: Set<String> = []
   private var prefetchVideoKeys: Set<String> = []
   private var cancelledFastScrollUpdates = 0
+  private var deferredScrollUpdates = 0
   private var lastDirection = "down"
   private var lastWindowPostCount = 0
   private var lastImageRequestCount = 0
@@ -230,6 +231,18 @@ final class MediaPrefetchCoordinator {
     )
     lastWindowPostCount = window.count
 
+    if FeedScrollWorkCoordinator.shared.shouldDeferWork {
+      deferredScrollUpdates += 1
+      ScrollPerfProbe.shared.bump("mediaPrefetch.deferred")
+      ScrollPerfProbe.shared.bump("mediaPrefetch.deferred.\(lastDirection)")
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "mediaPrefetch.window") { [weak self, window] in
+        guard let self else { return }
+        self.startImagePrefetch(for: window)
+        self.startVideoPrewarm(for: window, limit: policy.videoAheadCount, maxConcurrent: policy.maxVideoConcurrency)
+      }
+      return
+    }
+
     startImagePrefetch(for: window)
     startVideoPrewarm(for: window, limit: policy.videoAheadCount, maxConcurrent: policy.maxVideoConcurrency)
   }
@@ -244,6 +257,7 @@ final class MediaPrefetchCoordinator {
       "mediaPrefetchActiveVideoTasks": "\(activeVideoTasks.count)",
       "mediaPrefetchPrewarmedVideos": "\(prewarmedVideoKeys.count)",
       "mediaPrefetchFastScrollSkips": "\(cancelledFastScrollUpdates)",
+      "mediaPrefetchDeferredScrollUpdates": "\(deferredScrollUpdates)",
       "mediaPrefetchDirection": lastDirection,
       "mediaPrefetchFastSkipDirection": lastFastScrollSkipDirection,
       "mediaPrefetchWindowPosts": "\(lastWindowPostCount)",
@@ -258,12 +272,12 @@ final class MediaPrefetchCoordinator {
 
   private func currentPolicy() -> (imageAheadCount: Int, videoAheadCount: Int, maxVideoConcurrency: Int) {
     if ProcessInfo.processInfo.isLowPowerModeEnabled || pathIsConstrained {
-      return (6, 2, 1)
+      return (4, 1, 1)
     }
     if pathIsExpensive {
-      return (8, 2, 1)
+      return (6, 1, 1)
     }
-    return (12, 4, 2)
+    return (8, 2, 1)
   }
 
   private func postWindow(
@@ -1116,11 +1130,6 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
         if frame.height > 0 {
           InlineVideoCoordinator.shared.viewportHeight = frame.height
         }
-      }
-      .overlay(alignment: .topLeading) {
-        InlinePlaybackHost()
-          .allowsHitTesting(false)
-          .ignoresSafeArea(.container, edges: .bottom)
       }
       .onScrollPhaseChange { _, phase in
         let scrolling = phase != .idle
