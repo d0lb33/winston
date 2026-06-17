@@ -14,22 +14,27 @@ import Defaults
 @MainActor
 private final class AuroraReadOnScrollTracker {
   private var previousScrollOffsetY: CGFloat?
-  private var latestMaxYByID: [String: CGFloat] = [:]
-  private var previousMaxYByID: [String: CGFloat] = [:]
+  private var latestFrameByID: [String: AuroraReadFrame] = [:]
+  private var previousFrameByID: [String: AuroraReadFrame] = [:]
+  private var visiblePostIDs: Set<String> = []
   private var isScrollingDown = false
 
-  func updateMaxY(_ maxY: CGFloat, for postID: String) {
-    latestMaxYByID[postID] = maxY
+  func updateFrame(_ frame: AuroraReadFrame, for postID: String) {
+    latestFrameByID[postID] = frame
+    if frame.isVisible {
+      visiblePostIDs.insert(postID)
+    }
   }
 
   func remove(postID: String) {
-    latestMaxYByID.removeValue(forKey: postID)
-    previousMaxYByID.removeValue(forKey: postID)
+    latestFrameByID.removeValue(forKey: postID)
+    previousFrameByID.removeValue(forKey: postID)
+    visiblePostIDs.remove(postID)
   }
 
   func markIfDisappearedPastTop(_ post: Post, readOnScroll: Bool) {
     guard readOnScroll, isScrollingDown, FeedScrollWorkCoordinator.shared.isScrolling else { return }
-    guard let maxY = latestMaxYByID[post.id], maxY <= 0 else { return }
+    guard visiblePostIDs.contains(post.id) else { return }
     FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
   }
 
@@ -38,20 +43,30 @@ private final class AuroraReadOnScrollTracker {
     isScrollingDown = scrollingDown
     defer {
       previousScrollOffsetY = offsetY
-      previousMaxYByID = latestMaxYByID
+      previousFrameByID = latestFrameByID
     }
 
     guard readOnScroll, scrollingDown else { return }
 
-    let crossedIDs: Set<String> = Set(latestMaxYByID.compactMap { id, maxY in
-      guard let previousMaxY = previousMaxYByID[id] else { return nil }
-      return previousMaxY > 0 && maxY <= 0 ? id : nil
+    let crossedIDs: Set<String> = Set(latestFrameByID.compactMap { id, frame in
+      guard let previousFrame = previousFrameByID[id] else { return nil }
+      return previousFrame.maxY > 0 && frame.maxY <= 0 ? id : nil
     })
     guard !crossedIDs.isEmpty else { return }
 
     visiblePosts
       .filter { crossedIDs.contains($0.id) }
       .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
+  }
+}
+
+private struct AuroraReadFrame: Equatable {
+  let minY: CGFloat
+  let maxY: CGFloat
+  let viewportHeight: CGFloat
+
+  var isVisible: Bool {
+    maxY > 0 && minY < viewportHeight
   }
 }
 
@@ -128,10 +143,15 @@ struct AuroraFeed: View {
               .background {
                 if cardSettings.readOnScroll {
                   Color.clear
-                    .onGeometryChange(for: CGFloat.self) { proxy in
-                      proxy.frame(in: .named("auroraFeed")).maxY
-                    } action: { maxY in
-                      readOnScrollTracker.updateMaxY(maxY, for: post.id)
+                    .onGeometryChange(for: AuroraReadFrame.self) { proxy in
+                      let frame = proxy.frame(in: .named("auroraFeed"))
+                      return AuroraReadFrame(
+                        minY: frame.minY,
+                        maxY: frame.maxY,
+                        viewportHeight: geometry.size.height
+                      )
+                    } action: { frame in
+                      readOnScrollTracker.updateFrame(frame, for: post.id)
                     }
                 }
               }
