@@ -26,6 +26,8 @@ import Defaults
 import CoreData
 
 struct AuroraRoot: View {
+  private static let feedTabInteractionOwnerID = TabInteractionOwnerID("aurora-feed-top")
+
   @ObservedObject var router: Router
   let accountID: UUID?
   /// Optional explicit theme (Design Lab preview). nil → the persisted app theme.
@@ -133,6 +135,7 @@ struct AuroraRoot: View {
     .diagnosticScreen("aurora.posts")
     .onAppear {
       reloadSavedListSummaries()
+      synchronizePostsTabInteractionOwner()
     }
     .routerDeepLinkInbox(
       router: router,
@@ -141,6 +144,12 @@ struct AuroraRoot: View {
     )
     .onChange(of: tabInteractions.requests[.posts]) { _, request in
       handleTabInteractionRequest(request)
+    }
+    .onChange(of: isFeedRootVisibleForTabInteraction) { _, _ in
+      synchronizePostsTabInteractionOwner()
+    }
+    .onChange(of: isDetailVisibleForTabInteraction) { _, _ in
+      synchronizePostsTabInteractionOwner()
     }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
@@ -164,6 +173,7 @@ struct AuroraRoot: View {
       guard let newID, let post = model.post(id: newID) else { return }
       posts.selectFeedPost(post)
       AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
+      synchronizePostsTabInteractionOwner()
     }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reloadSavedListSummaries()
@@ -181,7 +191,7 @@ struct AuroraRoot: View {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
     posts.reset(to: launchFeed)
     model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
-    tabInteractions.setIsAtTop(.posts, true)
+    synchronizePostsTabInteractionOwner()
   }
 
   private func handleTabInteractionRequest(_ request: TabInteractionRequest?) {
@@ -199,19 +209,24 @@ struct AuroraRoot: View {
             "hasDetailPost": "\(posts.detailPost != nil)"
           ]
         )
-        if posts.goBackOneStep(), posts.preferredColumn == .sidebar {
-          tabInteractions.setIsAtTop(.posts, true)
+        if posts.goBackOneStep() {
+          synchronizePostsTabInteractionOwner()
         }
         return
       }
     case .goBack:
-      if posts.goBackOneStep(), posts.preferredColumn == .sidebar {
-        tabInteractions.setIsAtTop(.posts, true)
+      if posts.goBackOneStep() {
+        synchronizePostsTabInteractionOwner()
       }
     case .resetToRoot:
       posts.resetToSidebarRoot()
-      tabInteractions.setIsAtTop(.posts, true)
+      synchronizePostsTabInteractionOwner()
     }
+  }
+
+  private func synchronizePostsTabInteractionOwner() {
+    guard isFeedRootVisibleForTabInteraction else { return }
+    tabInteractions.activateScrollOwner(Self.feedTabInteractionOwnerID, for: .posts, initialIsAtTop: false)
   }
 
   // MARK: - Columns

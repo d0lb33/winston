@@ -17,8 +17,11 @@ struct GeneralPanel: View {
   @State private var isMoving: Bool = false
   @State private var settingsFileURL: String = ""
   @State private var doImport: Bool = false
+  @State private var doApolloReadHistoryImport: Bool = false
   @State private var showResetReadHistoryAlert: Bool = false
   @State private var isClearingReadHistory: Bool = false
+  @State private var isImportingApolloReadHistory: Bool = false
+  @State private var apolloReadHistoryImportAlert: ApolloReadHistoryImportAlert?
   var body: some View {
     SettingsPanelScrollRoot(topID: "settings-general-top") {
       
@@ -57,6 +60,25 @@ struct GeneralPanel: View {
             }
             
           })
+
+          NativeSettingsActionRow {
+            doApolloReadHistoryImport.toggle()
+          } label: {
+            HStack {
+              Label("Import Apollo Read History", systemImage: "eye")
+              if isImportingApolloReadHistory {
+                Spacer()
+                ProgressView()
+              }
+            }
+          }
+          .disabled(isImportingApolloReadHistory)
+          .fileImporter(
+            isPresented: $doApolloReadHistoryImport,
+            allowedContentTypes: [.zip, .propertyList],
+            allowsMultipleSelection: false,
+            onCompletion: importApolloReadHistory
+          )
         }
         
         Section("Advanced") {
@@ -106,6 +128,13 @@ struct GeneralPanel: View {
       Button("Cancel", role: .cancel) {}
     } message: {
       Text("This clears the posts and comments Winston has marked as read. Reload feeds to refresh currently visible rows.")
+    }
+    .alert(item: $apolloReadHistoryImportAlert) { alert in
+      Alert(
+        title: Text(alert.title),
+        message: Text(alert.message),
+        dismissButton: .default(Text("OK"))
+      )
     }
   }
   
@@ -173,6 +202,53 @@ struct GeneralPanel: View {
       }
     }
   }
+
+  func importApolloReadHistory(_ result: Result<[URL], Error>) {
+    guard !isImportingApolloReadHistory else { return }
+
+    switch result {
+    case .success(let urls):
+      guard let url = urls.first else {
+        apolloReadHistoryImportAlert = ApolloReadHistoryImportAlert(
+          title: "Import Failed",
+          message: "No Apollo backup file was selected."
+        )
+        return
+      }
+
+      isImportingApolloReadHistory = true
+      Task {
+        do {
+          let parsed = try await Task.detached(priority: .userInitiated) {
+            try ApolloReadHistoryImporter.readPostIDs(fromBackupURL: url)
+          }.value
+          let importResult = await Post.importSeenPostIDs(
+            parsed.postIDs,
+            rawCount: parsed.rawCount,
+            invalidCount: parsed.invalidCount
+          )
+
+          await MainActor.run {
+            isImportingApolloReadHistory = false
+            apolloReadHistoryImportAlert = ApolloReadHistoryImportAlert.success(importResult)
+          }
+        } catch {
+          await MainActor.run {
+            isImportingApolloReadHistory = false
+            apolloReadHistoryImportAlert = ApolloReadHistoryImportAlert(
+              title: "Import Failed",
+              message: error.localizedDescription
+            )
+          }
+        }
+      }
+    case .failure(let error):
+      apolloReadHistoryImportAlert = ApolloReadHistoryImportAlert(
+        title: "Import Failed",
+        message: error.localizedDescription
+      )
+    }
+  }
   
   func clearDirectory(directory: URL?) {
     guard let directory = directory else {
@@ -190,6 +266,26 @@ struct GeneralPanel: View {
     } catch {
       print("Error deleting files in directory: \(error.localizedDescription)")
     }
+  }
+}
+
+private struct ApolloReadHistoryImportAlert: Identifiable {
+  let id = UUID()
+  let title: String
+  let message: String
+
+  static func success(_ result: SeenPostImportResult) -> ApolloReadHistoryImportAlert {
+    ApolloReadHistoryImportAlert(
+      title: "Apollo Read History Imported",
+      message: """
+      Found \(result.rawCount) Apollo read posts.
+      Imported \(result.insertedCount) new read posts.
+      Already present: \(result.alreadyPresentCount).
+      Ignored invalid IDs: \(result.invalidCount).
+
+      Reload feeds to refresh currently visible rows.
+      """
+    )
   }
 }
 

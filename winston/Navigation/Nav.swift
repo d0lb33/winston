@@ -270,7 +270,10 @@ final class TabInteractionCenter: ObservableObject {
     }
 
     lastTap = (tab, now)
-    publish((scrollOwnerStateByTab[tab]?.isAtTop == false) ? .scrollToTop : .goBack, for: tab)
+    // During split-view transitions SwiftUI can briefly unmount the current scroll
+    // owner before the returning owner appears. Treat that gap as scrollable so a
+    // tab reselect never accidentally navigates back.
+    publish((scrollOwnerStateByTab[tab]?.isAtTop ?? false) ? .goBack : .scrollToTop, for: tab)
   }
 
   private func legacyOwnerID(for tab: Nav.TabIdentifier) -> TabInteractionOwnerID {

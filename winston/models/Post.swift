@@ -27,6 +27,14 @@ private struct SeenPostSnapshot {
   let comments: String?
 }
 
+struct SeenPostImportResult: Equatable {
+  let rawCount: Int
+  let validUniqueCount: Int
+  let insertedCount: Int
+  let alreadyPresentCount: Int
+  let invalidCount: Int
+}
+
 @MainActor
 private final class PostRefreshCoordinator {
   static let shared = PostRefreshCoordinator()
@@ -556,22 +564,69 @@ extension Post {
     }
   }
 
-  static func persistSeenPostIDs(_ ids: Set<String>) async {
-    let ids = ids.filter { !$0.isEmpty }
-    guard !ids.isEmpty else { return }
+  @discardableResult
+  static func importSeenPostIDs(_ rawIDs: [String], rawCount: Int? = nil, invalidCount initialInvalidCount: Int = 0) async -> SeenPostImportResult {
+    var seenIDs = Set<String>()
+    var validIDs: [String] = []
+    var invalidCount = initialInvalidCount
+
+    for rawID in rawIDs {
+      let id = normalizedBareID(rawID).lowercased()
+      guard !id.isEmpty, id.unicodeScalars.allSatisfy({ scalar in
+        (48...57).contains(scalar.value) || (97...122).contains(scalar.value)
+      }) else {
+        invalidCount += 1
+        continue
+      }
+      if seenIDs.insert(id).inserted {
+        validIDs.append(id)
+      }
+    }
+
+    guard !validIDs.isEmpty else {
+      return SeenPostImportResult(
+        rawCount: rawCount ?? rawIDs.count,
+        validUniqueCount: 0,
+        insertedCount: 0,
+        alreadyPresentCount: 0,
+        invalidCount: invalidCount
+      )
+    }
 
     let context = PersistenceController.shared.primaryBGContext
-    await context.perform(schedule: .enqueued) {
-      let existingIDs = Set(fetchSeenPosts(for: Set(ids), in: context).compactMap(\.postID))
-      let missingIDs = Set(ids).subtracting(existingIDs)
-      guard !missingIDs.isEmpty else { return }
+    let insertedCount = await context.perform(schedule: .enqueued) {
+      let chunkSize = 400
+      var existingIDs = Set<String>()
+
+      for startIndex in stride(from: 0, to: validIDs.count, by: chunkSize) {
+        let endIndex = min(startIndex + chunkSize, validIDs.count)
+        let chunk = Set(validIDs[startIndex..<endIndex])
+        existingIDs.formUnion(fetchSeenPosts(for: chunk, in: context).compactMap(\.postID))
+      }
+
+      let missingIDs = validIDs.filter { !existingIDs.contains($0) }
+      guard !missingIDs.isEmpty else { return 0 }
 
       missingIDs.forEach { id in
         let newSeenPost = SeenPost(context: context)
         newSeenPost.postID = id
       }
       try? context.save()
+      return missingIDs.count
     }
+
+    return SeenPostImportResult(
+      rawCount: rawCount ?? rawIDs.count,
+      validUniqueCount: validIDs.count,
+      insertedCount: insertedCount,
+      alreadyPresentCount: validIDs.count - insertedCount,
+      invalidCount: invalidCount
+    )
+  }
+
+  @discardableResult
+  static func persistSeenPostIDs(_ ids: Set<String>) async -> SeenPostImportResult {
+    await importSeenPostIDs(Array(ids))
   }
   
   func toggleFilterSubreddit(_ subreddit: String) async -> Void {

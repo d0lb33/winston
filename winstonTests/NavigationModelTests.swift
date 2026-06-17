@@ -11,8 +11,74 @@
 //
 
 import Testing
+import Foundation
 import SwiftUI
 @testable import winston
+
+// MARK: - Apollo read history import
+
+struct ApolloReadHistoryImporterTests {
+  @Test("preferences plist parser extracts normalized unique read post IDs")
+  func preferencesParserExtractsNormalizedUniqueIDs() throws {
+    let data = try PropertyListSerialization.data(
+      fromPropertyList: [
+        "ReadPostIDs": [
+          " T3_ABC123 ",
+          "abc123",
+          "Bad-ID",
+          "",
+          "__1ReADO4",
+          "WIO7BO"
+        ]
+      ],
+      format: .binary,
+      options: 0
+    )
+
+    let result = try ApolloReadHistoryImporter.parseReadPostIDs(fromPreferencesData: data)
+
+    #expect(result.rawCount == 6)
+    #expect(result.postIDs == ["abc123", "1reado4", "wio7bo"])
+    #expect(result.validUniqueCount == 3)
+    #expect(result.invalidCount == 2)
+  }
+
+  @Test("preferences plist parser reports missing ReadPostIDs")
+  func preferencesParserReportsMissingReadPostIDs() throws {
+    let data = try PropertyListSerialization.data(
+      fromPropertyList: ["OtherKey": true],
+      format: .binary,
+      options: 0
+    )
+
+    do {
+      _ = try ApolloReadHistoryImporter.parseReadPostIDs(fromPreferencesData: data)
+      Issue.record("Expected missingReadPostIDs")
+    } catch ApolloReadHistoryImportError.missingReadPostIDs {
+      #expect(true)
+    } catch {
+      Issue.record("Expected missingReadPostIDs, got \(error)")
+    }
+  }
+
+  @Test("preferences plist parser reports non-string ReadPostIDs")
+  func preferencesParserReportsInvalidReadPostIDs() throws {
+    let data = try PropertyListSerialization.data(
+      fromPropertyList: ["ReadPostIDs": [1, 2, 3]],
+      format: .binary,
+      options: 0
+    )
+
+    do {
+      _ = try ApolloReadHistoryImporter.parseReadPostIDs(fromPreferencesData: data)
+      Issue.record("Expected invalidReadPostIDs")
+    } catch ApolloReadHistoryImportError.invalidReadPostIDs {
+      #expect(true)
+    } catch {
+      Issue.record("Expected invalidReadPostIDs, got \(error)")
+    }
+  }
+}
 
 // MARK: - PostsNav (three-column: communities | feed | post+comments)
 
@@ -278,6 +344,17 @@ struct TabInteractionCenterTests {
     let center = TabInteractionCenter()
     center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
     center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .scrollToTop)
+  }
+
+  @Test("missing active owner requests scroll instead of back")
+  func missingActiveOwnerRequestsScrollInsteadOfBack() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
+    center.deactivateScrollOwner("posts.detail.p1", for: .posts)
 
     center.selectedTabTappedAgain(.posts)
 
