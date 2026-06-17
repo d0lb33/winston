@@ -13,6 +13,12 @@ enum MultiViewType: Hashable {
   case info(Multi)
 }
 
+enum FeedPaginationCompletion {
+  static func reachedEnd(nextAfter: String?, cancelled: Bool) -> Bool {
+    !cancelled && nextAfter == nil
+  }
+}
+
 struct MultiPostsView: View {
   @ObservedObject var multi: Multi
   @State private var loading = true
@@ -101,21 +107,32 @@ struct MultiPostsView: View {
     //      await multi.refreshSubreddit()
     //    }
     if posts.data.count > 0 && lastPostAfter == nil && !force {
+      loading = false
       return
     }
-    if let result = await multi.fetchPosts(sort: sort, after: loadMore ? lastPostAfter : nil, contentWidth: contentWidth), let newPosts = result.0 {
-      withAnimation {
-        if loadMore {
-          posts.data.append(contentsOf: newPosts)
-        } else {
-          posts.data = newPosts
-        }
-        loading = false
-        lastPostAfter = result.1
-        reachedEndOfFeed = newPosts.count == 0
-      }
-      RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
+
+    let result = await multi.fetchPosts(sort: sort, after: loadMore ? lastPostAfter : nil, contentWidth: contentWidth)
+    guard !Task.isCancelled else {
+      loading = false
+      return
     }
+
+    guard let result, let newPosts = result.0 else {
+      loading = false
+      return
+    }
+
+    withAnimation {
+      if loadMore {
+        posts.data.append(contentsOf: newPosts)
+      } else {
+        posts.data = newPosts
+      }
+      loading = false
+      lastPostAfter = result.1
+      reachedEndOfFeed = FeedPaginationCompletion.reachedEnd(nextAfter: result.1, cancelled: Task.isCancelled)
+    }
+    RedditWire.shared.applyAvatars(toPosts: newPosts, avatarSize: selectedTheme.postLinks.theme.badge.avatar.size)
   }
   
   func fetch(loadMore: Bool = false, _ searchText: String? = nil, forceRefresh: Bool = false) {

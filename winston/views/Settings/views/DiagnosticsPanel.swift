@@ -23,6 +23,7 @@ struct DiagnosticsPanel: View {
   @State private var showClearRenderingReportsAlert = false
   @State private var showResetGraphQLAlert = false
   @AppStorage(RenderDiagnostics.defaultsKey) private var printRenderChanges = false
+  @AppStorage(FeedMediaDiagnostics.disableAuroraFeedMediaKey) private var disableAuroraFeedMedia = false
 
   var body: some View {
     SettingsPanelScrollRoot(topID: "settings-diagnostics-top") {
@@ -34,6 +35,7 @@ struct DiagnosticsPanel: View {
         DiagnosticRow(label: "Accounts", value: "\(wire.accounts.count)")
         DiagnosticRow(label: "Rendering Reports", value: "\(renderingReports.reportCount)")
         Toggle("Debug HUD", isOn: $diagnostics.overlayEnabled)
+        Toggle("Disable Aurora Feed Media", isOn: $disableAuroraFeedMedia)
         #if DEBUG
         Toggle("Log SwiftUI Render Causes", isOn: $printRenderChanges)
         #endif

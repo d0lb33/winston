@@ -100,6 +100,10 @@ enum RenderDiagnostics {
   }
 }
 
+enum FeedMediaDiagnostics {
+  static let disableAuroraFeedMediaKey = "diagnostics.disableAuroraFeedMedia"
+}
+
 /// Counts dropped-frame hitches via CADisplayLink and exposes a rolling
 /// hitches-per-minute figure for the Debug HUD. Only runs while the HUD is
 /// visible — it costs a display-link callback per frame.

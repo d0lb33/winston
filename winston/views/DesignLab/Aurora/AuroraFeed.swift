@@ -171,7 +171,7 @@ struct AuroraFeed: View {
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {
-    if model.loading {
+    if model.phase == .idle || model.loading {
       ProgressView()
     } else if model.failed {
       ContentUnavailableView {
@@ -181,8 +181,10 @@ struct AuroraFeed: View {
       }
     } else if hasLoadedPosts {
       ContentUnavailableView("No unread posts", systemImage: "eye.slash")
-    } else {
+    } else if model.phase == .empty {
       ContentUnavailableView("No posts", systemImage: "tray")
+    } else {
+      ProgressView()
     }
   }
 

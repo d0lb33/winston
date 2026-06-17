@@ -237,3 +237,107 @@ struct StackNavTests {
     guard case .reddit(.user) = nav.path[1] else { Issue.record("expected user second"); return }
   }
 }
+
+// MARK: - AuroraFeedModel
+
+@MainActor
+struct AuroraFeedModelTests {
+  @Test("cancelled initial load stays non-terminal")
+  func cancelledInitialLoadStaysNonTerminal() async {
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "FacebookAIslop"),
+      pageLoader: { _, _, _, _, _ in .cancelled }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+
+    #expect(model.posts.isEmpty)
+    #expect(model.phase == .idle)
+    #expect(!model.reachedEnd)
+  }
+
+  @Test("stale generation result is ignored")
+  func staleGenerationResultIsIgnored() async {
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "first"),
+      pageLoader: { _, _, _, _, _ in
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        return .success(posts: [Post(id: "late")], after: nil)
+      }
+    )
+
+    let task = Task { @MainActor in
+      await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+    }
+    while model.phase != .loading {
+      await Task.yield()
+    }
+
+    model.prepare(for: Subreddit(id: "second"))
+    await task.value
+
+    #expect(model.feedIdentity == "second")
+    #expect(model.posts.isEmpty)
+    #expect(model.phase == .idle)
+  }
+
+  @Test("real empty initial load enters empty phase")
+  func realEmptyInitialLoadEntersEmptyPhase() async {
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "empty"),
+      pageLoader: { _, _, _, _, _ in .success(posts: [], after: nil) }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+
+    #expect(model.posts.isEmpty)
+    #expect(model.phase == .empty)
+    #expect(model.reachedEnd)
+  }
+
+  @Test("non-empty initial load applies posts")
+  func nonEmptyInitialLoadAppliesPosts() async {
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "swift"),
+      pageLoader: { _, _, _, _, _ in .success(posts: [Post(id: "p1")], after: "next") }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+
+    #expect(model.posts.map(\.id) == ["p1"])
+    #expect(model.visiblePosts.map(\.id) == ["p1"])
+    #expect(model.phase == .loaded)
+    #expect(!model.reachedEnd)
+  }
+
+  @Test("metadata refresh does not change stable feed identity")
+  func metadataRefreshDoesNotChangeStableFeedIdentity() {
+    let subreddit = Subreddit(id: "FacebookAIslop")
+    let model = AuroraFeedModel(subreddit: subreddit)
+    let identity = model.feedIdentity
+
+    var refreshed = SubredditData(id: "bm3ek2")
+    refreshed.name = "t5_bm3ek2"
+    refreshed.display_name = "FacebookAIslop"
+    refreshed.display_name_prefixed = "r/FacebookAIslop"
+    subreddit.data = refreshed
+
+    #expect(subreddit.id == "bm3ek2")
+    #expect(model.feedIdentity == identity)
+  }
+}
+
+// MARK: - FeedPaginationCompletion
+
+struct FeedPaginationCompletionTests {
+  @Test("cancelled multi-feed load does not reach end")
+  func cancelledLoadDoesNotReachEnd() {
+    #expect(!FeedPaginationCompletion.reachedEnd(nextAfter: nil, cancelled: true))
+  }
+
+  @Test("nil cursor reaches end only after a non-cancelled load")
+  func nilCursorReachesEndAfterNonCancelledLoad() {
+    #expect(FeedPaginationCompletion.reachedEnd(nextAfter: nil, cancelled: false))
+    #expect(!FeedPaginationCompletion.reachedEnd(nextAfter: "next", cancelled: false))
+  }
+}

@@ -622,6 +622,7 @@ private struct AuroraPostCardSurface: View {
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.auroraCardSettings) private var cardSettings
+  @AppStorage(FeedMediaDiagnostics.disableAuroraFeedMediaKey) private var disableFeedMedia = false
 
   /// Media is sized from the row-owned card width. The card never measures itself,
   /// so media cannot feed back into the width used to lay out the row.
@@ -794,6 +795,7 @@ private struct AuroraPostCardSurface: View {
   }
 
   private var hasDisplayMedia: Bool {
+    guard !disableFeedMedia else { return false }
     guard let media = winstonData.extractedMediaForcedNormal else { return false }
     if case .link = media { return false }
     return true
@@ -801,7 +803,9 @@ private struct AuroraPostCardSurface: View {
 
   @ViewBuilder
   private func mediaBlock(_ data: PostData) -> some View {
-    if let media = winstonData.extractedMediaForcedNormal {
+    if disableFeedMedia {
+      EmptyView()
+    } else if let media = winstonData.extractedMediaForcedNormal {
       if case .repost(let repost) = media {
         AuroraCrosspostCard(
           repost: repost,
