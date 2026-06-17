@@ -11,6 +11,49 @@
 import SwiftUI
 import Defaults
 
+@MainActor
+private final class AuroraReadOnScrollTracker {
+  private var previousScrollOffsetY: CGFloat?
+  private var latestMaxYByID: [String: CGFloat] = [:]
+  private var previousMaxYByID: [String: CGFloat] = [:]
+  private var isScrollingDown = false
+
+  func updateMaxY(_ maxY: CGFloat, for postID: String) {
+    latestMaxYByID[postID] = maxY
+  }
+
+  func remove(postID: String) {
+    latestMaxYByID.removeValue(forKey: postID)
+    previousMaxYByID.removeValue(forKey: postID)
+  }
+
+  func markIfDisappearedPastTop(_ post: Post, readOnScroll: Bool) {
+    guard readOnScroll, isScrollingDown, FeedScrollWorkCoordinator.shared.isScrolling else { return }
+    FeedScrollWorkCoordinator.shared.markSeenWhenIdle(post)
+  }
+
+  func markCrossedPostsIfNeeded(offsetY: CGFloat, visiblePosts: [Post], readOnScroll: Bool) {
+    let scrollingDown = previousScrollOffsetY.map { offsetY > $0 } ?? false
+    isScrollingDown = scrollingDown
+    defer {
+      previousScrollOffsetY = offsetY
+      previousMaxYByID = latestMaxYByID
+    }
+
+    guard readOnScroll, scrollingDown else { return }
+
+    let crossedIDs: Set<String> = Set(latestMaxYByID.compactMap { id, maxY in
+      guard let previousMaxY = previousMaxYByID[id] else { return nil }
+      return previousMaxY > 0 && maxY <= 0 ? id : nil
+    })
+    guard !crossedIDs.isEmpty else { return }
+
+    visiblePosts
+      .filter { crossedIDs.contains($0.id) }
+      .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
+  }
+}
+
 struct AuroraFeed: View {
   private static let topID = "aurora-feed-top"
 
@@ -28,9 +71,7 @@ struct AuroraFeed: View {
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
 
-  @State private var previousScrollOffsetY: CGFloat?
-  @State private var latestReadCandidateMaxYByID: [String: CGFloat] = [:]
-  @State private var previousReadCandidateMaxYByID: [String: CGFloat] = [:]
+  @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
 
   init(
     model: AuroraFeedModel,
@@ -71,7 +112,7 @@ struct AuroraFeed: View {
         request: tabInteractionRequest,
         selection: $selectedPostID,
         onOffsetChange: { offsetY in
-          markReadCandidatesIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
+          readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
         }
       ) {
           if let community {
@@ -89,10 +130,7 @@ struct AuroraFeed: View {
                     .onGeometryChange(for: CGFloat.self) { proxy in
                       proxy.frame(in: .named("auroraFeed")).maxY
                     } action: { maxY in
-                      latestReadCandidateMaxYByID[post.id] = maxY
-                    }
-                    .onDisappear {
-                      latestReadCandidateMaxYByID.removeValue(forKey: post.id)
+                      readOnScrollTracker.updateMaxY(maxY, for: post.id)
                     }
                 }
               }
@@ -117,6 +155,10 @@ struct AuroraFeed: View {
                     await model.loadMore(sort: sort, contentWidth: contentWidth)
                   }
                 }
+              }
+              .onDisappear {
+                readOnScrollTracker.markIfDisappearedPastTop(post, readOnScroll: cardSettings.readOnScroll)
+                readOnScrollTracker.remove(postID: post.id)
               }
           }
           // Isolated so a pagination `loading` toggle re-renders ONLY this footer, not
@@ -149,25 +191,6 @@ struct AuroraFeed: View {
       Task { @MainActor in await model.reload(sort: newSort, contentWidth: contentWidth) }
     }
     .toolbar { sortToolbar }
-  }
-
-  private func markReadCandidatesIfNeeded(offsetY: CGFloat, visiblePosts: [Post], readOnScroll: Bool) {
-    defer {
-      previousScrollOffsetY = offsetY
-      previousReadCandidateMaxYByID = latestReadCandidateMaxYByID
-    }
-
-    guard readOnScroll, let previousScrollOffsetY, offsetY > previousScrollOffsetY else { return }
-
-    let crossedIDs: Set<String> = Set(latestReadCandidateMaxYByID.compactMap { id, maxY in
-      guard let previousMaxY = previousReadCandidateMaxYByID[id] else { return nil }
-      return previousMaxY > 0 && maxY <= 0 ? id : nil
-    })
-    guard !crossedIDs.isEmpty else { return }
-
-    visiblePosts
-      .filter { crossedIDs.contains($0.id) }
-      .forEach { FeedScrollWorkCoordinator.shared.markSeenWhenIdle($0) }
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {

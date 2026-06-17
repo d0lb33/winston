@@ -102,6 +102,10 @@ enum RenderDiagnostics {
 
 enum FeedMediaDiagnostics {
   static let disableAuroraFeedMediaKey = "diagnostics.disableAuroraFeedMedia"
+
+  static var isAuroraFeedMediaDisabled: Bool {
+    UserDefaults.standard.bool(forKey: disableAuroraFeedMediaKey)
+  }
 }
 
 /// Counts dropped-frame hitches via CADisplayLink and exposes a rolling

@@ -94,66 +94,72 @@ extension Post {
       if self.winstonData == nil { self.winstonData = .init() }
 
       self.winstonData?.permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
-      
-      var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
-      var extractedMediaForcedNormal = compact ? mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme) : extractedMedia
-      if AppDiagnostics.isEnabled(.debug, category: "ui.media.setup") {
-        AppDiagnostics.asyncRecord(
-          .debug,
-          category: "ui.media.setup",
-          message: "Post media setup extracted",
-          metadata: [
-            "post": data.name,
-            "title": data.title,
-            "subreddit": data.subreddit,
-            "compact": "\(compact)",
-            "contentWidth": "\(contentWidth)",
-            "media": Post.diagnosticsMediaKind(extractedMedia),
-            "forcedNormalMedia": Post.diagnosticsMediaKind(extractedMediaForcedNormal),
-            "postHint": data.post_hint ?? "nil",
-            "domain": data.domain,
-            "url": data.url
-          ]
-        )
-      }
-      
-      switch extractedMedia {
-      case .streamable(let streamable):
-        if let streamableCached = Caches.streamable.get(key: streamable.shortCode) {
-          let sharedVideo = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
-          
-          extractedMedia = .video(sharedVideo)
-          extractedMediaForcedNormal = .video(sharedVideo)
-        } else {
-          let shortCode = streamable.shortCode
-          Task { @MainActor in
-            if let streamableCached = await Self.loadStreamableMedia(shortCode: shortCode) {
-              Caches.streamable.addKeyValue(key: shortCode, data: { streamableCached }, expires: Date().dateByAdding(1, .day).date)
 
-              let video = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
-              var transaction = Transaction()
-              transaction.disablesAnimations = true
-              withTransaction(transaction) {
-                self.winstonData?.extractedMedia = .video(video)
-                self.winstonData?.extractedMediaForcedNormal = .video(video)
+      if FeedMediaDiagnostics.isAuroraFeedMediaDisabled {
+        self.winstonData?.extractedMedia = nil
+        self.winstonData?.extractedMediaForcedNormal = nil
+        self.winstonData?.postDimensions = .zero
+        self.winstonData?.postDimensionsForcedNormal = .zero
+      } else {
+        var extractedMedia = mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
+        var extractedMediaForcedNormal = compact ? mediaExtractor(compact: false, contentWidth: contentWidth, data, theme: theme) : extractedMedia
+        if AppDiagnostics.isEnabled(.debug, category: "ui.media.setup") {
+          AppDiagnostics.asyncRecord(
+            .debug,
+            category: "ui.media.setup",
+            message: "Post media setup extracted",
+            metadata: [
+              "post": data.name,
+              "title": data.title,
+              "subreddit": data.subreddit,
+              "compact": "\(compact)",
+              "contentWidth": "\(contentWidth)",
+              "media": Post.diagnosticsMediaKind(extractedMedia),
+              "forcedNormalMedia": Post.diagnosticsMediaKind(extractedMediaForcedNormal),
+              "postHint": data.post_hint ?? "nil",
+              "domain": data.domain,
+              "url": data.url
+            ]
+          )
+        }
 
-                self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
-                self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+        switch extractedMedia {
+        case .streamable(let streamable):
+          if let streamableCached = Caches.streamable.get(key: streamable.shortCode) {
+            let sharedVideo = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
+
+            extractedMedia = .video(sharedVideo)
+            extractedMediaForcedNormal = .video(sharedVideo)
+          } else {
+            let shortCode = streamable.shortCode
+            Task { @MainActor in
+              if let streamableCached = await Self.loadStreamableMedia(shortCode: shortCode) {
+                Caches.streamable.addKeyValue(key: shortCode, data: { streamableCached }, expires: Date().dateByAdding(1, .day).date)
+
+                let video = SharedVideo.get(url: streamableCached.url, size: streamableCached.size, downloadURL: streamableCached.url)
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                  self.winstonData?.extractedMedia = .video(video)
+                  self.winstonData?.extractedMediaForcedNormal = .video(video)
+
+                  self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+                  self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
+                }
               }
             }
           }
+        default:
+          break
         }
-      default:
-        break
+
+        self.winstonData?.extractedMedia = extractedMedia
+        self.winstonData?.extractedMediaForcedNormal = extractedMediaForcedNormal
+
+        self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
+        self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
       }
-      
-      self.winstonData?.extractedMedia = extractedMedia
-      self.winstonData?.extractedMediaForcedNormal = extractedMediaForcedNormal
-      
-      
-      self.winstonData?.postDimensions = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, subId: feedStyleKey)
-      self.winstonData?.postDimensionsForcedNormal = getPostDimensions(post: self, winstonData: self.winstonData, columnWidth: contentWidth, secondary: secondary, rawTheme: theme, compact: false)
-      
+
       self.winstonData?.titleAttr = createTitleTagsAttrString(titleTheme: theme.postLinks.theme.titleText, postData: data, textColor: theme.postLinks.theme.titleText.color.uiColor())
       
       let hydratedSubredditData = SubredditMetadataRegistry.shared.data(forName: data.subreddit, id: data.subreddit_id)
