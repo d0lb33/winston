@@ -407,6 +407,9 @@ final class InlineVideoCoordinator {
   private(set) var activeSurface: InlineVideoSurfaceSnapshot?
   /// Non-nil while fullscreen owns the active player's visual surface.
   private(set) var fullscreenVideoKey: String?
+  /// Bumped when passive row registrations change. The registrations dictionary is ignored
+  /// for observation because it can hold player resources, so the host observes this token.
+  private(set) var registrationGeneration = 0
 
   /// Nearby inline videos allowed to mount a paused AVPlayer so their first frame can
   /// be ready before they become centered. This stays tiny and is cleared on fast scroll.
@@ -425,6 +428,7 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var latestVisibilities: [InlineVideoVisibility] = []
   @ObservationIgnored private var latestVisibilityByKey: [String: InlineVideoVisibility] = [:]
   @ObservationIgnored var viewportHeight: CGFloat = 1
+  @ObservationIgnored var viewportFrameGlobal: CGRect = .zero
   @ObservationIgnored private var lastScrollOffsetY: CGFloat?
   @ObservationIgnored private var lastScrollOffsetTimestamp: TimeInterval?
   @ObservationIgnored private var lastScrollDeltaY: CGFloat = 0
@@ -459,17 +463,21 @@ final class InlineVideoCoordinator {
     smallNSFWIcon: Bool,
     cornerRadius: CGFloat
   ) {
-    registeredVideos[key] = InlineVideoRegistration(
+    let nextRegistration = InlineVideoRegistration(
       sharedVideo: sharedVideo,
       blurNSFW: blurNSFW,
       smallNSFWIcon: smallNSFWIcon,
       cornerRadius: cornerRadius
     )
+    guard registeredVideos[key] != nextRegistration else { return }
+    registeredVideos[key] = nextRegistration
+    registrationGeneration += 1
   }
 
   func unregisterVideo(for key: String, sharedVideo: SharedVideo) {
     guard registeredVideos[key]?.sharedVideo === sharedVideo else { return }
     registeredVideos.removeValue(forKey: key)
+    registrationGeneration += 1
     if activeVideoKey == key {
       setActive(nil)
     }
@@ -609,7 +617,7 @@ final class InlineVideoCoordinator {
   /// Pick the sufficiently visible video nearest the viewport center and make it active.
   /// Called when the feed settles, or while slow scrolling.
   func electCenteredVideo(updateWarmSet: Bool = true) {
-    let center = viewportHeight / 2
+    let center = viewportFrameGlobal == .zero ? viewportHeight / 2 : viewportFrameGlobal.midY
     let nearest = latestVisibilities
       .filter { $0.visibleFraction >= playVisibleThreshold }
       .min(by: { abs($0.midY - center) < abs($1.midY - center) })?.key
@@ -640,7 +648,7 @@ final class InlineVideoCoordinator {
       return
     }
 
-    let center = viewportHeight / 2
+    let center = viewportFrameGlobal == .zero ? viewportHeight / 2 : viewportFrameGlobal.midY
     let ahead = movingTowardLaterPosts
       ? latestVisibilities.filter { $0.midY >= center && $0.key != activeVideoKey }
       : Array(latestVisibilities.filter { $0.midY <= center && $0.key != activeVideoKey }.reversed())
@@ -770,6 +778,8 @@ struct InlineVideoVisibility: Equatable {
   let minY: CGFloat
   let maxY: CGFloat
   let viewportHeight: CGFloat
+  let viewportMinY: CGFloat
+  let viewportMaxY: CGFloat
   let visibleFraction: CGFloat
 
   var width: CGFloat {
@@ -790,7 +800,9 @@ struct InlineVideoVisibility: Equatable {
 
   func normalized(viewportHeight: CGFloat) -> InlineVideoVisibility {
     let rowHeight = max(maxY - minY, 1)
-    let visibleHeight = max(0, min(maxY, viewportHeight) - max(minY, 0))
+    let viewportMinY = viewportMinY
+    let viewportMaxY = viewportMaxY > viewportMinY ? viewportMaxY : viewportHeight
+    let visibleHeight = max(0, min(maxY, viewportMaxY) - max(minY, viewportMinY))
     let fraction = min(1, max(0, visibleHeight / rowHeight))
     return InlineVideoVisibility(
       key: key,
@@ -799,6 +811,8 @@ struct InlineVideoVisibility: Equatable {
       minY: minY,
       maxY: maxY,
       viewportHeight: viewportHeight,
+      viewportMinY: viewportMinY,
+      viewportMaxY: viewportMaxY,
       visibleFraction: fraction
     )
   }
@@ -827,11 +841,28 @@ struct InlineVideoSurfaceSnapshot: Equatable {
   }
 }
 
-struct InlineVideoRegistration {
+struct InlineVideoRegistration: Equatable {
   let sharedVideo: SharedVideo
   let blurNSFW: Bool
   let smallNSFWIcon: Bool
   let cornerRadius: CGFloat
+
+  static func == (lhs: InlineVideoRegistration, rhs: InlineVideoRegistration) -> Bool {
+    lhs.sharedVideo === rhs.sharedVideo &&
+      lhs.blurNSFW == rhs.blurNSFW &&
+      lhs.smallNSFWIcon == rhs.smallNSFWIcon &&
+      lhs.cornerRadius == rhs.cornerRadius
+  }
+}
+
+private struct InlineVideoFrameSnapshot: Equatable {
+  let minX: CGFloat
+  let maxX: CGFloat
+  let minY: CGFloat
+  let maxY: CGFloat
+  let viewportMinY: CGFloat
+  let viewportMaxY: CGFloat
+  let viewportHeight: CGFloat
 }
 
 /// Reports a row's vertical visibility so the feed can elect and pause inline video.
@@ -844,21 +875,33 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
   func body(content: Content) -> some View {
     if enabled {
       content
-        .onGeometryChange(for: InlineVideoVisibility?.self) { geo in
-          let viewportHeight = InlineVideoCoordinator.shared.viewportHeight
-          guard viewportHeight > 1 else { return nil }
-          let frame = geo.frame(in: .named(coordinateSpace))
-          return InlineVideoVisibility(
+        .onGeometryChange(for: InlineVideoFrameSnapshot.self) { geo in
+          let frame = geo.frame(in: .global)
+          let viewport = InlineVideoCoordinator.shared.viewportFrameGlobal
+          let viewportHeight = max(viewport.height, InlineVideoCoordinator.shared.viewportHeight)
+          return InlineVideoFrameSnapshot(
+            minX: frame.minX,
+            maxX: frame.maxX,
+            minY: frame.minY,
+            maxY: frame.maxY,
+            viewportMinY: viewport.minY,
+            viewportMaxY: viewport.maxY,
+            viewportHeight: viewportHeight
+          )
+        } action: { frame in
+          let viewportHeight = frame.viewportHeight
+          guard viewportHeight > 1 else { return }
+          let visibility = InlineVideoVisibility(
             key: key,
             minX: frame.minX,
             maxX: frame.maxX,
             minY: frame.minY,
             maxY: frame.maxY,
             viewportHeight: viewportHeight,
+            viewportMinY: frame.viewportMinY,
+            viewportMaxY: frame.viewportMaxY,
             visibleFraction: 0
           ).normalized(viewportHeight: viewportHeight)
-        } action: { visibility in
-          guard let visibility else { return }
           InlineVideoCoordinator.shared.updateVisibility(visibility)
         }
         .onDisappear {
@@ -867,6 +910,17 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
     } else {
       content
     }
+  }
+}
+
+private struct InlineVideoCoordinateSpaceKey: EnvironmentKey {
+  static let defaultValue: String? = nil
+}
+
+extension EnvironmentValues {
+  var inlineVideoCoordinateSpace: String? {
+    get { self[InlineVideoCoordinateSpaceKey.self] }
+    set { self[InlineVideoCoordinateSpaceKey.self] = newValue }
   }
 }
 
@@ -894,7 +948,16 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
   func body(content: Content) -> some View {
     content
       .environment(\.deferMediaWorkWhileScrolling, true)
+      .environment(\.inlineVideoCoordinateSpace, coordinateSpace)
       .coordinateSpace(.named(coordinateSpace))
+      .onGeometryChange(for: CGRect.self) { geometry in
+        geometry.frame(in: .global)
+      } action: { _, frame in
+        InlineVideoCoordinator.shared.viewportFrameGlobal = frame
+        if frame.height > 0 {
+          InlineVideoCoordinator.shared.viewportHeight = frame.height
+        }
+      }
       .overlay(alignment: .topLeading) {
         InlinePlaybackHost()
       }
@@ -1008,6 +1071,7 @@ private struct InlinePlaybackHost: View {
   private let coordinator = InlineVideoCoordinator.shared
 
   var body: some View {
+    let _ = coordinator.registrationGeneration
     if videoDefSettings.autoPlay,
        coordinator.fullscreenVideoKey == nil,
        let surface = coordinator.activeSurface,
@@ -1018,6 +1082,18 @@ private struct InlinePlaybackHost: View {
         muted: videoDefSettings.mute,
         loop: videoDefSettings.loop,
         autoplay: videoDefSettings.autoPlay
+      )
+      .id(
+        [
+          surface.key,
+          registration.sharedVideo.url.absoluteString,
+          registration.sharedVideo.downloadURL?.absoluteString ?? "",
+          registration.sharedVideo.posterURL?.absoluteString ?? "",
+          "\(registration.sharedVideo.size.width)x\(registration.sharedVideo.size.height)",
+          "\(videoDefSettings.mute)",
+          "\(videoDefSettings.loop)",
+          "\(videoDefSettings.autoPlay)"
+        ].joined(separator: "|")
       )
     }
   }
@@ -1030,6 +1106,7 @@ private struct InlinePlaybackLayerContainer: View {
   let loop: Bool
   let autoplay: Bool
   @State private var player: AVPlayer?
+  @State private var readyForDisplay = false
 
   private var sharedVideo: SharedVideo {
     registration.sharedVideo
@@ -1049,43 +1126,52 @@ private struct InlinePlaybackLayerContainer: View {
   }
 
   var body: some View {
-    Group {
-      if let player {
-        InlineAVPlayerLayerRepresentable(
-          player: player,
-          videoGravity: .resizeAspectFill,
-          onReadyForDisplay: {
-            InlineVideoCoordinator.shared.recordFirstFrameReady(key: surface.key, sharedVideo: sharedVideo)
-          }
-        )
-      } else {
-        Color.clear
+    GeometryReader { proxy in
+      let overlayFrame = proxy.frame(in: .global)
+      let localMidX = surface.midX - overlayFrame.minX
+      let localMidY = surface.midY - overlayFrame.minY
+
+      Group {
+        if let player {
+          InlineAVPlayerLayerRepresentable(
+            player: player,
+            videoGravity: .resizeAspectFill,
+            onReadyForDisplay: {
+              readyForDisplay = true
+              InlineVideoCoordinator.shared.recordFirstFrameReady(key: surface.key, sharedVideo: sharedVideo)
+            }
+          )
+        } else {
+          Color.clear
+        }
       }
-    }
-    .frame(width: surface.width, height: surface.height)
-    .mask(RR(registration.cornerRadius, Color.black))
-    .nsfw(
-      registration.blurNSFW,
-      smallIcon: registration.smallNSFWIcon,
-      size: CGSize(width: surface.width, height: surface.height)
-    )
-    .position(x: surface.midX, y: surface.midY)
-    .allowsHitTesting(false)
-    .clipped()
-    .task(id: attachmentID) {
-      player = InlinePlaybackResourceController.shared.attach(
-        key: surface.key,
-        video: sharedVideo,
-        muted: muted,
-        loop: loop,
-        autoplay: autoplay
+      .frame(width: surface.width, height: surface.height)
+      .mask(RR(registration.cornerRadius, Color.black))
+      .opacity(readyForDisplay ? 1 : 0)
+      .nsfw(
+        registration.blurNSFW,
+        smallIcon: registration.smallNSFWIcon,
+        size: CGSize(width: surface.width, height: surface.height)
       )
-    }
-    .onDisappear {
-      InlinePlaybackResourceController.shared.detach(
-        key: surface.key,
-        preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == surface.key
-      )
+      .position(x: localMidX, y: localMidY)
+      .allowsHitTesting(false)
+      .clipped()
+      .task(id: attachmentID) {
+        readyForDisplay = false
+        player = InlinePlaybackResourceController.shared.attach(
+          key: surface.key,
+          video: sharedVideo,
+          muted: muted,
+          loop: loop,
+          autoplay: autoplay
+        )
+      }
+      .onDisappear {
+        InlinePlaybackResourceController.shared.detach(
+          key: surface.key,
+          preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == surface.key
+        )
+      }
     }
   }
 }

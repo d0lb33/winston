@@ -835,7 +835,6 @@ private struct AuroraPostCardSurface: View {
           resetVideo: nil
         )
         .equatable()
-        .trackInlineVideoCenter(key: inlineVideoFeedKey, coordinateSpace: "auroraFeed", enabled: media.isInlineVideo)
       }
     }
   }

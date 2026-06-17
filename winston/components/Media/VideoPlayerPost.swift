@@ -147,6 +147,7 @@ struct VideoPlayerPost: View, Equatable {
   @State private var playerReadyForDisplay = false
   @Default(.VideoDefSettings) private var videoDefSettings
   @Environment(\.scenePhase) private var scenePhase
+  @Environment(\.inlineVideoCoordinateSpace) private var inlineVideoCoordinateSpace
   @Namespace private var videoNS
 
   private var autoPlayVideos: Bool { videoDefSettings.autoPlay }
@@ -231,6 +232,11 @@ struct VideoPlayerPost: View, Equatable {
         .frame(width: videoSize.width, height: videoSize.height)
         .mask(RR(12, Color.black))
         .contentShape(Rectangle())
+        .trackInlineVideoCenter(
+          key: feedItemKey ?? "",
+          coordinateSpace: inlineVideoCoordinateSpace ?? "",
+          enabled: feedItemKey != nil && inlineVideoCoordinateSpace != nil
+        )
         .matchedTransitionSource(id: "video", in: videoNS)
         .onTapGesture {
           openFullscreen(sharedVideo, branch: "controller")
@@ -271,6 +277,11 @@ struct VideoPlayerPost: View, Equatable {
           playOverlay()
         }
         .contentShape(Rectangle())
+        .trackInlineVideoCenter(
+          key: feedItemKey ?? "",
+          coordinateSpace: inlineVideoCoordinateSpace ?? "",
+          enabled: feedItemKey != nil && inlineVideoCoordinateSpace != nil
+        )
         .matchedTransitionSource(id: "video", in: videoNS)
         .onTapGesture {
           openFullscreen(sharedVideo, branch: "swiftuiVideoPlayer")

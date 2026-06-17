@@ -132,19 +132,38 @@ final class MediaDescriptorCache {
     theme: WinstonTheme,
     variant: String
   ) -> String {
-    [
+    let postLinkSettings = Defaults[.PostLinkDefSettings]
+    let galleryIDs = data.gallery_data?.items?.map(\.media_id).joined(separator: ",") ?? "nil"
+    let mediaMetadataKeys = data.media_metadata?.keys.sorted().joined(separator: ",") ?? "nil"
+    let previewImageURL = data.preview?.images?.first?.source?.url ?? "nil"
+    let mediaVideoHLSURL = data.media?.reddit_video?.hls_url ?? "nil"
+    let mediaVideoFallbackURL = data.media?.reddit_video?.fallback_url ?? "nil"
+    let previewVideoHLSURL = data.preview?.reddit_video_preview?.hls_url ?? "nil"
+    let previewVideoFallbackURL = data.preview?.reddit_video_preview?.fallback_url ?? "nil"
+    let crosspostName = data.crosspost_parent_list?.first?.name ?? "nil"
+
+    let parts: [String] = [
       data.name,
       variant,
       compact ? "compact" : "normal",
-      "\(Int(contentWidth.rounded()))",
+      String(format: "%.2f", contentWidth),
       "\(theme.postLinks.theme.innerPadding.horizontal)",
       "\(theme.postLinks.theme.outerHPadding)",
+      "\(postLinkSettings.compactMode.hashValue)",
       data.url,
+      data.domain,
       data.post_hint ?? "nil",
       "\(data.is_gallery ?? false)",
-      data.media?.reddit_video?.hls_url ?? "nil",
-      data.preview?.reddit_video_preview?.hls_url ?? "nil"
-    ].joined(separator: "|")
+      galleryIDs,
+      mediaMetadataKeys,
+      previewImageURL,
+      mediaVideoHLSURL,
+      mediaVideoFallbackURL,
+      previewVideoHLSURL,
+      previewVideoFallbackURL,
+      crosspostName
+    ]
+    return parts.joined(separator: "|")
   }
 
   func dimensionsKey(
@@ -156,17 +175,26 @@ final class MediaDescriptorCache {
     subID: String?,
     variant: String
   ) -> String {
-    [
+    let postLinkSettings = Defaults[.PostLinkDefSettings]
+    let feedSettings = Defaults[.SubredditFeedDefSettings]
+    let feedStyleKey = subID ?? data.subreddit
+    let compactOverride = feedSettings.compactPerSubreddit[feedStyleKey].map { String($0) } ?? "nil"
+    let styleOverride = feedSettings.postStylePerSubreddit[feedStyleKey]?.rawValue ?? "nil"
+
+    let parts: [String] = [
       mediaKey(data: data, compact: compact, contentWidth: columnWidth, theme: theme, variant: variant),
       secondary ? "secondary" : "primary",
-      subID ?? data.subreddit,
-      "\(theme.postLinks.theme.titleText.size)",
-      "\(theme.postLinks.theme.bodyText.size)",
-      "\(theme.postLinks.theme.badge.avatar.size)",
-      "\(theme.postLinks.theme.verticalElementsSpacing)",
-      "\(theme.postLinks.theme.linespacing)",
-      "\(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage)"
-    ].joined(separator: "|")
+      feedStyleKey,
+      "\(theme.postLinks.theme.hashValue)",
+      "\(postLinkSettings.hashValue)",
+      compactOverride,
+      styleOverride,
+      "\(data.title.hashValue)",
+      "\(data.selftext.hashValue)",
+      "\(data.over_18 ?? false)",
+      "\(data.link_flair_text?.hashValue ?? 0)"
+    ]
+    return parts.joined(separator: "|")
   }
 }
 
