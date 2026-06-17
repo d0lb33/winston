@@ -503,6 +503,187 @@ struct AppNavBridgeTests {
   }
 }
 
+// MARK: - Navigation E2E scenarios
+
+@MainActor
+@Suite(.serialized)
+struct NavigationScenarioTests {
+  @Test("Posts journey: Popular feed scroll → post → subreddit/user pushes → same-tab root")
+  func postsPopularJourneyReturnsToFeedRootWithoutLosingContext() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+
+    let popularPost = Post(id: "popular-post-4")
+    appNav.posts.community = "popular"
+    appNav.posts.preferredColumn = .content
+    appNav.posts.feedScrollPositionID = "popular-post-8"
+    appNav.posts.selectedPostID = popularPost.id
+    appNav.posts.selectFeedPost(popularPost)
+
+    appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .detail)
+    appNav.posts.navigate(.reddit(.user(User(id: "alice"))), from: .detail)
+
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.selectedTab == .posts)
+    #expect(appNav.posts.community == "popular")
+    #expect(appNav.posts.feedScrollPositionID == "popular-post-8")
+    #expect(appNav.posts.selectedPostID == nil)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.preferredColumn == .content)
+    #expect(!appNav.canResetSelectedSurfaceToTabRoot)
+  }
+
+  @Test("Posts journey: community feed keeps subreddit root on same-tab reset")
+  func postsCommunityJourneyReturnsToCurrentSubredditRoot() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+
+    let swiftPost = Post(id: "swift-post-2")
+    appNav.posts.community = "swift"
+    appNav.posts.feedScrollPositionID = "swift-post-12"
+    appNav.posts.contentPath = [.reddit(.user(User(id: "source-profile")))]
+    appNav.posts.selectedPostID = swiftPost.id
+    appNav.posts.selectFeedPost(swiftPost)
+    appNav.posts.navigate(.reddit(.user(User(id: "post-author"))), from: .detail)
+
+    appNav.resetToTabRoot(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.feedScrollPositionID == "swift-post-12")
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.preferredColumn == .content)
+  }
+
+  @Test("Posts journey: selector root remains selector when no feed is selected")
+  func postsSelectorRootStaysSidebarWhenNoFeedIsSelected() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+
+    appNav.posts.community = nil
+    appNav.posts.preferredColumn = .detail
+    appNav.posts.openPostInDetail(Post(id: "deep-linked-post"))
+
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.posts.community == nil)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.preferredColumn == .sidebar)
+    #expect(!appNav.canResetSelectedSurfaceToTabRoot)
+  }
+
+  @Test("Same-tab root reset clears a deep tab in one atomic jump")
+  func sameTabRootResetDoesNotWalkBackOneRouteAtATime() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+
+    appNav.posts.community = "popular"
+    appNav.posts.contentPath = [.reddit(.subFeed(Subreddit(id: "swift")))]
+    appNav.posts.openPostInDetail(Post(id: "popular-post-1"))
+    appNav.posts.detailPath = [
+      .reddit(.user(User(id: "author"))),
+      .reddit(.subFeed(Subreddit(id: "ios")))
+    ]
+
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.preferredColumn == .content)
+
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.preferredColumn == .content)
+  }
+
+  @Test("Switching tabs preserves each tab stack until that tab is explicitly rooted")
+  func tabStacksAreIsolatedUntilTheirOwnRootReset() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+
+    appNav.posts.openPostInDetail(Post(id: "p-post"))
+    appNav.inbox.path = [.reddit(.post(Post(id: "inbox-post")))]
+    appNav.me.contentPath = [.reddit(.user(User(id: "me-push")))]
+    appNav.search.openPostInDetail(Post(id: "search-post"))
+    appNav.settings.select(.postSwipe)
+
+    appNav.selectedTab = .me
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.me.contentPath.isEmpty)
+    #expect(appNav.posts.detailPost != nil)
+    #expect(appNav.inbox.path.count == 1)
+    #expect(appNav.search.detailPost != nil)
+    #expect(appNav.settings.selection == .behavior)
+
+    appNav.selectedTab = .inbox
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.inbox.path.isEmpty)
+    #expect(appNav.posts.detailPost != nil)
+    #expect(appNav.search.detailPost != nil)
+    #expect(appNav.settings.selection == .behavior)
+  }
+
+  @Test("Search tab journey clears source and detail stacks at tab root")
+  func searchJourneyRootsToSearchSurface() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .search
+
+    appNav.search.contentPath = [.reddit(.subFeed(Subreddit(id: "swift")))]
+    appNav.search.openPostInDetail(Post(id: "search-result-post"), highlightID: "comment-1")
+    appNav.search.navigate(.reddit(.user(User(id: "comment-author"))), from: .detail)
+
+    appNav.resetSelectedSurfaceToTabRoot()
+
+    #expect(appNav.search.contentPath.isEmpty)
+    #expect(appNav.search.detailPath.isEmpty)
+    #expect(appNav.search.detailPost == nil)
+    #expect(appNav.search.detailHighlightID == nil)
+    #expect(appNav.search.preferredColumn == .sidebar)
+  }
+
+  @Test("Me, Inbox, and Settings each root to their expected tab surfaces")
+  func secondaryTabsRootToExpectedSurfaces() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+
+    appNav.selectedTab = .me
+    appNav.me.contentPath = [.reddit(.user(User(id: "nested-user")))]
+    appNav.me.openPostInDetail(Post(id: "profile-post"))
+    appNav.resetSelectedSurfaceToTabRoot()
+    #expect(appNav.me.contentPath.isEmpty)
+    #expect(appNav.me.detailPost == nil)
+    #expect(appNav.me.preferredColumn == .sidebar)
+
+    appNav.selectedTab = .inbox
+    appNav.inbox.path = [.reddit(.post(Post(id: "message-post"))), .reddit(.user(User(id: "sender")))]
+    appNav.resetSelectedSurfaceToTabRoot()
+    #expect(appNav.inbox.path.isEmpty)
+
+    appNav.selectedTab = .settings
+    appNav.settings.select(.commentSwipe)
+    appNav.settings.pushDetail(.reddit(.subFeed(Subreddit(id: "winstonapp"))))
+    appNav.resetSelectedSurfaceToTabRoot()
+    #expect(appNav.settings.selection == .general)
+    #expect(appNav.settings.detailPath.isEmpty)
+    #expect(appNav.settings.preferredColumn == .sidebar)
+  }
+}
+
 // MARK: - AuroraFeedModel
 
 @MainActor

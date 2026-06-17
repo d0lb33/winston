@@ -56,46 +56,42 @@ struct Tabber: View, Equatable {
       Tab("Posts", systemImage: "doc.text.image", value: AppNav.Tab.posts) {
         WithAccountOnly { SubredditsStack(nav: appNav.posts) }
           .id("posts-\(accountScopeKey)")
+          .tabRootResetToolbar(appNav: appNav, tab: .posts)
           .measureTabBar(tabBarMetrics)
       }
 
       Tab("Inbox", systemImage: "bell.fill", value: AppNav.Tab.inbox) {
         WithAccountOnly { Inbox(nav: appNav.inbox) }
           .id("inbox-\(accountScopeKey)")
+          .tabRootResetToolbar(appNav: appNav, tab: .inbox)
           .measureTabBar(tabBarMetrics)
       }
 
       Tab(meTabTitle, systemImage: "person.fill", value: AppNav.Tab.me) {
         WithAccountOnly { Me(nav: appNav.me) }
           .id("me-\(accountScopeKey)")
+          .tabRootResetToolbar(appNav: appNav, tab: .me)
           .measureTabBar(tabBarMetrics)
       }
 
       Tab("Search", systemImage: "magnifyingglass", value: AppNav.Tab.search, role: .search) {
         WithAccountOnly { Search(nav: appNav.search) }
           .id("search-\(accountScopeKey)")
+          .tabRootResetToolbar(appNav: appNav, tab: .search)
           .measureTabBar(tabBarMetrics)
       }
 
       Tab("Settings", systemImage: "gearshape.fill", value: AppNav.Tab.settings) {
         Settings(nav: appNav.settings)
+          .tabRootResetToolbar(appNav: appNav, tab: .settings)
           .measureTabBar(tabBarMetrics)
       }
     }
     .tabViewStyle(.sidebarAdaptable)
     .tabBarMinimizeBehavior(.onScrollDown)
-    .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button {
-          appNav.resetSelectedSurfaceToTabRoot()
-        } label: {
-          Label("Root", systemImage: "arrow.uturn.backward")
-        }
-        .disabled(!appNav.canResetSelectedSurfaceToTabRoot)
-      }
-    }
     .background(
       TabReselectBridge(tabOrder: Self.tabOrder) { tab in
+        AppDiagnostics.asyncBreadcrumb("Tab reselected", metadata: ["tab": tab.rawValue])
         appNav.resetToTabRoot(tab)
       }
       .allowsHitTesting(false)
@@ -113,6 +109,33 @@ struct Tabber: View, Equatable {
       }
     }
     .accentColor(currentTheme.general.accentColor())
+  }
+}
+
+private struct TabRootResetToolbarModifier: ViewModifier {
+  let appNav: AppNav
+  let tab: AppNav.Tab
+
+  func body(content: Content) -> some View {
+    content
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button {
+            AppDiagnostics.asyncBreadcrumb("Tab root button tapped", metadata: ["tab": tab.rawValue])
+            appNav.resetToTabRoot(tab)
+          } label: {
+            Label("Root", systemImage: "arrow.uturn.backward")
+          }
+          .disabled(!appNav.canResetToTabRoot(tab))
+          .accessibilityIdentifier("tabRootResetButton.\(tab.rawValue)")
+        }
+      }
+  }
+}
+
+private extension View {
+  func tabRootResetToolbar(appNav: AppNav, tab: AppNav.Tab) -> some View {
+    modifier(TabRootResetToolbarModifier(appNav: appNav, tab: tab))
   }
 }
 
@@ -165,16 +188,39 @@ private struct TabReselectBridge: UIViewControllerRepresentable {
     var onReselect: ((AppNav.Tab) -> Void)?
     private weak var tabBarController: UITabBarController?
     private weak var previousDelegate: UITabBarControllerDelegate?
+    private var lastSelectedIndex: Int?
 
     func attachIfPossible(from controller: UIViewController) {
-      guard let tabBarController = findTabBarController(from: controller) else { return }
-      guard self.tabBarController !== tabBarController || tabBarController.delegate !== self else { return }
+      if let tabBarController = findTabBarController(from: controller) {
+        attach(to: tabBarController)
+        return
+      }
+
+      Task { @MainActor [weak self, weak controller] in
+        await Task.yield()
+        guard let self, let controller else { return }
+        if let tabBarController = self.findTabBarController(from: controller) ?? self.findTabBarControllerInConnectedScenes() {
+          self.attach(to: tabBarController)
+        }
+      }
+    }
+
+    private func attach(to tabBarController: UITabBarController) {
+      guard self.tabBarController !== tabBarController || tabBarController.delegate !== self else {
+        updateLastSelectedIndex(in: tabBarController)
+        return
+      }
 
       if tabBarController.delegate !== self {
         previousDelegate = tabBarController.delegate
       }
       self.tabBarController = tabBarController
       tabBarController.delegate = self
+      updateLastSelectedIndex(in: tabBarController)
+      AppDiagnostics.asyncBreadcrumb("Tab reselect bridge attached", metadata: [
+        "tabs": "\(tabBarController.viewControllers?.count ?? 0)",
+        "selectedIndex": lastSelectedIndex.map(String.init) ?? "nil"
+      ])
     }
 
     func detach() {
@@ -201,7 +247,28 @@ private struct TabReselectBridge: UIViewControllerRepresentable {
     }
 
     func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-      previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+      defer {
+        updateLastSelectedIndex(in: tabBarController)
+        previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+      }
+
+      guard let selectedIndex = selectedIndex(in: tabBarController),
+            selectedIndex == lastSelectedIndex,
+            let tab = tab(for: viewController, in: tabBarController)
+      else { return }
+
+      onReselect?(tab)
+    }
+
+    private func updateLastSelectedIndex(in tabBarController: UITabBarController) {
+      lastSelectedIndex = selectedIndex(in: tabBarController)
+    }
+
+    private func selectedIndex(in tabBarController: UITabBarController) -> Int? {
+      guard let selected = tabBarController.selectedViewController,
+            let controllers = tabBarController.viewControllers
+      else { return nil }
+      return controllers.firstIndex(where: { $0 === selected })
     }
 
     private func tab(for viewController: UIViewController, in tabBarController: UITabBarController) -> AppNav.Tab? {
@@ -223,6 +290,15 @@ private struct TabReselectBridge: UIViewControllerRepresentable {
 
       guard let root = controller.view.window?.rootViewController else { return nil }
       return findTabBarController(in: root)
+    }
+
+    private func findTabBarControllerInConnectedScenes() -> UITabBarController? {
+      UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .compactMap(\.rootViewController)
+        .compactMap { findTabBarController(in: $0) }
+        .first
     }
 
     private func findTabBarController(in controller: UIViewController) -> UITabBarController? {
