@@ -76,14 +76,16 @@ struct CommentRowView: View {
   @ViewBuilder private var commentRow: some View {
     if let data = comment.data {
       let collapsed = row.isCollapsed
+      let hasBody = data.body?.isEmpty == false
       // Collapse is attached per-region (header + body) rather than to the whole
       // row, so the author name's own tap (open profile) and inline media's tap
       // (fullscreen) reliably win — mirrors the legacy CommentLinkContent.
-      VStack(alignment: .leading, spacing: collapsed ? 0 : 6) {
+      VStack(alignment: .leading, spacing: 0) {
         header(data, isCollapsed: collapsed)
+          .padding(.bottom, !collapsed && hasBody ? 6 : 0)
           .contentShape(Rectangle())
           .onTapGesture { toggleCollapse() }
-        if !collapsed, let body = data.body, !body.isEmpty {
+        if !collapsed, hasBody, let body = data.body {
           CommentBodyNative(
             markdown: body,
             availableWidth: bodyWidth,

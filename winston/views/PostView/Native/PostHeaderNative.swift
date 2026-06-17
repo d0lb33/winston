@@ -18,11 +18,16 @@ struct PostHeaderNative: View {
   @ObservedObject var post: Post
   @ObservedObject var winstonData: PostWinstonData
   var sub: Subreddit
+  var availableWidth: CGFloat? = nil
   @Default(.PostPageDefSettings) private var defSettings
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.contentWidth) private var contentWidth
   @State private var bodyCollapsed = false
+
+  private var mediaContentWidth: CGFloat {
+    availableWidth.map { max(1, $0) } ?? max(1, CGFloat(contentWidth) - 32)
+  }
 
   var body: some View {
     let data = post.data ?? emptyPostData
@@ -43,13 +48,13 @@ struct PostHeaderNative: View {
         // nothing) — the actual media lives on the embedded original post, so
         // render that as an inline crosspost card.
         if case .repost(let repost) = extractedMedia, let repostWinstonData = repost.winstonData {
-          CrosspostCardNative(repost: repost, winstonData: repostWinstonData)
+          CrosspostCardNative(repost: repost, winstonData: repostWinstonData, contentWidth: mediaContentWidth)
         } else if case .link(let previewModel) = extractedMedia, let img = redditPreviewLinkImage(data) {
           LinkImageCardNative(
             imageURL: img.url,
             sourceSize: img.size,
             displayURL: previewModel.previewURL ?? img.url,
-            columnWidth: max(1, winstonData.postDimensionsForcedNormal.mediaSize?.width ?? CGFloat(contentWidth)),
+            columnWidth: mediaContentWidth,
             maxMediaHeightPct: maxMediaHeightPct,
             cornerRadius: 12
           )
@@ -64,6 +69,7 @@ struct PostHeaderNative: View {
             over18: over18,
             blurNSFW: defSettings.blurNSFW,
             maxMediaHeightPct: maxMediaHeightPct,
+            contentWidth: mediaContentWidth,
             dimensions: $winstonData.postDimensionsForcedNormal
           )
           .equatable()
@@ -240,10 +246,12 @@ struct PostHeaderAuthorRow: View {
   }
 }
 
-/// Equatable wrapper around MediaPresenter. Compared only by post id, so the
-/// player view is built once per post and survives header re-renders untouched.
+/// Equatable wrapper around MediaPresenter. Width is bucketed so the media view
+/// updates on real layout changes without churning on sub-point jitter.
 private struct PostMediaNative: View, Equatable {
-  static func == (lhs: PostMediaNative, rhs: PostMediaNative) -> Bool { lhs.postID == rhs.postID }
+  static func == (lhs: PostMediaNative, rhs: PostMediaNative) -> Bool {
+    lhs.postID == rhs.postID && lhs.widthBucket == rhs.widthBucket && lhs.media == rhs.media
+  }
 
   let postID: String
   let postTitle: String
@@ -255,7 +263,10 @@ private struct PostMediaNative: View, Equatable {
   /// Passed in (decoded once by the caller) so this equatable body never JSON-decodes
   /// PostLinkDefSettings when it re-evaluates on a video-surface refresh.
   let maxMediaHeightPct: CGFloat
+  let contentWidth: CGFloat
   @Binding var dimensions: PostDimensions
+
+  private var widthBucket: Int { Int((contentWidth / 2).rounded()) }
 
   var body: some View {
     MediaPresenter(
@@ -270,7 +281,7 @@ private struct PostMediaNative: View, Equatable {
       media: media,
       over18: over18,
       compact: false,
-      contentWidth: dimensions.mediaSize?.width ?? 0,
+      contentWidth: max(1, contentWidth),
       maxMediaHeightScreenPercentage: maxMediaHeightPct,
       resetVideo: nil,
       diagnosticContext: "postDetailNative:\(postID)"
@@ -356,6 +367,7 @@ struct CrosspostCardNative: View {
               over18: data.over_18 ?? false,
               blurNSFW: defSettings.blurNSFW,
               maxMediaHeightPct: Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage,
+              contentWidth: constrainedMediaWidth,
               dimensions: $winstonData.postDimensionsForcedNormal
             )
             .equatable()

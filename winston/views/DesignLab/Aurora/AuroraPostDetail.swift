@@ -108,7 +108,7 @@ struct AuroraPostDetail: View {
                   contentWidth: max(1, contentWidth - 32)
                 )
               } else {
-                PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit)
+                PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit, availableWidth: max(1, contentWidth - 32))
               }
             } else {
               ProgressView().frame(maxWidth: .infinity, minHeight: 200)
