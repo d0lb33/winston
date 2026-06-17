@@ -35,7 +35,9 @@ func resetCaches() {
 }
 
 func resetReadHistory() {
-  deleteCoreDataEntity(named: "SeenPost")
+  Task {
+    await Post.clearReadHistory()
+  }
 }
 
 func resetCoreData() {

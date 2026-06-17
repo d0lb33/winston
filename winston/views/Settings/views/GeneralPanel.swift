@@ -18,6 +18,7 @@ struct GeneralPanel: View {
   @State private var settingsFileURL: String = ""
   @State private var doImport: Bool = false
   @State private var showResetReadHistoryAlert: Bool = false
+  @State private var isClearingReadHistory: Bool = false
   var body: some View {
     SettingsPanelScrollRoot(topID: "settings-general-top") {
       
@@ -70,9 +71,16 @@ struct GeneralPanel: View {
           NativeSettingsActionRow(role: .destructive) {
             showResetReadHistoryAlert = true
           } label: {
-            Label("Reset read history", systemImage: "eye.slash")
-              .foregroundColor(.red)
+            HStack {
+              Label("Clear Read History", systemImage: "eye.slash")
+                .foregroundColor(.red)
+              if isClearingReadHistory {
+                Spacer()
+                ProgressView()
+              }
+            }
           }
+          .disabled(isClearingReadHistory)
           
           NativeSettingsActionRow(role: .destructive) {
             clearCache()
@@ -91,13 +99,13 @@ struct GeneralPanel: View {
     }
     .navigationTitle("General")
     .navigationBarTitleDisplayMode(.inline)
-    .alert("Reset read history?", isPresented: $showResetReadHistoryAlert) {
-      Button("Reset", role: .destructive) {
-        resetReadHistory()
+    .alert("Clear Read History?", isPresented: $showResetReadHistoryAlert) {
+      Button("Clear", role: .destructive) {
+        clearReadHistory()
       }
       Button("Cancel", role: .cancel) {}
     } message: {
-      Text("This clears the posts and comments Winston has marked as read.")
+      Text("This clears the posts and comments Winston has marked as read. Reload feeds to refresh currently visible rows.")
     }
   }
   
@@ -152,6 +160,18 @@ struct GeneralPanel: View {
     resetCoreData()
     totalCacheSize = "0 bytes"
     print("Cache cleared successfully.")
+  }
+
+  func clearReadHistory() {
+    guard !isClearingReadHistory else { return }
+    isClearingReadHistory = true
+
+    Task {
+      _ = await Post.clearReadHistory()
+      await MainActor.run {
+        isClearingReadHistory = false
+      }
+    }
   }
   
   func clearDirectory(directory: URL?) {

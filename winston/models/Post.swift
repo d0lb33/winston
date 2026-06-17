@@ -497,6 +497,29 @@ extension Post {
     }
   }
 
+  @discardableResult
+  static func clearReadHistory() async -> Int {
+    let context = PersistenceController.shared.primaryBGContext
+    let viewContext = PersistenceController.shared.container.viewContext
+
+    return await context.perform(schedule: .enqueued) {
+      let fetchRequest = NSFetchRequest<NSFetchRequestResult>(entityName: "SeenPost")
+      let deleteRequest = NSBatchDeleteRequest(fetchRequest: fetchRequest)
+      deleteRequest.resultType = .resultTypeObjectIDs
+
+      guard let result = try? context.execute(deleteRequest) as? NSBatchDeleteResult,
+            let deletedObjectIDs = result.result as? [NSManagedObjectID],
+            !deletedObjectIDs.isEmpty else {
+        return 0
+      }
+
+      let changes: [AnyHashable: Any] = [NSDeletedObjectsKey: deletedObjectIDs]
+      NSManagedObjectContext.mergeChanges(fromRemoteContextSave: changes, into: [context, viewContext])
+      try? context.save()
+      return deletedObjectIDs.count
+    }
+  }
+
   static func persistSeenPostIDs(_ ids: Set<String>) async {
     let ids = ids.filter { !$0.isEmpty }
     guard !ids.isEmpty else { return }

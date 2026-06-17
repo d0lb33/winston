@@ -822,6 +822,9 @@
     "Clean" : {
 
     },
+    "Clear" : {
+
+    },
     "Clear all" : {
 
     },
@@ -832,6 +835,12 @@
 
     },
     "Clear Logs" : {
+
+    },
+    "Clear Read History" : {
+
+    },
+    "Clear Read History?" : {
 
     },
     "Clear recent search" : {
@@ -3444,12 +3453,6 @@
         }
       }
     },
-    "Reset read history" : {
-
-    },
-    "Reset read history?" : {
-
-    },
     "Restart required" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4283,7 +4286,7 @@
     "This clears recent events, persisted diagnostic logs, and the Network Console." : {
 
     },
-    "This clears the posts and comments Winston has marked as read." : {
+    "This clears the posts and comments Winston has marked as read. Reload feeds to refresh currently visible rows." : {
 
     },
     "This is not working yet :(" : {
