@@ -8,6 +8,8 @@
 import SwiftUI
 import Defaults
 import SpriteKit
+@_spi(Advanced) import SwiftUIIntrospect
+import ObjectiveC
 
 struct Tabber: View, Equatable {
   static func == (lhs: Tabber, rhs: Tabber) -> Bool { true }
@@ -44,7 +46,13 @@ struct Tabber: View, Equatable {
   private var tabSelection: Binding<AppNav.Tab> {
     Binding(
       get: { appNav.selectedTab },
-      set: { appNav.selectedTab = $0 }
+      set: { newTab in
+        if appNav.selectedTab == newTab {
+          appNav.resetToTabRoot(newTab)
+        } else {
+          appNav.selectedTab = newTab
+        }
+      }
     )
   }
 
@@ -89,13 +97,12 @@ struct Tabber: View, Equatable {
     }
     .tabViewStyle(.sidebarAdaptable)
     .tabBarMinimizeBehavior(.onScrollDown)
-    .background(
-      TabReselectBridge(tabOrder: Self.tabOrder) { tab in
-        AppDiagnostics.asyncBreadcrumb("Tab reselected", metadata: ["tab": tab.rawValue])
+    .introspect(.tabView, on: .iOS(.v13...)) { tabBarController in
+      TabReselectDelegateInstaller.install(on: tabBarController, tabOrder: Self.tabOrder) { tab in
+        AppDiagnostics.asyncBreadcrumb("Tab reselected", metadata: ["tab": tab.rawValue, "source": "introspect"])
         appNav.resetToTabRoot(tab)
       }
-      .allowsHitTesting(false)
-    )
+    }
     .environment(\.videoDefSettings, videoDefSettings)
     .openFromWebListener()
     .clipboardRedditLinkListener()
@@ -112,7 +119,141 @@ struct Tabber: View, Equatable {
   }
 }
 
-private struct TabRootResetToolbarModifier: ViewModifier {
+enum TabReselectDelegateInstaller {
+  @MainActor private static var associationKey: UInt8 = 0
+
+  @MainActor
+  static func install(on tabBarController: UITabBarController, tabOrder: [AppNav.Tab], onReselect: @escaping (AppNav.Tab) -> Void) {
+    let delegate: TabReselectDelegate
+    if let existing = objc_getAssociatedObject(tabBarController, &associationKey) as? TabReselectDelegate {
+      delegate = existing
+    } else {
+      delegate = TabReselectDelegate()
+      objc_setAssociatedObject(tabBarController, &associationKey, delegate, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+    delegate.tabOrder = tabOrder
+    delegate.onReselect = onReselect
+    delegate.attach(to: tabBarController)
+  }
+}
+
+@MainActor
+private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
+  var tabOrder: [AppNav.Tab] = []
+  var onReselect: ((AppNav.Tab) -> Void)?
+  private weak var previousDelegate: UITabBarControllerDelegate?
+  private var lastSelectedIndex: Int?
+  private var lastSelectedTabIdentifier: String?
+
+  func attach(to tabBarController: UITabBarController) {
+    guard tabBarController.delegate !== self else {
+      updateLastSelectedIndex(in: tabBarController)
+      return
+    }
+    previousDelegate = tabBarController.delegate
+    tabBarController.delegate = self
+    updateLastSelectedIndex(in: tabBarController)
+    updateLastSelectedTabIdentifier(in: tabBarController)
+  }
+
+  func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+    if viewController === tabBarController.selectedViewController,
+       let tab = tab(for: viewController, in: tabBarController) {
+      onReselect?(tab)
+      return false
+    }
+
+    if let previousDelegate,
+       previousDelegate !== self,
+       let shouldSelect = previousDelegate.tabBarController?(tabBarController, shouldSelect: viewController) {
+      return shouldSelect
+    }
+
+    return true
+  }
+
+  func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+    defer {
+      updateLastSelectedIndex(in: tabBarController)
+      previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+    }
+
+    guard let selectedIndex = selectedIndex(in: tabBarController),
+          selectedIndex == lastSelectedIndex,
+          let tab = tab(for: viewController, in: tabBarController)
+    else { return }
+
+    onReselect?(tab)
+  }
+
+  @available(iOS 18.0, *)
+  func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
+    defer {
+      lastSelectedTabIdentifier = selectedTab.identifier
+      previousDelegate?.tabBarController?(tabBarController, didSelectTab: selectedTab, previousTab: previousTab)
+    }
+
+    guard (selectedTab === previousTab || selectedTab.identifier == lastSelectedTabIdentifier),
+          let tab = appTab(for: selectedTab, in: tabBarController)
+    else { return }
+
+    onReselect?(tab)
+  }
+
+  private func updateLastSelectedIndex(in tabBarController: UITabBarController) {
+    lastSelectedIndex = selectedIndex(in: tabBarController)
+  }
+
+  private func selectedIndex(in tabBarController: UITabBarController) -> Int? {
+    guard let selected = tabBarController.selectedViewController,
+          let controllers = tabBarController.viewControllers
+    else { return nil }
+    return controllers.firstIndex(where: { $0 === selected })
+  }
+
+  private func updateLastSelectedTabIdentifier(in tabBarController: UITabBarController) {
+    if #available(iOS 18.0, *) {
+      lastSelectedTabIdentifier = tabBarController.selectedTab?.identifier
+    }
+  }
+
+  private func tab(for viewController: UIViewController, in tabBarController: UITabBarController) -> AppNav.Tab? {
+    if let tab = tab(forTitle: viewController.tabBarItem.title) {
+      return tab
+    }
+
+    guard let controllers = tabBarController.viewControllers,
+          let index = controllers.firstIndex(where: { $0 === viewController }),
+          tabOrder.indices.contains(index)
+    else { return nil }
+    return tabOrder[index]
+  }
+
+  private func tab(forTitle title: String?) -> AppNav.Tab? {
+    switch title {
+    case "Posts": return .posts
+    case "Inbox": return .inbox
+    case "Search": return .search
+    case "Settings": return .settings
+    case "Me": return .me
+      default: return nil
+    }
+  }
+
+  @available(iOS 18.0, *)
+  private func appTab(for selectedCandidate: UITab, in tabBarController: UITabBarController) -> AppNav.Tab? {
+    if let appTab = tab(forTitle: selectedCandidate.title) {
+      return appTab
+    }
+
+    guard let index = tabBarController.tabs.firstIndex(where: { $0 === selectedCandidate }),
+          tabOrder.indices.contains(index)
+    else { return nil }
+    return tabOrder[index]
+  }
+}
+
+struct TabRootResetToolbarModifier: ViewModifier {
   let appNav: AppNav
   let tab: AppNav.Tab
 
@@ -133,187 +274,8 @@ private struct TabRootResetToolbarModifier: ViewModifier {
   }
 }
 
-private extension View {
+extension View {
   func tabRootResetToolbar(appNav: AppNav, tab: AppNav.Tab) -> some View {
     modifier(TabRootResetToolbarModifier(appNav: appNav, tab: tab))
-  }
-}
-
-private struct TabReselectBridge: UIViewControllerRepresentable {
-  let tabOrder: [AppNav.Tab]
-  let onReselect: (AppNav.Tab) -> Void
-
-  func makeUIViewController(context: Context) -> UIViewController {
-    let controller = HostController()
-    context.coordinator.tabOrder = tabOrder
-    context.coordinator.onReselect = onReselect
-    controller.onReady = { [weak coordinator = context.coordinator] controller in
-      coordinator?.attachIfPossible(from: controller)
-    }
-    return controller
-  }
-
-  func updateUIViewController(_ controller: UIViewController, context: Context) {
-    context.coordinator.tabOrder = tabOrder
-    context.coordinator.onReselect = onReselect
-    context.coordinator.attachIfPossible(from: controller)
-  }
-
-  func dismantleUIViewController(_ controller: UIViewController, coordinator: Coordinator) {
-    coordinator.detach()
-  }
-
-  func makeCoordinator() -> Coordinator {
-    Coordinator()
-  }
-
-  @MainActor
-  final class HostController: UIViewController {
-    var onReady: ((UIViewController) -> Void)?
-
-    override func didMove(toParent parent: UIViewController?) {
-      super.didMove(toParent: parent)
-      onReady?(self)
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-      super.viewDidAppear(animated)
-      onReady?(self)
-    }
-  }
-
-  @MainActor
-  final class Coordinator: NSObject, UITabBarControllerDelegate {
-    var tabOrder: [AppNav.Tab] = []
-    var onReselect: ((AppNav.Tab) -> Void)?
-    private weak var tabBarController: UITabBarController?
-    private weak var previousDelegate: UITabBarControllerDelegate?
-    private var lastSelectedIndex: Int?
-
-    func attachIfPossible(from controller: UIViewController) {
-      if let tabBarController = findTabBarController(from: controller) {
-        attach(to: tabBarController)
-        return
-      }
-
-      Task { @MainActor [weak self, weak controller] in
-        await Task.yield()
-        guard let self, let controller else { return }
-        if let tabBarController = self.findTabBarController(from: controller) ?? self.findTabBarControllerInConnectedScenes() {
-          self.attach(to: tabBarController)
-        }
-      }
-    }
-
-    private func attach(to tabBarController: UITabBarController) {
-      guard self.tabBarController !== tabBarController || tabBarController.delegate !== self else {
-        updateLastSelectedIndex(in: tabBarController)
-        return
-      }
-
-      if tabBarController.delegate !== self {
-        previousDelegate = tabBarController.delegate
-      }
-      self.tabBarController = tabBarController
-      tabBarController.delegate = self
-      updateLastSelectedIndex(in: tabBarController)
-      AppDiagnostics.asyncBreadcrumb("Tab reselect bridge attached", metadata: [
-        "tabs": "\(tabBarController.viewControllers?.count ?? 0)",
-        "selectedIndex": lastSelectedIndex.map(String.init) ?? "nil"
-      ])
-    }
-
-    func detach() {
-      guard let tabBarController, tabBarController.delegate === self else { return }
-      tabBarController.delegate = previousDelegate
-      self.tabBarController = nil
-      previousDelegate = nil
-    }
-
-    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
-      if viewController === tabBarController.selectedViewController,
-         let tab = tab(for: viewController, in: tabBarController) {
-        onReselect?(tab)
-        return false
-      }
-
-      if let previousDelegate,
-         previousDelegate !== self,
-         let shouldSelect = previousDelegate.tabBarController?(tabBarController, shouldSelect: viewController) {
-        return shouldSelect
-      }
-
-      return true
-    }
-
-    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
-      defer {
-        updateLastSelectedIndex(in: tabBarController)
-        previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
-      }
-
-      guard let selectedIndex = selectedIndex(in: tabBarController),
-            selectedIndex == lastSelectedIndex,
-            let tab = tab(for: viewController, in: tabBarController)
-      else { return }
-
-      onReselect?(tab)
-    }
-
-    private func updateLastSelectedIndex(in tabBarController: UITabBarController) {
-      lastSelectedIndex = selectedIndex(in: tabBarController)
-    }
-
-    private func selectedIndex(in tabBarController: UITabBarController) -> Int? {
-      guard let selected = tabBarController.selectedViewController,
-            let controllers = tabBarController.viewControllers
-      else { return nil }
-      return controllers.firstIndex(where: { $0 === selected })
-    }
-
-    private func tab(for viewController: UIViewController, in tabBarController: UITabBarController) -> AppNav.Tab? {
-      guard let controllers = tabBarController.viewControllers,
-            let index = controllers.firstIndex(where: { $0 === viewController }),
-            tabOrder.indices.contains(index)
-      else { return nil }
-      return tabOrder[index]
-    }
-
-    private func findTabBarController(from controller: UIViewController) -> UITabBarController? {
-      var current: UIViewController? = controller
-      while let candidate = current {
-        if let tabBarController = candidate as? UITabBarController {
-          return tabBarController
-        }
-        current = candidate.parent
-      }
-
-      guard let root = controller.view.window?.rootViewController else { return nil }
-      return findTabBarController(in: root)
-    }
-
-    private func findTabBarControllerInConnectedScenes() -> UITabBarController? {
-      UIApplication.shared.connectedScenes
-        .compactMap { $0 as? UIWindowScene }
-        .flatMap(\.windows)
-        .compactMap(\.rootViewController)
-        .compactMap { findTabBarController(in: $0) }
-        .first
-    }
-
-    private func findTabBarController(in controller: UIViewController) -> UITabBarController? {
-      if let tabBarController = controller as? UITabBarController {
-        return tabBarController
-      }
-      for child in controller.children {
-        if let tabBarController = findTabBarController(in: child) {
-          return tabBarController
-        }
-      }
-      if let presented = controller.presentedViewController {
-        return findTabBarController(in: presented)
-      }
-      return nil
-    }
   }
 }

@@ -36,6 +36,8 @@
 		0A5302762FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */; };
 		0A5302782FE05D1600CAC6F2 /* NativeSettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302772FE05D1600CAC6F2 /* NativeSettingsComponents.swift */; };
 		0A5302782FE0638300CAC6F2 /* AppNav.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302772FE0638300CAC6F2 /* AppNav.swift */; };
+		C0E2E0020000000000000001 /* NavigationE2EHarness.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E2E0010000000000000001 /* NavigationE2EHarness.swift */; };
+		C0E2E0120000000000000001 /* NavigationE2ETests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0E2E0110000000000000001 /* NavigationE2ETests.swift */; };
 		0AF2CAC92FDA38AE00944869 /* RedditGQLDebugView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */; };
 		0AF2CACB2FDA434300944869 /* RedditGQLAdapters.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */; };
 		0AF2CACD2FDA48E500944869 /* KeychainTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */; };
@@ -436,6 +438,13 @@
 			remoteGlobalIDString = EC593AD32A4673B2002D6454;
 			remoteInfo = winston;
 		};
+		C0E2E01C0000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = EC593ACC2A4673B2002D6454 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = EC593AD32A4673B2002D6454;
+			remoteInfo = winston;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -482,6 +491,9 @@
 		0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraSubFeedScreen.swift; sourceTree = "<group>"; };
 		0A5302772FE05D1600CAC6F2 /* NativeSettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsComponents.swift; sourceTree = "<group>"; };
 		0A5302772FE0638300CAC6F2 /* AppNav.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNav.swift; sourceTree = "<group>"; };
+		C0E2E0010000000000000001 /* NavigationE2EHarness.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationE2EHarness.swift; sourceTree = "<group>"; };
+		C0E2E0110000000000000001 /* NavigationE2ETests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationE2ETests.swift; sourceTree = "<group>"; };
+		C0E2E0130000000000000001 /* winstonUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = winstonUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0AF2CAC82FDA38AE00944869 /* RedditGQLDebugView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLDebugView.swift; sourceTree = "<group>"; };
 		0AF2CACA2FDA434300944869 /* RedditGQLAdapters.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RedditGQLAdapters.swift; sourceTree = "<group>"; };
 		0AF2CACC2FDA48E500944869 /* KeychainTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainTokenStore.swift; sourceTree = "<group>"; };
@@ -855,6 +867,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C0E2E0160000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		EC593AD12A4673B2002D6454 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -1015,6 +1034,14 @@
 				8E38386BDC712A28050D148C /* NavigationModelTests.swift */,
 			);
 			path = winstonTests;
+			sourceTree = "<group>";
+		};
+		C0E2E0100000000000000001 /* winstonUITests */ = {
+			isa = PBXGroup;
+			children = (
+				C0E2E0110000000000000001 /* NavigationE2ETests.swift */,
+			);
+			path = winstonUITests;
 			sourceTree = "<group>";
 		};
 		BB978B342B4F3BD500BE90D1 /* Markdown Handling */ = {
@@ -1210,6 +1237,7 @@
 				EC051C292ACAEFC500E9D9ED /* Frameworks */,
 				EC593AD52A4673B2002D6454 /* Products */,
 				9024E014E06EDFC5CC9B976C /* winstonTests */,
+				C0E2E0100000000000000001 /* winstonUITests */,
 			);
 			sourceTree = "<group>";
 		};
@@ -1218,6 +1246,7 @@
 			children = (
 				EC593AD42A4673B2002D6454 /* winston.app */,
 				99C4BB00417341DE062FD364 /* winstonTests.xctest */,
+				C0E2E0130000000000000001 /* winstonUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -1395,6 +1424,7 @@
 				C0A531050000000000000001 /* RedditTwoColumnShell.swift */,
 				C0A531060000000000000001 /* SettingsSplitNavigation.swift */,
 				0A5302772FE0638300CAC6F2 /* AppNav.swift */,
+				C0E2E0010000000000000001 /* NavigationE2EHarness.swift */,
 				00923BD7B83D73F5D57E9F27 /* RedditDestinations.swift */,
 				457038BB3B9798B54B00892D /* NavDest.swift */,
 			);
@@ -1899,6 +1929,24 @@
 /* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
+		C0E2E0140000000000000001 /* winstonUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0E2E01A0000000000000001 /* Build configuration list for PBXNativeTarget "winstonUITests" */;
+			buildPhases = (
+				C0E2E0150000000000000001 /* Sources */,
+				C0E2E0160000000000000001 /* Frameworks */,
+				C0E2E0170000000000000001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0E2E01B0000000000000001 /* PBXTargetDependency */,
+			);
+			name = winstonUITests;
+			productName = winstonUITests;
+			productReference = C0E2E0130000000000000001 /* winstonUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		B665D23E51AD7434F429AAD1 /* winstonTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = FE95100C74BE5692A584E483 /* Build configuration list for PBXNativeTarget "winstonTests" */;
@@ -1978,6 +2026,10 @@
 				LastSwiftUpdateCheck = 1500;
 				LastUpgradeCheck = 2700;
 				TargetAttributes = {
+					C0E2E0140000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = EC593AD32A4673B2002D6454;
+					};
 					EC593AD32A4673B2002D6454 = {
 						CreatedOnToolsVersion = 14.3.1;
 					};
@@ -2031,11 +2083,19 @@
 			targets = (
 				EC593AD32A4673B2002D6454 /* winston */,
 				B665D23E51AD7434F429AAD1 /* winstonTests */,
+				C0E2E0140000000000000001 /* winstonUITests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		C0E2E0170000000000000001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		75DA6F968DAA533461D764D9 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2085,6 +2145,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		C0E2E0150000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C0E2E0120000000000000001 /* NavigationE2ETests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DF37052589289F5E268D6916 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -2439,6 +2507,7 @@
 				ECDEBD212B31C8D300A8AC78 /* CGGradient+.swift in Sources */,
 				0A5302482FDF1FD100CAC6F2 /* MockModels.swift in Sources */,
 				0A5302782FE0638300CAC6F2 /* AppNav.swift in Sources */,
+				C0E2E0020000000000000001 /* NavigationE2EHarness.swift in Sources */,
 				65E45A702AFD3E48007DBBFC /* whatsNew.swift in Sources */,
 				EC3188322A94770700CB3738 /* GalleryThumb.swift in Sources */,
 				EC4C7CB22B2DA2030007A4DA /* FloatingFeedMenu.swift in Sources */,
@@ -2456,6 +2525,12 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		C0E2E01B0000000000000001 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = winston;
+			target = EC593AD32A4673B2002D6454 /* winston */;
+			targetProxy = C0E2E01C0000000000000001 /* PBXContainerItemProxy */;
+		};
 		DDE42BE3BD74FFEB7A6FFF4A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = winston;
@@ -2477,6 +2552,41 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		C0E2E0180000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = AKYP3P2CJJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = d0lb33.winstonUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = winston;
+			};
+			name = Debug;
+		};
+		C0E2E0190000000000000001 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = AKYP3P2CJJ;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = d0lb33.winstonUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = winston;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
 		3D22603564E5B1433A049F77 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2739,6 +2849,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		C0E2E01A0000000000000001 /* Build configuration list for PBXNativeTarget "winstonUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0E2E0180000000000000001 /* Debug */,
+				C0E2E0190000000000000001 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		EC593ACF2A4673B2002D6454 /* Build configuration list for PBXProject "winston" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

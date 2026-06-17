@@ -32,10 +32,7 @@ func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
 
 @MainActor
 private func openRedditDestination(_ destination: NavDest) {
-  if Nav.shared.activeTab != .posts {
-    Nav.shared.activeTab = .posts
-  }
-  Nav.shared[.posts].navigateContextually(to: destination)
+  AppNav.shared.navigate(to: .posts, destination)
 }
 
 private let redditClipboardURLDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)

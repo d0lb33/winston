@@ -501,6 +501,25 @@ struct AppNavBridgeTests {
 
     #expect(appNav.me.contentPath.isEmpty)
   }
+
+  @Test("Copied Reddit comment URL routes directly into Posts AppNav detail")
+  func copiedRedditCommentURLRoutesIntoPostsDetail() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .settings
+    appNav.settings.select(.behavior)
+
+    let opened = openParsedRedditURL(
+      parseRedditURL("https://www.reddit.com/r/swift/comments/copiedpost123/navigation_regression/copiedcomment456/")
+    )
+
+    #expect(opened)
+    #expect(appNav.selectedTab == .posts)
+    #expect(appNav.posts.detailPost?.id == "copiedpost123")
+    #expect(appNav.posts.detailHighlightID == "copiedcomment456")
+    #expect(appNav.posts.preferredColumn == .detail)
+    #expect(appNav.settings.selection == .behavior)
+  }
 }
 
 // MARK: - Navigation E2E scenarios

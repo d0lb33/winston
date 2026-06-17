@@ -43,7 +43,13 @@ struct winstonApp: App {
   
   var body: some Scene {
     WindowGroup {
-      AppContent()
+      Group {
+        if NavigationE2ELaunch.isEnabled {
+          NavigationE2EHarnessView()
+        } else {
+          AppContent()
+        }
+      }
         .environment(\.managedObjectContext, persistenceController.container.viewContext)
         .environment(\.primaryBGContext, persistenceController.primaryBGContext)
         .environment(
