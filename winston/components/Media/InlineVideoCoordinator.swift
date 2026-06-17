@@ -1247,49 +1247,44 @@ struct InlinePlaybackHost: View {
 
   var body: some View {
     let _ = coordinator.registrationGeneration
-    if videoDefSettings.autoPlay,
-       coordinator.fullscreenVideoKey == nil,
-       let surface = coordinator.activeSurface,
-       let registration = coordinator.registeredVideo(for: surface.key) {
-      InlinePlaybackLayerContainer(
-        surface: surface,
-        registration: registration,
-        muted: videoDefSettings.mute,
-        loop: videoDefSettings.loop,
-        autoplay: videoDefSettings.autoPlay
-      )
-      .id(
-        [
-          surface.key,
-          registration.sharedVideo.url.absoluteString,
-          registration.sharedVideo.downloadURL?.absoluteString ?? "",
-          registration.sharedVideo.posterURL?.absoluteString ?? "",
-          "\(registration.sharedVideo.size.width)x\(registration.sharedVideo.size.height)",
-          "\(videoDefSettings.mute)",
-          "\(videoDefSettings.loop)",
-          "\(videoDefSettings.autoPlay)"
-        ].joined(separator: "|")
-      )
+    if videoDefSettings.autoPlay, coordinator.fullscreenVideoKey == nil {
+      InlinePlaybackLayerContainer(renderState: renderState)
     }
+  }
+
+  private var renderState: InlinePlaybackRenderState? {
+    guard let surface = coordinator.activeSurface,
+          let registration = coordinator.registeredVideo(for: surface.key) else {
+      return nil
+    }
+    return InlinePlaybackRenderState(
+      key: surface.key,
+      surface: surface,
+      sharedVideo: registration.sharedVideo,
+      blurNSFW: registration.blurNSFW,
+      smallNSFWIcon: registration.smallNSFWIcon,
+      cornerRadius: registration.cornerRadius,
+      muted: videoDefSettings.mute,
+      loop: videoDefSettings.loop,
+      autoplay: videoDefSettings.autoPlay
+    )
   }
 }
 
-private struct InlinePlaybackLayerContainer: View {
+private struct InlinePlaybackRenderState: Equatable {
+  let key: String
   let surface: InlineVideoSurfaceSnapshot
-  let registration: InlineVideoRegistration
+  let sharedVideo: SharedVideo
+  let blurNSFW: Bool
+  let smallNSFWIcon: Bool
+  let cornerRadius: CGFloat
   let muted: Bool
   let loop: Bool
   let autoplay: Bool
-  @State private var player: AVPlayer?
-  @State private var readyForDisplay = false
 
-  private var sharedVideo: SharedVideo {
-    registration.sharedVideo
-  }
-
-  private var attachmentID: String {
+  var attachmentID: String {
     [
-      surface.key,
+      key,
       sharedVideo.url.absoluteString,
       sharedVideo.downloadURL?.absoluteString ?? "",
       sharedVideo.posterURL?.absoluteString ?? "",
@@ -1300,58 +1295,218 @@ private struct InlinePlaybackLayerContainer: View {
     ].joined(separator: "|")
   }
 
+  static func == (lhs: InlinePlaybackRenderState, rhs: InlinePlaybackRenderState) -> Bool {
+    lhs.key == rhs.key &&
+      lhs.surface == rhs.surface &&
+      lhs.sharedVideo == rhs.sharedVideo &&
+      lhs.blurNSFW == rhs.blurNSFW &&
+      lhs.smallNSFWIcon == rhs.smallNSFWIcon &&
+      lhs.cornerRadius == rhs.cornerRadius &&
+      lhs.muted == rhs.muted &&
+      lhs.loop == rhs.loop &&
+      lhs.autoplay == rhs.autoplay
+  }
+}
+
+private struct InlinePlaybackLayerContainer: View {
+  let renderState: InlinePlaybackRenderState?
+  @State private var player: AVPlayer?
+  @State private var attachedKey: String?
+  @State private var readyForDisplay = false
+  @State private var attachGeneration = UUID()
+  @State private var attachTask: Task<Void, Never>?
+
   var body: some View {
     GeometryReader { proxy in
       let overlayFrame = proxy.frame(in: .global)
-      let localMidX = surface.midX - overlayFrame.minX
-      let localMidY = surface.midY - overlayFrame.minY
+      let surface = renderState?.surface
+      let width = surface?.width ?? 1
+      let height = surface?.height ?? 1
+      let cornerRadius = renderState?.cornerRadius ?? 0
+      let localMidX = surface.map { $0.midX - overlayFrame.minX } ?? -10_000
+      let localMidY = surface.map { $0.midY - overlayFrame.minY } ?? -10_000
 
-      Group {
-        if let player {
-          InlineAVPlayerLayerRepresentable(
-            player: player,
-            videoGravity: .resizeAspectFill,
-            cornerRadius: registration.cornerRadius,
-            onReadyForDisplay: {
-              readyForDisplay = true
-              InlineVideoCoordinator.shared.setHostHasFrame(true, for: surface.key)
-              InlineVideoCoordinator.shared.recordFirstFrameReady(key: surface.key, sharedVideo: sharedVideo)
-            }
-          )
-        } else {
-          Color.clear
+      ReusableInlineAVPlayerLayerRepresentable(
+        player: player,
+        videoGravity: .resizeAspectFill,
+        cornerRadius: cornerRadius,
+        onReadyForDisplay: {
+          guard let renderState, attachedKey == renderState.key else { return }
+          readyForDisplay = true
+          InlineVideoCoordinator.shared.setHostHasFrame(true, for: renderState.key)
+          InlineVideoCoordinator.shared.recordFirstFrameReady(key: renderState.key, sharedVideo: renderState.sharedVideo)
         }
-      }
-      .frame(width: surface.width, height: surface.height)
-      .mask(RR(registration.cornerRadius, Color.black))
-      .opacity(readyForDisplay ? 1 : 0)
-      .nsfw(
-        registration.blurNSFW,
-        smallIcon: registration.smallNSFWIcon,
-        size: CGSize(width: surface.width, height: surface.height)
       )
-      .clipShape(RoundedRectangle(cornerRadius: registration.cornerRadius, style: .continuous))
+      .frame(width: width, height: height)
+      .mask(RR(cornerRadius, Color.black))
+      .opacity(readyForDisplay && renderState != nil ? 1 : 0)
+      .nsfw(
+        renderState?.blurNSFW == true,
+        smallIcon: renderState?.smallNSFWIcon == true,
+        size: CGSize(width: width, height: height)
+      )
+      .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
       .position(x: localMidX, y: localMidY)
       .allowsHitTesting(false)
       .clipped()
-      .task(id: attachmentID) {
-        readyForDisplay = false
-        InlineVideoCoordinator.shared.setHostHasFrame(false, for: surface.key)
-        player = InlinePlaybackResourceController.shared.attach(
-          key: surface.key,
-          video: sharedVideo,
-          muted: muted,
-          loop: loop,
-          autoplay: autoplay
-        )
+      .onAppear {
+        scheduleAttachment(renderState)
+      }
+      .onChange(of: renderState?.attachmentID) { _, _ in
+        scheduleAttachment(renderState)
       }
       .onDisappear {
-        InlineVideoCoordinator.shared.setHostHasFrame(false, for: surface.key)
-        InlinePlaybackResourceController.shared.detach(
-          key: surface.key,
-          preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == surface.key || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: surface.key)
-        )
+        detachAttached()
       }
+    }
+  }
+
+  private func scheduleAttachment(_ state: InlinePlaybackRenderState?) {
+    attachTask?.cancel()
+    let generation = UUID()
+    attachGeneration = generation
+    readyForDisplay = false
+    if let attachedKey {
+      InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
+    }
+
+    guard let state else {
+      detachAttached()
+      return
+    }
+
+    ScrollPerfProbe.shared.bump("inlineReusableHost.playerSwapScheduled")
+    attachTask = Task { @MainActor in
+      await Task.yield()
+      guard !Task.isCancelled, attachGeneration == generation else { return }
+      let attachedPlayer = InlinePlaybackResourceController.shared.attach(
+        key: state.key,
+        video: state.sharedVideo,
+        muted: state.muted,
+        loop: state.loop,
+        autoplay: state.autoplay
+      )
+      guard !Task.isCancelled, attachGeneration == generation else { return }
+      attachedKey = state.key
+      player = attachedPlayer
+      ScrollPerfProbe.shared.bump("inlineReusableHost.playerSwap")
+    }
+  }
+
+  private func detachAttached() {
+    attachTask?.cancel()
+    attachTask = nil
+    attachGeneration = UUID()
+    readyForDisplay = false
+    guard let attachedKey else {
+      player = nil
+      return
+    }
+    InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
+    InlinePlaybackResourceController.shared.detach(
+      key: attachedKey,
+      preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == attachedKey || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: attachedKey)
+    )
+    self.attachedKey = nil
+    player = nil
+  }
+}
+
+private struct ReusableInlineAVPlayerLayerRepresentable: UIViewRepresentable {
+  let player: AVPlayer?
+  let videoGravity: AVLayerVideoGravity
+  let cornerRadius: CGFloat
+  var onReadyForDisplay: (() -> Void)?
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  func makeUIView(context: Context) -> PlayerLayerView {
+    ScrollPerfProbe.shared.bump("inlineReusableHost.make")
+    let view = PlayerLayerView()
+    view.backgroundColor = .clear
+    view.playerLayer.player = player
+    view.playerLayer.videoGravity = videoGravity
+    view.setCornerRadius(cornerRadius)
+    context.coordinator.onReadyForDisplay = onReadyForDisplay
+    context.coordinator.observe(view.playerLayer)
+    return view
+  }
+
+  func updateUIView(_ uiView: PlayerLayerView, context: Context) {
+    ScrollPerfProbe.shared.bump("inlineReusableHost.update")
+    context.coordinator.onReadyForDisplay = onReadyForDisplay
+    if uiView.playerLayer.player !== player {
+      ScrollPerfProbe.shared.bump("inlineReusableHost.playerLayerPlayerSet")
+      uiView.playerLayer.player = player
+    }
+    if uiView.playerLayer.videoGravity != videoGravity {
+      uiView.playerLayer.videoGravity = videoGravity
+    }
+    uiView.setCornerRadius(cornerRadius)
+  }
+
+  static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: Coordinator) {
+    coordinator.invalidate()
+    uiView.playerLayer.player = nil
+  }
+
+  final class Coordinator {
+    var onReadyForDisplay: (() -> Void)?
+    private var observation: NSKeyValueObservation?
+
+    func observe(_ layer: AVPlayerLayer) {
+      observation = layer.observe(\.isReadyForDisplay, options: [.initial, .new]) { [weak self] layer, _ in
+        guard layer.isReadyForDisplay else { return }
+        let callback = self?.onReadyForDisplay
+        DispatchQueue.main.async { callback?() }
+      }
+    }
+
+    func invalidate() {
+      observation?.invalidate()
+      observation = nil
+    }
+  }
+
+  final class PlayerLayerView: UIView {
+    let playerLayer = AVPlayerLayer()
+
+    override init(frame: CGRect) {
+      super.init(frame: frame)
+      configureLayers()
+    }
+
+    required init?(coder: NSCoder) {
+      super.init(coder: coder)
+      configureLayers()
+    }
+
+    override func layoutSubviews() {
+      super.layoutSubviews()
+      ScrollPerfProbe.shared.bump("inlineReusableHost.frameUpdate")
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      playerLayer.frame = bounds
+      CATransaction.commit()
+    }
+
+    func setCornerRadius(_ radius: CGFloat) {
+      layer.cornerRadius = radius
+      layer.masksToBounds = radius > 0
+      layer.cornerCurve = .continuous
+      playerLayer.cornerRadius = radius
+      playerLayer.masksToBounds = radius > 0
+      playerLayer.cornerCurve = .continuous
+    }
+
+    private func configureLayers() {
+      layer.addSublayer(playerLayer)
+      layer.masksToBounds = true
+      layer.cornerCurve = .continuous
+      playerLayer.masksToBounds = true
+      playerLayer.cornerCurve = .continuous
     }
   }
 }
