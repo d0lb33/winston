@@ -95,10 +95,8 @@ class BaseObservableCache<T: ObservableObject>: ObservableObject {
       
       // Add the item to the cache
       await MainActor.run {
-        withAnimation {
-          cache[key] = item
-          if let oldestKey = oldestKey { cache.removeValue(forKey: oldestKey) }
-        }
+        cache[key] = item
+        if let oldestKey = oldestKey { cache.removeValue(forKey: oldestKey) }
       }
     }
   }

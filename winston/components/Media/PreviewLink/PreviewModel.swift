@@ -11,16 +11,20 @@ import OpenGraph
 import NukeUI
 import Defaults
 
+struct PreviewModelState: Equatable {
+  var image: String?
+  var title: String?
+  var url: URL?
+  var description: String?
+  var loading = true
+}
+
 final class PreviewModel: ObservableObject, Equatable {
   static func == (lhs: PreviewModel, rhs: PreviewModel) -> Bool {
-    lhs.url == rhs.url
+    lhs.state.url == rhs.state.url
   }
   
-  @Published var image: String?
-  @Published var title: String?
-  @Published var url: URL?
-  @Published var description: String?
-  @Published var loading = true
+  @Published private(set) var state = PreviewModelState()
   
   var previewURL: URL?
   
@@ -58,19 +62,17 @@ final class PreviewModel: ObservableObject, Equatable {
           }
         }
         await MainActor.run {
-          withAnimation {
-            self.image = image
-            title = og[.title]
-            description = og[.description]
-            url = URL(string: og[.url]?.escape ?? "")
-            loading = false
-          }
+          state = PreviewModelState(
+            image: image,
+            title: og[.title]?.escape,
+            url: URL(string: og[.url]?.escape ?? ""),
+            description: og[.description]?.escape,
+            loading: false
+          )
         }
       } else {
         await MainActor.run {
-          withAnimation {
-            loading = false
-          }
+          state = PreviewModelState(loading: false)
         }
       }
     }

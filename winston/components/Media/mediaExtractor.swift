@@ -92,8 +92,8 @@ enum MediaExtractedType: Equatable {
 final class MediaDescriptorCache {
   static let shared = MediaDescriptorCache()
 
-  private let media = ObjectCache<MediaExtractedType>(cacheLimit: 500, diagnosticsPrefix: "mediaDescriptor")
-  private let dimensions = ObjectCache<PostDimensions>(cacheLimit: 500, diagnosticsPrefix: "mediaLayout")
+  private let media = ObjectCache<MediaExtractedType>(cacheLimit: 2_000, diagnosticsPrefix: "mediaDescriptor")
+  private let dimensions = ObjectCache<PostDimensions>(cacheLimit: 2_000, diagnosticsPrefix: "mediaLayout")
 
   private init() {}
 
@@ -130,9 +130,9 @@ final class MediaDescriptorCache {
     compact: Bool,
     contentWidth: Double,
     theme: WinstonTheme,
-    variant: String
+    variant: String,
+    postLinkSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings]
   ) -> String {
-    let postLinkSettings = Defaults[.PostLinkDefSettings]
     let galleryIDs = data.gallery_data?.items?.map(\.media_id).joined(separator: ",") ?? "nil"
     let mediaMetadataKeys = data.media_metadata?.keys.sorted().joined(separator: ",") ?? "nil"
     let previewImageURL = data.preview?.images?.first?.source?.url ?? "nil"
@@ -173,16 +173,16 @@ final class MediaDescriptorCache {
     secondary: Bool,
     theme: WinstonTheme,
     subID: String?,
-    variant: String
+    variant: String,
+    postLinkSettings: PostLinkDefSettings = Defaults[.PostLinkDefSettings],
+    feedSettings: SubredditFeedDefSettings = Defaults[.SubredditFeedDefSettings]
   ) -> String {
-    let postLinkSettings = Defaults[.PostLinkDefSettings]
-    let feedSettings = Defaults[.SubredditFeedDefSettings]
     let feedStyleKey = subID ?? data.subreddit
     let compactOverride = feedSettings.compactPerSubreddit[feedStyleKey].map { String($0) } ?? "nil"
     let styleOverride = feedSettings.postStylePerSubreddit[feedStyleKey]?.rawValue ?? "nil"
 
     let parts: [String] = [
-      mediaKey(data: data, compact: compact, contentWidth: columnWidth, theme: theme, variant: variant),
+      mediaKey(data: data, compact: compact, contentWidth: columnWidth, theme: theme, variant: variant, postLinkSettings: postLinkSettings),
       secondary ? "secondary" : "primary",
       feedStyleKey,
       "\(theme.postLinks.theme.hashValue)",

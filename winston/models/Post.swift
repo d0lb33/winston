@@ -90,7 +90,8 @@ extension Post {
       let feedDefSettings = Defaults[.SubredditFeedDefSettings]
       let compactOverride = feedDefSettings.compactPerSubreddit[feedStyleKey]
       let styleOverride = feedDefSettings.postStylePerSubreddit[feedStyleKey]
-      let compact = Defaults[.PostLinkDefSettings].resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact
+      let postLinkDefSettings = Defaults[.PostLinkDefSettings]
+      let compact = postLinkDefSettings.resolvedPostStyle(styleOverride: styleOverride, compactOverride: compactOverride) == .compact
       if self.winstonData == nil { self.winstonData = .init() }
 
       self.winstonData?.permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
@@ -102,8 +103,8 @@ extension Post {
         self.winstonData?.postDimensionsForcedNormal = .zero
       } else {
         let descriptorCache = MediaDescriptorCache.shared
-        let mediaKey = descriptorCache.mediaKey(data: data, compact: compact, contentWidth: contentWidth, theme: theme, variant: "feed")
-        let forcedNormalMediaKey = descriptorCache.mediaKey(data: data, compact: false, contentWidth: contentWidth, theme: theme, variant: "forcedNormal")
+        let mediaKey = descriptorCache.mediaKey(data: data, compact: compact, contentWidth: contentWidth, theme: theme, variant: "feed", postLinkSettings: postLinkDefSettings)
+        let forcedNormalMediaKey = descriptorCache.mediaKey(data: data, compact: false, contentWidth: contentWidth, theme: theme, variant: "forcedNormal", postLinkSettings: postLinkDefSettings)
         var extractedMedia = descriptorCache.extractedMedia(key: mediaKey) {
           mediaExtractor(compact: compact, contentWidth: contentWidth, data, theme: theme)
         }
@@ -135,8 +136,8 @@ extension Post {
           )
         }
 
-        let dimensionsKey = descriptorCache.dimensionsKey(data: data, compact: compact, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "feed")
-        let forcedNormalDimensionsKey = descriptorCache.dimensionsKey(data: data, compact: false, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "forcedNormal")
+        let dimensionsKey = descriptorCache.dimensionsKey(data: data, compact: compact, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "feed", postLinkSettings: postLinkDefSettings, feedSettings: feedDefSettings)
+        let forcedNormalDimensionsKey = descriptorCache.dimensionsKey(data: data, compact: false, columnWidth: contentWidth, secondary: secondary, theme: theme, subID: feedStyleKey, variant: "forcedNormal", postLinkSettings: postLinkDefSettings, feedSettings: feedDefSettings)
 
         switch extractedMedia {
         case .streamable(let streamable):

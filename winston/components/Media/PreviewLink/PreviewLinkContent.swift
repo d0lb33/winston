@@ -12,7 +12,6 @@ import NukeUI
 import OpenGraph
 import SkeletonUI
 import YouTubePlayerKit
-import Defaults
 import Combine
 import SafariServices
 
@@ -22,16 +21,25 @@ struct PreviewLinkContent: View {
   var url: URL
   static let height: CGFloat = 88
   @Environment(\.openURL) private var openURL
-  @Default(.BehaviorDefSettings) private var behaviorDefSettings
   var body: some View {
-    PreviewLinkContentRaw(compact: compact, image: viewModel.image, title: viewModel.title, description: viewModel.description, loading: viewModel.loading, url: url, openURL: openURL)
+    let state = viewModel.state
+    PreviewLinkContentRaw(
+      compact: compact,
+      image: state.image,
+      title: state.title,
+      description: state.description,
+      loading: state.loading,
+      url: url,
+      displayURL: cleanURL(url: url),
+      openURL: openURL
+    )
   }
 }
 
 
 struct PreviewLinkContentRaw: View, Equatable {
   static func == (lhs: PreviewLinkContentRaw, rhs: PreviewLinkContentRaw) -> Bool {
-    lhs.image == rhs.image && lhs.title == rhs.title && lhs.compact == rhs.compact && lhs.description == rhs.description && lhs.loading == rhs.loading && lhs.url == rhs.url
+    lhs.image == rhs.image && lhs.title == rhs.title && lhs.compact == rhs.compact && lhs.description == rhs.description && lhs.loading == rhs.loading && lhs.url == rhs.url && lhs.displayURL == rhs.displayURL
   }
   
   static let height: CGFloat = 88
@@ -41,7 +49,18 @@ struct PreviewLinkContentRaw: View, Equatable {
   var description: String?
   var loading: Bool
   var url: URL
+  var displayURL: String
   var openURL: OpenURLAction
+
+  private var displayTitle: String {
+    guard let title, !title.isEmpty else { return "No title detected" }
+    return title
+  }
+
+  private var displayDescription: String {
+    guard let description, !description.isEmpty else { return "No description detected" }
+    return description
+  }
     
   var body: some View {
     let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
@@ -50,19 +69,19 @@ struct PreviewLinkContentRaw: View, Equatable {
       if !compact {
         VStack(alignment: .leading, spacing: 2) {
           VStack(alignment: .leading, spacing: 0) {
-            Text((title ?? "No title detected").escape)
+            Text(displayTitle)
               .fontSize(17, .medium)
               .lineLimit(1)
               .truncationMode(.tail)
             
-            Text(cleanURL(url: url))
+            Text(displayURL)
               .fontSize(13)
               .opacity(0.5)
               .lineLimit(1)
           }
           .frame(maxWidth: .infinity, alignment: .leading)
           
-          Text((description ?? "No description detected").escape)
+          Text(displayDescription)
             .fontSize(14)
             .lineLimit(2)
             .opacity(0.75)
