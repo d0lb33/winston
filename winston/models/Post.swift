@@ -601,7 +601,10 @@ extension Post {
       for startIndex in stride(from: 0, to: validIDs.count, by: chunkSize) {
         let endIndex = min(startIndex + chunkSize, validIDs.count)
         let chunk = Set(validIDs[startIndex..<endIndex])
-        existingIDs.formUnion(fetchSeenPosts(for: chunk, in: context).compactMap(\.postID))
+        let fetchRequest = NSFetchRequest<SeenPost>(entityName: "SeenPost")
+        fetchRequest.predicate = NSPredicate(format: "postID IN %@", Array(chunk))
+        let seenPosts = (try? context.fetch(fetchRequest)) ?? []
+        existingIDs.formUnion(seenPosts.compactMap(\.postID))
       }
 
       let missingIDs = validIDs.filter { !existingIDs.contains($0) }
