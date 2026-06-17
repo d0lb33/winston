@@ -26,6 +26,7 @@ struct AuroraPostDetail: View {
   var tabInteractionTab: Nav.TabIdentifier?
   var tabInteractions: TabInteractionCenter?
   var tabInteractionRequest: TabInteractionRequest?
+  var tabInteractionOwnerID: TabInteractionOwnerID?
 
   @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
@@ -35,7 +36,6 @@ struct AuroraPostDetail: View {
   @State private var pendingHighlight: String? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
-  @State private var hasConsumedTabScrollToTop = false
 
   /// Capped inline-media height, read ONCE here (a codable Defaults value → each access
   /// JSON-decodes the whole struct) and threaded down.
@@ -59,13 +59,18 @@ struct AuroraPostDetail: View {
     tabInteractionRequest ?? environmentTabInteractionRequest
   }
 
+  private var effectiveTabInteractionOwnerID: TabInteractionOwnerID {
+    tabInteractionOwnerID ?? TabInteractionOwnerID("post-detail.\(post.id).\(highlightID ?? "root")")
+  }
+
   init(
     post: Post,
     subreddit: Subreddit,
     highlightID: String? = nil,
     tabInteractionTab: Nav.TabIdentifier? = nil,
     tabInteractions: TabInteractionCenter? = nil,
-    tabInteractionRequest: TabInteractionRequest? = nil
+    tabInteractionRequest: TabInteractionRequest? = nil,
+    tabInteractionOwnerID: TabInteractionOwnerID? = nil
   ) {
     self.post = post
     self.subreddit = subreddit
@@ -73,6 +78,7 @@ struct AuroraPostDetail: View {
     self.tabInteractionTab = tabInteractionTab
     self.tabInteractions = tabInteractions
     self.tabInteractionRequest = tabInteractionRequest
+    self.tabInteractionOwnerID = tabInteractionOwnerID
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
 
     let defSettings = Defaults[.PostPageDefSettings]
@@ -153,13 +159,21 @@ struct AuroraPostDetail: View {
           updateTabInteractionTopState(newOffsetY <= 4)
         }
         .onAppear {
-          hasConsumedTabScrollToTop = false
-          if let effectiveTabInteractionTab, let effectiveTabInteractions {
-            effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, false)
-          }
+          activateTabInteractionOwner()
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
             Task { await fetch(post.data == nil) }
+          }
+        }
+        .onDisappear {
+          deactivateTabInteractionOwner()
+        }
+        .onChange(of: effectiveTabInteractionTab) { oldTab, newTab in
+          if let oldTab, let effectiveTabInteractions {
+            effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: oldTab)
+          }
+          if newTab != nil {
+            activateTabInteractionOwner()
           }
         }
         .onChange(of: sort) { _, _ in
@@ -175,13 +189,12 @@ struct AuroraPostDetail: View {
         .onChange(of: effectiveTabInteractionRequest) { _, request in
           guard let request else { return }
           guard request.kind == .scrollToTop || request.kind == .resetToRoot else { return }
-          hasConsumedTabScrollToTop = true
+          guard let effectiveTabInteractionTab,
+                effectiveTabInteractions?.isActiveOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab) == true else { return }
           withAnimation(.snappy) {
             proxy.scrollTo(Self.topID, anchor: .top)
           }
-          if let effectiveTabInteractionTab, let effectiveTabInteractions {
-            effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, true)
-          }
+          effectiveTabInteractions?.setIsAtTop(effectiveTabInteractionTab, true, ownerID: effectiveTabInteractionOwnerID)
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
@@ -192,7 +205,17 @@ struct AuroraPostDetail: View {
 
   private func updateTabInteractionTopState(_ isAtTop: Bool) {
     guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
-    effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, hasConsumedTabScrollToTop ? isAtTop : false)
+    effectiveTabInteractions.setIsAtTop(effectiveTabInteractionTab, isAtTop, ownerID: effectiveTabInteractionOwnerID)
+  }
+
+  private func activateTabInteractionOwner() {
+    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
+    effectiveTabInteractions.activateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab, initialIsAtTop: false)
+  }
+
+  private func deactivateTabInteractionOwner() {
+    guard let effectiveTabInteractionTab, let effectiveTabInteractions else { return }
+    effectiveTabInteractions.deactivateScrollOwner(effectiveTabInteractionOwnerID, for: effectiveTabInteractionTab)
   }
 
   private var commentsHeaderTitle: String {

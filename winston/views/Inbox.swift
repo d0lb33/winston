@@ -103,7 +103,6 @@ struct Inbox: View {
       .redditDestinations(nav, origin: .content)
       .loader(loading)
       .onAppear {
-        tabInteractions.setIsAtTop(.inbox, true)
         Task(priority: .background) {
           await fetch()
         }

@@ -238,6 +238,65 @@ struct StackNavTests {
   }
 }
 
+// MARK: - TabInteractionCenter
+
+@MainActor
+struct TabInteractionCenterTests {
+  @Test("scrolled active owner requests scroll to top")
+  func scrolledActiveOwnerRequestsScrollToTop() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .scrollToTop)
+  }
+
+  @Test("at-top active owner requests one-step back")
+  func atTopActiveOwnerRequestsBack() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
+
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .goBack)
+  }
+
+  @Test("hidden owner cannot overwrite active owner top state")
+  func hiddenOwnerWritesAreIgnored() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    center.setIsAtTop(.posts, true, ownerID: "posts.detail.p1")
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .scrollToTop)
+  }
+
+  @Test("returning from detail uses the feed owner's scroll state")
+  func returningFromDetailUsesFeedOwnerState() {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.detail.p1", for: .posts, initialIsAtTop: true)
+    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .scrollToTop)
+  }
+
+  @Test("second reselect inside double-tap interval resets to root")
+  func doubleTapResetsToRoot() async throws {
+    let center = TabInteractionCenter()
+    center.activateScrollOwner("posts.feed", for: .posts, initialIsAtTop: false)
+
+    center.selectedTabTappedAgain(.posts)
+    try await Task.sleep(for: .milliseconds(80))
+    center.selectedTabTappedAgain(.posts)
+
+    #expect(center.requests[.posts]?.kind == .resetToRoot)
+  }
+}
+
 // MARK: - AuroraFeedModel
 
 @MainActor

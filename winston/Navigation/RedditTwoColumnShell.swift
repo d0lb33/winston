@@ -73,11 +73,6 @@ struct RedditTwoColumnShell<Source: View>: View {
     .tint(auroraTheme.accent)
     .fontDesign(auroraTheme.fontDesign)
     .preferredColorScheme(auroraTheme.colorScheme)
-    .onAppear {
-      if let tab {
-        tabInteractions.setIsAtTop(tab, true)
-      }
-    }
     .routerDeepLinkInbox(
       router: router,
       consume: { nav.consumeDeepLink(path: $0) },

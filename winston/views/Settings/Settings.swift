@@ -81,7 +81,6 @@ struct Settings: View {
       RedditGQLDebugView()
     }
     .onAppear {
-      tabInteractions.setIsAtTop(.settings, true)
       AppDiagnostics.shared.breadcrumb("Opened Settings root")
     }
     .routerDeepLinkInbox(
