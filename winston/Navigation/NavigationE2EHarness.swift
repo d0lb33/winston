@@ -148,11 +148,13 @@ struct NavigationE2EHarnessView: View {
     executeTabReselect(tab, tap: tap, source: source)
   }
 
-  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) {
+  @discardableResult
+  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) -> Bool {
     let action = appNav.handleTabReselect(tab, tap: tap)
     lastRootedTab = tab.rawValue
     lastAction = "\(tap == .double ? "double" : "single").\(action.diagnosticsName)"
     TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+    return action.suppressesNativeReselect
   }
 }
 

@@ -137,7 +137,8 @@ struct Tabber: View, Equatable {
     executeTabReselect(tab, tap: tap, source: source)
   }
 
-  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) {
+  @discardableResult
+  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) -> Bool {
     let action = appNav.handleTabReselect(tab, tap: tap)
     AppDiagnostics.asyncBreadcrumb(
       "Tab reselected",
@@ -149,6 +150,7 @@ struct Tabber: View, Equatable {
       ]
     )
     TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+    return action.suppressesNativeReselect
   }
 }
 
@@ -160,7 +162,7 @@ enum TabReselectDelegateInstaller {
     on tabBarController: UITabBarController,
     tabOrder: [AppNav.Tab],
     classifier: TabTapClassifierBox,
-    onReselect: @escaping (AppNav.Tab, TabTapKind) -> Void
+    onReselect: @escaping (AppNav.Tab, TabTapKind) -> Bool
   ) {
     let delegate: TabReselectDelegate
     if let existing = objc_getAssociatedObject(tabBarController, &associationKey) as? TabReselectDelegate {
@@ -180,7 +182,7 @@ enum TabReselectDelegateInstaller {
 private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   var tabOrder: [AppNav.Tab] = []
   var classifier: TabTapClassifierBox?
-  var onReselect: ((AppNav.Tab, TabTapKind) -> Void)?
+  var onReselect: ((AppNav.Tab, TabTapKind) -> Bool)?
   private weak var previousDelegate: UITabBarControllerDelegate?
   private var lastSelectedIndex: Int?
   private var lastSelectedTabIdentifier: String?
@@ -199,8 +201,7 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
     if viewController === tabBarController.selectedViewController,
        let tab = tab(for: viewController, in: tabBarController) {
-      emitReselect(tab)
-      return false
+      return !emitReselect(tab)
     }
 
     if let previousDelegate,
@@ -231,6 +232,28 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   }
 
   @available(iOS 18.0, *)
+  func tabBarController(_ tabBarController: UITabBarController, shouldSelectTab tab: UITab) -> Bool {
+    // Tapping the already-selected tab is a "reselect". Handle it ourselves (scroll-to-top
+    // → step back one level → reveal the sidebar) and return false to suppress UIKit's own
+    // iOS-18+ reselect behavior, which otherwise pops the whole NavigationSplitView
+    // straight to its sidebar root and clobbers the one-level-at-a-time peel-back.
+    if tab.identifier == tabBarController.selectedTab?.identifier,
+       let appTab = appTab(for: tab, in: tabBarController) {
+      // Suppress native (return false) only for granular actions; allow it (return true)
+      // for jump-to-root actions so native fully collapses to the sidebar.
+      return !emitReselect(appTab)
+    }
+
+    if let previousDelegate,
+       previousDelegate !== self,
+       let shouldSelect = previousDelegate.tabBarController?(tabBarController, shouldSelectTab: tab) {
+      return shouldSelect
+    }
+
+    return true
+  }
+
+  @available(iOS 18.0, *)
   func tabBarController(_ tabBarController: UITabBarController, didSelectTab selectedTab: UITab, previousTab: UITab?) {
     defer {
       lastSelectedTabIdentifier = selectedTab.identifier
@@ -244,13 +267,16 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
     emitReselect(tab)
   }
 
-  private func emitReselect(_ tab: AppNav.Tab) {
+  /// Returns whether the native pop-to-root must be suppressed (true) so our handler owns
+  /// the reselect, or allowed (false) so native collapses fully to the sidebar root.
+  @discardableResult
+  private func emitReselect(_ tab: AppNav.Tab) -> Bool {
     guard let tap = classifier?.classify(
       tab: tab,
       eventID: nil,
       time: ProcessInfo.processInfo.systemUptime
-    ) else { return }
-    onReselect?(tab, tap)
+    ) else { return false }
+    return onReselect?(tab, tap) ?? false
   }
 
   private func updateLastSelectedIndex(in tabBarController: UITabBarController) {

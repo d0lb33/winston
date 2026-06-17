@@ -35,8 +35,6 @@ struct AuroraRoot: View {
   @Default(.auroraThemeID) private var auroraThemeID
   private var theme: AuroraTheme { themeOverride ?? auroraThemeID.theme }
 
-  @Environment(\.horizontalSizeClass) private var hSize
-
   @FetchRequest private var subs: FetchedResults<CachedSub>
 
   @State private var sort: SubListingSortOption = .hot
@@ -96,10 +94,32 @@ struct AuroraRoot: View {
     return posts.detailPost
   }
 
+  /// Below this available width the Posts split renders as a single collapsed column
+  /// (the "folded / outer display" experience). At or above it, the split expands to its
+  /// 2–3 native columns (the "unfolded / inner display"). Chosen to put iPad-mini portrait
+  /// (~744pt) in the folded column and iPad-mini landscape (~1133pt) in the expanded split,
+  /// while iPhone (always narrow) stays folded and larger iPads stay expanded.
+  static let expandedLayoutMinWidth: CGFloat = 820
+
   var body: some View {
+    // Drive the layout off the ACTUAL available width, not the raw size class: iPad-mini
+    // portrait reports a `.regular` size class but is narrow enough that a 3-column split
+    // collapses to an empty detail. Injecting an effective size class derived from width
+    // makes portrait behave like the folded/compact phone layout and landscape like the
+    // expanded tablet layout — and because all state lives in `posts`, the compact↔regular
+    // flip on rotation/unfold re-renders from the model and preserves scroll/navigation.
+    GeometryReader { proxy in
+      split(availableWidth: proxy.size.width)
+    }
+  }
+
+  @ViewBuilder private func split(availableWidth: CGFloat) -> some View {
     @Bindable var posts = posts
 
-    NavigationSplitView(preferredCompactColumn: $posts.preferredColumn) {
+    let expanded = availableWidth >= Self.expandedLayoutMinWidth
+    let effectiveSizeClass: UserInterfaceSizeClass = expanded ? .regular : .compact
+
+    NavigationSplitView(columnVisibility: $posts.columnVisibility, preferredCompactColumn: $posts.preferredColumn) {
       sidebar
         .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
     } content: {
@@ -108,6 +128,7 @@ struct AuroraRoot: View {
       detailColumn
     }
     .navigationSplitViewStyle(.balanced)
+    .environment(\.horizontalSizeClass, effectiveSizeClass)
     .auroraShellChrome(theme: theme)
     .toolbarBackground(.hidden, for: .navigationBar)
     .overlay(alignment: .topTrailing) {
@@ -119,11 +140,11 @@ struct AuroraRoot: View {
     }
     .diagnosticScreen("aurora.posts")
     .onAppear {
-      updateInteractionLayout()
+      applyLayout(expanded: expanded)
       reloadSavedListSummaries()
     }
-    .onChange(of: hSize) { _, _ in
-      updateInteractionLayout()
+    .onChange(of: expanded) { _, isExpanded in
+      applyLayout(expanded: isExpanded)
     }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
@@ -166,8 +187,16 @@ struct AuroraRoot: View {
     model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
   }
 
-  private func updateInteractionLayout() {
-    posts.updateInteractionLayout(hSize == .compact ? .compact : .regular)
+  private func applyLayout(expanded: Bool) {
+    posts.updateInteractionLayout(expanded ? .regular : .compact)
+    // When expanded, pin the feed + post pair visible so the split never collapses to a
+    // bare "Pick a post" detail (the iPad-mini-portrait failure). The communities sidebar
+    // stays one tap away on its toggle, which keeps the open post readably wide. Ignored
+    // while collapsed (compact uses `preferredColumn`).
+    let desired: NavigationSplitViewVisibility = expanded ? .doubleColumn : .automatic
+    if posts.columnVisibility != desired {
+      posts.columnVisibility = desired
+    }
   }
 
   // MARK: - Columns

@@ -548,13 +548,81 @@ struct AppNavBridgeTests {
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.detail)))
   }
 
-  @Test("Posts compact feed root returns none")
-  func postsCompactFeedRootReturnsNone() {
+  @Test("Posts compact feed root reveals the communities sidebar")
+  func postsCompactFeedRootRevealsSidebar() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .content)
 
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.revealSubredditSelector))
+  }
+
+  @Test("Posts compact sidebar (home) reselect is a no-op")
+  func postsCompactSidebarReselectIsNoop() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    // The communities sidebar is the visible collapsed column (the home root).
+    appNav.posts.revealSubredditSelector()
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .sidebar)
+
+    #expect(appNav.posts.preferredColumn == .sidebar)
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
+  }
+
+  @Test("Posts compact single-tap peels detail → content → sidebar, one level per tap")
+  func postsCompactWalkBackPeelsOneLevelPerTap() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.community = "popular"
+    appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // contentPath = 1
+    appNav.posts.selectFeedPost(Post(id: "p1"))                                       // detail root
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)          // detailPath = 1
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
+
+    // 1. pop the author off the detail stack
+    var action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.backOneStep(.detail)))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.detailPost != nil)
+
+    // 2. clear the open post → back to the content column (the pushed sub-feed)
+    action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.backOneStep(.detail)))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.preferredColumn == .content)
+    appNav.posts.updateRenderedActiveColumn(.content) // renderer follows the column change
+
+    // 3. pop the pushed sub-feed → back to the Popular feed root
+    action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.backOneStep(.content)))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.contentPath.isEmpty)
+
+    // 4. at the feed root → reveal the communities sidebar (the "Subreddit menu")
+    action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.revealSubredditSelector))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.preferredColumn == .sidebar)
+    appNav.posts.updateRenderedActiveColumn(.sidebar)
+
+    // 5. already home at the sidebar → nothing left to peel back
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
+  }
+
+  @Test("Posts compact scrolled feed scrolls to top before revealing the sidebar")
+  func postsCompactScrolledFeedScrollsBeforeSidebar() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.community = "popular"
+    appNav.posts.tabInteractionState = PostsTabInteractionState(
+      layout: .compact,
+      activeColumn: .content,
+      contentCanScrollToTop: true
+    )
+
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .surface(.scrollContentToTop))
   }
 
   @Test("Posts regular feed scroll wins before detail")

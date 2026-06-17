@@ -74,19 +74,24 @@ final class NavigationE2ETests: XCTestCase {
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
   }
 
-  func testPostsDoubleTapRevealsSelectorAfterImmediateSingle() {
+  func testPostsCompactFeedRootTapRevealsSubredditSelector() {
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
-    button("navE2E.posts.openPost").tap()
-    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
-    button("navE2E.posts.compactDetail").tap()
-    button("navE2E.posts.openAuthor").tap()
-    XCTAssertTrue(text("navE2E.posts.detailUser").waitForExistence(timeout: 5))
 
-    doubleTapTab("Posts")
+    // At the feed root with nothing scrolled/pushed, a single Posts tap peels back to the
+    // communities sidebar (the "Subreddit menu") rather than doing nothing.
+    selectTab("Posts")
 
-    XCTAssertTrue(text("navE2E.lastAction").label.contains("double.navigation.revealSubredditSelector"))
     XCTAssertTrue(text("navE2E.posts.selector").waitForExistence(timeout: 5))
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.navigation.revealSubredditSelector"))
   }
+
+  // NOTE: The double-tap-to-reveal-selector behavior is covered by unit tests
+  // (`postsDoubleTapRevealsSelector`, `doubleTapAfterImmediateSingleStillEndsAtSelector`)
+  // rather than a UI test: XCUITest cannot synthesize two tab-bar taps inside the 0.32s
+  // double-tap window — `selectTab` waits for app-idle between taps (lands them seconds
+  // apart) and `XCUIElement.doubleTap()` is coalesced by UIKit into a single tab selection.
+  // The single-tap reselect *wiring* (introspect delegate → classifier → handler) is
+  // exercised end-to-end by the single-tap tests above.
 
   func testEachTabCanReturnToItsRootWithSameTabReselect() {
     assertColumnTabRoots(tab: "Me", rootID: "navE2E.me.root", pushID: "navE2E.me.push", detailID: "navE2E.me.detail")
@@ -152,12 +157,6 @@ final class NavigationE2ETests: XCTestCase {
     let sidebarButton = app.buttons[title]
     XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5), "Missing tab or sidebar item: \(title)")
     sidebarButton.tap()
-  }
-
-  private func doubleTapTab(_ title: String) {
-    selectTab(title)
-    Thread.sleep(forTimeInterval: 0.16)
-    selectTab(title)
   }
 
   private func waitPastDoubleTapInterval() {

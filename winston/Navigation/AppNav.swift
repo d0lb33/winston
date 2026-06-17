@@ -69,6 +69,22 @@ enum TabReselectAction: Equatable {
     case .none: return "none"
     }
   }
+
+  /// Whether our handler fully owns this reselect and UIKit's native pop-to-root must be
+  /// suppressed. Granular actions (scroll-to-top, single-step back) suppress native so it
+  /// doesn't jump the whole NavigationSplitView to its root. Jump-to-root actions
+  /// (reveal-sidebar / reset) intentionally let native run, because its pop-to-root
+  /// reliably collapses all the way to the sidebar — something programmatic
+  /// `preferredCompactColumn = .sidebar` does NOT do from a deep detail state.
+  var suppressesNativeReselect: Bool {
+    switch self {
+    case .surface: return true
+    case .navigation(.backOneStep): return true
+    case .navigation(.revealSubredditSelector): return false
+    case .resetToTabRoot: return false
+    case .none: return false
+    }
+  }
 }
 
 extension PostsTabColumn {
@@ -407,6 +423,10 @@ final class PostsNav: RedditNavigator {
   /// Which column the collapsed (compact) layout shows. Derived from state, never from a
   /// history stack.
   var preferredColumn: NavigationSplitViewColumn = .content
+  /// Column visibility for the EXPANDED (regular-width) layout. Driven by the available
+  /// width in `AuroraRoot`: `.all` when there is room for the full three-pane spread,
+  /// `.automatic` otherwise. Ignored while collapsed (compact uses `preferredColumn`).
+  var columnVisibility: NavigationSplitViewVisibility = .automatic
   var tabInteractionState = PostsTabInteractionState()
   var contentScrollToTopRequest = 0
   var detailScrollToTopRequest = 0
@@ -612,26 +632,41 @@ final class PostsNav: RedditNavigator {
   }
 
   private func compactTabReselectAction() -> TabReselectAction {
-    switch tabInteractionState.activeColumn {
-    case .detail:
+    // iPhone (and the folded/compact iPad) single-tap behavior: peel back exactly ONE
+    // layer per tap — first scroll the active surface to the top, then pop one
+    // navigation level, and once at the feed root, reveal the communities sidebar (the
+    // "Subreddit menu"). The big jump straight to the sidebar is reserved for double-tap.
+    //
+    // The "which column is showing" decision uses `preferredColumn` (the framework-blessed
+    // collapsed-column knob, which the system keeps in sync on the native back button) and
+    // NOT `tabInteractionState.activeColumn` — the latter is tracked via per-column
+    // `.onAppear`, which fires unreliably in a collapsed NavigationSplitView (it reported
+    // `.sidebar` while the feed was actually on screen).
+    if preferredColumn == .detail {
       if tabInteractionState.detailCanScrollToTop {
         return .surface(.scrollDetailToTop)
       }
       if canGoBackDetailOneStepForTabReselect {
         return .navigation(.backOneStep(.detail))
       }
-    case .content:
-      if tabInteractionState.contentCanScrollToTop {
-        return .surface(.scrollContentToTop)
-      }
-      if canGoBackContentOneStepForTabReselect {
-        return .navigation(.backOneStep(.content))
-      }
-    case .sidebar:
-      break
+      // Detail with nothing left to scroll/pop (e.g. the empty placeholder) → home.
+      return .navigation(.revealSubredditSelector)
     }
 
-    return canResetToTabRoot ? .resetToTabRoot : .none
+    if preferredColumn == .sidebar {
+      // Already home at the communities sidebar — nothing further to peel back.
+      return .none
+    }
+
+    // Content column (the feed, or a sub/user pushed onto it).
+    if tabInteractionState.contentCanScrollToTop {
+      return .surface(.scrollContentToTop)
+    }
+    if canGoBackContentOneStepForTabReselect {
+      return .navigation(.backOneStep(.content))
+    }
+    // At the feed root, already scrolled to top → reveal the communities sidebar.
+    return .navigation(.revealSubredditSelector)
   }
 
   private func regularTabReselectAction() -> TabReselectAction {
