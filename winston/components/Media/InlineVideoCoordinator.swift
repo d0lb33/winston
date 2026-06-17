@@ -156,6 +156,7 @@ final class InlineVideoPlaybackState {
   var shouldPlay = false
   var shouldMountPlayer = false
   var isPrefetchTarget = false
+  var hostHasFrame = false
   var visibleFraction: CGFloat = 0
 
   init(key: String) {
@@ -436,6 +437,7 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var prefetchVideoKeys: Set<String> = []
   @ObservationIgnored private var activeSince: [String: CFTimeInterval] = [:]
   @ObservationIgnored private var registeredVideos: [String: InlineVideoRegistration] = [:]
+  @ObservationIgnored private var navigationPreservedKeys: Set<String> = []
 
   private let warmAheadCount = 1
   private let fastScrollVelocityThreshold: CGFloat = 2_200
@@ -487,21 +489,47 @@ final class InlineVideoCoordinator {
     registeredVideos[key]
   }
 
+  func isRegisteredVideo(_ sharedVideo: SharedVideo) -> Bool {
+    registeredVideos.values.contains { $0.sharedVideo === sharedVideo }
+  }
+
   func setFullscreenOwner(_ key: String?, active: Bool) {
     let nextKey = active ? key : nil
     guard fullscreenVideoKey != nextKey else { return }
     fullscreenVideoKey = nextKey
   }
 
+  func preservePlaybackForNonScrollDisappearance(key: String) {
+    guard activeVideoKey == key, !isScrolling else { return }
+    navigationPreservedKeys.insert(key)
+  }
+
+  func consumeNavigationPreservation(for key: String) -> Bool {
+    navigationPreservedKeys.remove(key) != nil
+  }
+
   func setActive(_ key: String?) {
     guard key != activeVideoKey else { return }
+    if let activeVideoKey, let state = playbackStates[activeVideoKey], state.hostHasFrame {
+      state.hostHasFrame = false
+    }
     ScrollPerfProbe.shared.bump("inlineActiveChange")
     activeVideoKey = key
     if let key {
       activeSince[key] = CACurrentMediaTime()
+      if let state = playbackStates[key], state.hostHasFrame {
+        state.hostHasFrame = false
+      }
     }
     updateActiveSurface()
     updatePlaybackStates()
+  }
+
+  func setHostHasFrame(_ hasFrame: Bool, for key: String) {
+    let state = self.state(for: key)
+    if state.hostHasFrame != hasFrame {
+      state.hostHasFrame = hasFrame
+    }
   }
 
   func setScrolling(_ scrolling: Bool) {
@@ -905,6 +933,7 @@ private struct InlineVideoVisibilityTracker: ViewModifier {
           InlineVideoCoordinator.shared.updateVisibility(visibility)
         }
         .onDisappear {
+          InlineVideoCoordinator.shared.preservePlaybackForNonScrollDisappearance(key: key)
           InlineVideoCoordinator.shared.removeVisibility(for: key)
         }
     } else {
@@ -960,6 +989,8 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
       }
       .overlay(alignment: .topLeading) {
         InlinePlaybackHost()
+          .allowsHitTesting(false)
+          .ignoresSafeArea(.container, edges: .bottom)
       }
       .onScrollPhaseChange { _, phase in
         let scrolling = phase != .idle
@@ -1066,7 +1097,7 @@ private final class InlinePlaybackResourceController {
   }
 }
 
-private struct InlinePlaybackHost: View {
+struct InlinePlaybackHost: View {
   @Default(.VideoDefSettings) private var videoDefSettings
   private let coordinator = InlineVideoCoordinator.shared
 
@@ -1136,8 +1167,10 @@ private struct InlinePlaybackLayerContainer: View {
           InlineAVPlayerLayerRepresentable(
             player: player,
             videoGravity: .resizeAspectFill,
+            cornerRadius: registration.cornerRadius,
             onReadyForDisplay: {
               readyForDisplay = true
+              InlineVideoCoordinator.shared.setHostHasFrame(true, for: surface.key)
               InlineVideoCoordinator.shared.recordFirstFrameReady(key: surface.key, sharedVideo: sharedVideo)
             }
           )
@@ -1153,11 +1186,13 @@ private struct InlinePlaybackLayerContainer: View {
         smallIcon: registration.smallNSFWIcon,
         size: CGSize(width: surface.width, height: surface.height)
       )
+      .clipShape(RoundedRectangle(cornerRadius: registration.cornerRadius, style: .continuous))
       .position(x: localMidX, y: localMidY)
       .allowsHitTesting(false)
       .clipped()
       .task(id: attachmentID) {
         readyForDisplay = false
+        InlineVideoCoordinator.shared.setHostHasFrame(false, for: surface.key)
         player = InlinePlaybackResourceController.shared.attach(
           key: surface.key,
           video: sharedVideo,
@@ -1167,9 +1202,10 @@ private struct InlinePlaybackLayerContainer: View {
         )
       }
       .onDisappear {
+        InlineVideoCoordinator.shared.setHostHasFrame(false, for: surface.key)
         InlinePlaybackResourceController.shared.detach(
           key: surface.key,
-          preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == surface.key
+          preserveForFullscreen: InlineVideoCoordinator.shared.fullscreenVideoKey == surface.key || InlineVideoCoordinator.shared.consumeNavigationPreservation(for: surface.key)
         )
       }
     }

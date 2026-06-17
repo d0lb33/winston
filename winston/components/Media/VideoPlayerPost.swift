@@ -141,6 +141,7 @@ struct VideoPlayerPost: View, Equatable {
   /// coordinator state, so it re-evaluates only when this cell's own mount state flips.
   @State private var mountPlayer = false
   @State private var playInline = false
+  @State private var hostHasFrame = false
   /// True once the live AVPlayerLayer has composited a real frame. The grey "no frame yet"
   /// backdrop and the poster both stay until this flips, so the poster→video handoff never
   /// reveals an empty/grey gap. Reset when the row is reused for a different video.
@@ -230,7 +231,7 @@ struct VideoPlayerPost: View, Equatable {
           playOverlay()
         }
         .frame(width: videoSize.width, height: videoSize.height)
-        .mask(RR(12, Color.black))
+        .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
         .contentShape(Rectangle())
         .trackInlineVideoCenter(
           key: feedItemKey ?? "",
@@ -276,6 +277,8 @@ struct VideoPlayerPost: View, Equatable {
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
         }
+        .frame(width: videoSize.width, height: videoSize.height)
+        .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
         .contentShape(Rectangle())
         .trackInlineVideoCenter(
           key: feedItemKey ?? "",
@@ -325,6 +328,7 @@ struct VideoPlayerPost: View, Equatable {
     let desiredPlay = feedItemKey == nil ? autoPlayVideos : (state?.shouldPlay ?? false)
     if mountPlayer != desiredMount { mountPlayer = desiredMount }
     if playInline != desiredPlay { playInline = desiredPlay }
+    if hostHasFrame != (state?.hostHasFrame ?? false) { hostHasFrame = state?.hostHasFrame ?? false }
     if usesGlobalInlinePlayback { return }
     applyInlinePlaybackState(sharedVideo)
   }
@@ -355,7 +359,7 @@ struct VideoPlayerPost: View, Equatable {
     .frame(width: videoSize.width, height: videoSize.height)
     .clipped()
     .fixedSize()
-    .mask(RR(12, Color.black))
+    .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
     .allowsHitTesting(false)
   }
 
@@ -366,8 +370,8 @@ struct VideoPlayerPost: View, Equatable {
   /// grey can never appear on TOP of a hiding poster, only behind it.
   @ViewBuilder
   func inlineVideoPlaceholder() -> some View {
-    if !playerReadyForDisplay {
-      RR(12, Color.primary.opacity(0.06))
+    if !playerReadyForDisplay && !(usesGlobalInlinePlayback && hostHasFrame) {
+      RR(inlineCornerRadius, Color.primary.opacity(0.06))
         .overlay(
           Image(systemName: "play.circle.fill")
             .fontSize(30)
@@ -403,7 +407,9 @@ struct VideoPlayerPost: View, Equatable {
 
   @ViewBuilder
   func videoPoster(sharedVideo: SharedVideo, size: CGSize) -> some View {
-    if let posterURL = sharedVideo.posterURL, showInlinePoster, !posterUnavailable {
+    if usesGlobalInlinePlayback && hostHasFrame {
+      Color.clear
+    } else if let posterURL = sharedVideo.posterURL, showInlinePoster, !posterUnavailable {
       let request = winstonImageRequest(
         url: posterURL,
         processors: [ImageProcessors.ScaleFixer()],
@@ -423,7 +429,7 @@ struct VideoPlayerPost: View, Equatable {
         requestImageScaledToFill: true
       )
         .frame(width: size.width, height: size.height)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
         .opacity(showInlinePoster ? 1 : 0)
         .allowsHitTesting(false)
         .onAppear {
@@ -655,6 +661,19 @@ struct VideoPlayerPost: View, Equatable {
   func handleInlineDisappear(_ sharedVideo: SharedVideo) {
     posterHideGeneration = UUID()
     removeObserver()
+    if usesGlobalInlinePlayback {
+      if let feedItemKey {
+        if InlineVideoCoordinator.shared.isScrolling {
+          InlineVideoCoordinator.shared.unregisterVideo(for: feedItemKey, sharedVideo: sharedVideo)
+        } else {
+          InlineVideoCoordinator.shared.preservePlaybackForNonScrollDisappearance(key: feedItemKey)
+        }
+      }
+      return
+    }
+    if InlineVideoCoordinator.shared.isRegisteredVideo(sharedVideo) {
+      return
+    }
     if sharedVideo.isPlayerLoaded {
       sharedVideo.player.pause()
     }
@@ -957,6 +976,7 @@ struct VideoPlayerPost: View, Equatable {
 struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   let player: AVPlayer
   let videoGravity: AVLayerVideoGravity
+  var cornerRadius: CGFloat = 0
   /// Fires (on the main actor) once the layer has actually composited its first frame.
   /// Used to hold the poster until real pixels are on screen, avoiding the grey/blank flash
   /// during the poster→video handoff.
@@ -970,6 +990,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
     view.backgroundColor = .clear
     view.playerLayer.player = player
     view.playerLayer.videoGravity = videoGravity
+    view.setCornerRadius(cornerRadius)
     context.coordinator.onReadyForDisplay = onReadyForDisplay
     context.coordinator.observe(view.playerLayer)
     return view
@@ -984,6 +1005,7 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
     if uiView.playerLayer.videoGravity != videoGravity {
       uiView.playerLayer.videoGravity = videoGravity
     }
+    uiView.setCornerRadius(cornerRadius)
   }
 
   static func dismantleUIView(_ uiView: PlayerLayerView, coordinator: Coordinator) {
@@ -1010,12 +1032,41 @@ struct InlineAVPlayerLayerRepresentable: UIViewRepresentable {
   }
 
   final class PlayerLayerView: UIView {
-    override class var layerClass: AnyClass {
-      AVPlayerLayer.self
+    let playerLayer = AVPlayerLayer()
+
+    override init(frame: CGRect) {
+      super.init(frame: frame)
+      layer.addSublayer(playerLayer)
+      layer.masksToBounds = true
+      layer.cornerCurve = .continuous
+      playerLayer.masksToBounds = true
+      playerLayer.cornerCurve = .continuous
     }
 
-    var playerLayer: AVPlayerLayer {
-      layer as! AVPlayerLayer
+    required init?(coder: NSCoder) {
+      super.init(coder: coder)
+      layer.addSublayer(playerLayer)
+      layer.masksToBounds = true
+      layer.cornerCurve = .continuous
+      playerLayer.masksToBounds = true
+      playerLayer.cornerCurve = .continuous
+    }
+
+    override func layoutSubviews() {
+      super.layoutSubviews()
+      CATransaction.begin()
+      CATransaction.setDisableActions(true)
+      playerLayer.frame = bounds
+      CATransaction.commit()
+    }
+
+    func setCornerRadius(_ radius: CGFloat) {
+      layer.cornerRadius = radius
+      layer.masksToBounds = radius > 0
+      layer.cornerCurve = .continuous
+      playerLayer.cornerRadius = radius
+      playerLayer.masksToBounds = radius > 0
+      playerLayer.cornerCurve = .continuous
     }
   }
 }
@@ -1035,6 +1086,7 @@ private struct InlineVideoCoordinatorObserver: View {
       .onChange(of: state?.shouldPlay) { _, _ in onCoordinatorChange(state) }
       .onChange(of: state?.shouldMountPlayer) { _, _ in onCoordinatorChange(state) }
       .onChange(of: state?.isPrefetchTarget) { _, _ in onCoordinatorChange(state) }
+      .onChange(of: state?.hostHasFrame) { _, _ in onCoordinatorChange(state) }
   }
 }
 
