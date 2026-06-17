@@ -449,6 +449,7 @@ final class InlineVideoCoordinator {
   private let activeSwitchVisibleFloor: CGFloat = 0.14
   private let activeSwitchMinImprovement: CGFloat = 96
   private let activeSwitchMinimumDwell: CFTimeInterval = 0.28
+  private let firstFrameDiagnosticThresholdMs: Double = 300
 
   private init() {}
 
@@ -572,6 +573,7 @@ final class InlineVideoCoordinator {
     activeSince.removeValue(forKey: key)
     attachStartedAt.removeValue(forKey: key)
     attachCompletedAt.removeValue(forKey: key)
+    guard elapsedMs >= firstFrameDiagnosticThresholdMs else { return }
     let level: DiagnosticLevel = elapsedMs >= 500 ? .warning : .info
     AppDiagnostics.asyncRecord(
       level,
@@ -590,31 +592,8 @@ final class InlineVideoCoordinator {
     )
   }
 
-  func recordInlineAttachStarted(
-    key: String,
-    sharedVideo: SharedVideo,
-    wasPlayerLoaded: Bool,
-    autoplay: Bool,
-    muted: Bool,
-    loop: Bool
-  ) {
+  func recordInlineAttachStarted(key: String) {
     attachStartedAt[key] = CACurrentMediaTime()
-    AppDiagnostics.asyncRecord(
-      .info,
-      category: "ui.video",
-      message: "Inline playback attach started",
-      metadata: inlineStageMetadata(
-        key: key,
-        sharedVideo: sharedVideo,
-        player: wasPlayerLoaded ? sharedVideo.player : nil,
-        extra: [
-          "playerLoadedBeforeAttach": "\(wasPlayerLoaded)",
-          "autoplay": "\(autoplay)",
-          "muted": "\(muted)",
-          "loop": "\(loop)"
-        ]
-      )
-    )
   }
 
   func recordInlineAttachCompleted(
@@ -625,9 +604,9 @@ final class InlineVideoCoordinator {
     attachElapsedMs: Double
   ) {
     attachCompletedAt[key] = CACurrentMediaTime()
-    let level: DiagnosticLevel = attachElapsedMs >= 50 ? .warning : .info
+    guard attachElapsedMs >= 50 else { return }
     AppDiagnostics.asyncRecord(
-      level,
+      .warning,
       category: "ui.video",
       message: "Inline playback attach completed",
       metadata: inlineStageMetadata(
@@ -747,10 +726,12 @@ final class InlineVideoCoordinator {
     updateActiveSurface()
 
     if isScrolling {
-      // A video that is visible to the user should play immediately, even during scroll.
-      // Keep this to the single active row: warm neighbors are still mounted only after
-      // idle, so we do not create extra off-center AVPlayerLayers while the list moves.
-      electCenteredVideo(updateWarmSet: false)
+      // During a fast fling, do not start MediaToolbox work for each card that briefly
+      // crosses center. Keep the current active video until it leaves; elect the next one
+      // when scrolling slows or settles.
+      if !isFastScrolling {
+        electCenteredVideo(updateWarmSet: false)
+      }
       return latestVisibilities
     }
 
@@ -1188,14 +1169,7 @@ private final class InlinePlaybackResourceController {
   func attach(key: String, video: SharedVideo, muted: Bool, loop: Bool, autoplay: Bool) -> AVPlayer {
     let attachStarted = CACurrentMediaTime()
     let wasPlayerLoaded = video.isPlayerLoaded
-    InlineVideoCoordinator.shared.recordInlineAttachStarted(
-      key: key,
-      sharedVideo: video,
-      wasPlayerLoaded: wasPlayerLoaded,
-      autoplay: autoplay,
-      muted: muted,
-      loop: loop
-    )
+    InlineVideoCoordinator.shared.recordInlineAttachStarted(key: key)
 
     if activeKey != key {
       detach()
