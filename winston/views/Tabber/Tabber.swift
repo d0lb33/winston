@@ -11,6 +11,7 @@ import SpriteKit
 
 struct Tabber: View, Equatable {
   static func == (lhs: Tabber, rhs: Tabber) -> Bool { true }
+  private static let tabOrder: [AppNav.Tab] = [.posts, .inbox, .me, .search, .settings]
 
   @State private var appNav = AppNav.shared
   @ObservedObject private var wire = RedditWire.shared
@@ -83,6 +84,22 @@ struct Tabber: View, Equatable {
     }
     .tabViewStyle(.sidebarAdaptable)
     .tabBarMinimizeBehavior(.onScrollDown)
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button {
+          appNav.resetSelectedSurfaceToTabRoot()
+        } label: {
+          Label("Root", systemImage: "arrow.uturn.backward")
+        }
+        .disabled(!appNav.canResetSelectedSurfaceToTabRoot)
+      }
+    }
+    .background(
+      TabReselectBridge(tabOrder: Self.tabOrder) { tab in
+        appNav.resetToTabRoot(tab)
+      }
+      .allowsHitTesting(false)
+    )
     .environment(\.videoDefSettings, videoDefSettings)
     .openFromWebListener()
     .clipboardRedditLinkListener()
@@ -96,5 +113,131 @@ struct Tabber: View, Equatable {
       }
     }
     .accentColor(currentTheme.general.accentColor())
+  }
+}
+
+private struct TabReselectBridge: UIViewControllerRepresentable {
+  let tabOrder: [AppNav.Tab]
+  let onReselect: (AppNav.Tab) -> Void
+
+  func makeUIViewController(context: Context) -> UIViewController {
+    let controller = HostController()
+    context.coordinator.tabOrder = tabOrder
+    context.coordinator.onReselect = onReselect
+    controller.onReady = { [weak coordinator = context.coordinator] controller in
+      coordinator?.attachIfPossible(from: controller)
+    }
+    return controller
+  }
+
+  func updateUIViewController(_ controller: UIViewController, context: Context) {
+    context.coordinator.tabOrder = tabOrder
+    context.coordinator.onReselect = onReselect
+    context.coordinator.attachIfPossible(from: controller)
+  }
+
+  func dismantleUIViewController(_ controller: UIViewController, coordinator: Coordinator) {
+    coordinator.detach()
+  }
+
+  func makeCoordinator() -> Coordinator {
+    Coordinator()
+  }
+
+  @MainActor
+  final class HostController: UIViewController {
+    var onReady: ((UIViewController) -> Void)?
+
+    override func didMove(toParent parent: UIViewController?) {
+      super.didMove(toParent: parent)
+      onReady?(self)
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+      super.viewDidAppear(animated)
+      onReady?(self)
+    }
+  }
+
+  @MainActor
+  final class Coordinator: NSObject, UITabBarControllerDelegate {
+    var tabOrder: [AppNav.Tab] = []
+    var onReselect: ((AppNav.Tab) -> Void)?
+    private weak var tabBarController: UITabBarController?
+    private weak var previousDelegate: UITabBarControllerDelegate?
+
+    func attachIfPossible(from controller: UIViewController) {
+      guard let tabBarController = findTabBarController(from: controller) else { return }
+      guard self.tabBarController !== tabBarController || tabBarController.delegate !== self else { return }
+
+      if tabBarController.delegate !== self {
+        previousDelegate = tabBarController.delegate
+      }
+      self.tabBarController = tabBarController
+      tabBarController.delegate = self
+    }
+
+    func detach() {
+      guard let tabBarController, tabBarController.delegate === self else { return }
+      tabBarController.delegate = previousDelegate
+      self.tabBarController = nil
+      previousDelegate = nil
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
+      if viewController === tabBarController.selectedViewController,
+         let tab = tab(for: viewController, in: tabBarController) {
+        onReselect?(tab)
+        return false
+      }
+
+      if let previousDelegate,
+         previousDelegate !== self,
+         let shouldSelect = previousDelegate.tabBarController?(tabBarController, shouldSelect: viewController) {
+        return shouldSelect
+      }
+
+      return true
+    }
+
+    func tabBarController(_ tabBarController: UITabBarController, didSelect viewController: UIViewController) {
+      previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
+    }
+
+    private func tab(for viewController: UIViewController, in tabBarController: UITabBarController) -> AppNav.Tab? {
+      guard let controllers = tabBarController.viewControllers,
+            let index = controllers.firstIndex(where: { $0 === viewController }),
+            tabOrder.indices.contains(index)
+      else { return nil }
+      return tabOrder[index]
+    }
+
+    private func findTabBarController(from controller: UIViewController) -> UITabBarController? {
+      var current: UIViewController? = controller
+      while let candidate = current {
+        if let tabBarController = candidate as? UITabBarController {
+          return tabBarController
+        }
+        current = candidate.parent
+      }
+
+      guard let root = controller.view.window?.rootViewController else { return nil }
+      return findTabBarController(in: root)
+    }
+
+    private func findTabBarController(in controller: UIViewController) -> UITabBarController? {
+      if let tabBarController = controller as? UITabBarController {
+        return tabBarController
+      }
+      for child in controller.children {
+        if let tabBarController = findTabBarController(in: child) {
+          return tabBarController
+        }
+      }
+      if let presented = controller.presentedViewController {
+        return findTabBarController(in: presented)
+      }
+      return nil
+    }
   }
 }

@@ -156,6 +156,34 @@ final class AppNav {
     reset(selectedTab)
   }
 
+  var canResetSelectedSurfaceToTabRoot: Bool {
+    canResetToTabRoot(selectedTab)
+  }
+
+  func canResetToTabRoot(_ tab: Tab) -> Bool {
+    switch tab {
+    case .posts: return posts.canResetToTabRoot
+    case .inbox: return inbox.canResetToTabRoot
+    case .me: return me.canResetToTabRoot
+    case .search: return search.canResetToTabRoot
+    case .settings: return settings.canResetToTabRoot
+    }
+  }
+
+  func resetSelectedSurfaceToTabRoot() {
+    resetToTabRoot(selectedTab)
+  }
+
+  func resetToTabRoot(_ tab: Tab) {
+    switch tab {
+    case .posts: posts.resetToTabRoot()
+    case .inbox: inbox.resetToTabRoot()
+    case .me: me.resetToTabRoot()
+    case .search: search.resetToTabRoot()
+    case .settings: settings.resetToTabRoot()
+    }
+  }
+
   func reset(_ tab: Tab) {
     switch tab {
     case .posts: posts.reset()
@@ -314,6 +342,25 @@ final class PostsNav: RedditNavigator {
     preferredColumn = .sidebar
   }
 
+  var canResetToTabRoot: Bool {
+    !detailPath.isEmpty ||
+    selectedPostID != nil ||
+    detailPost != nil ||
+    detailHighlightID != nil ||
+    !contentPath.isEmpty ||
+    (community != nil && preferredColumn != .content) ||
+    (community == nil && preferredColumn != .sidebar)
+  }
+
+  func resetToTabRoot() {
+    selectedPostID = nil
+    detailPost = nil
+    detailHighlightID = nil
+    contentPath = []
+    detailPath = []
+    preferredColumn = community == nil ? .sidebar : .content
+  }
+
   static func postDetail(from destination: NavDest) -> (post: Post, highlightID: String?)? {
     guard case .reddit(let reddit) = destination else { return nil }
     switch reddit {
@@ -403,6 +450,18 @@ final class ColumnNav: RedditNavigator {
   }
 
   func reset() { resetContentAndDetail() }
+
+  var canResetToTabRoot: Bool {
+    detailPost != nil ||
+    detailHighlightID != nil ||
+    !contentPath.isEmpty ||
+    !detailPath.isEmpty ||
+    preferredColumn != .sidebar
+  }
+
+  func resetToTabRoot() {
+    resetContentAndDetail()
+  }
 }
 
 // MARK: - Single-stack surfaces (Inbox)
@@ -429,6 +488,12 @@ final class StackNav: RedditNavigator {
   }
 
   func reset() { path = [] }
+
+  var canResetToTabRoot: Bool { !path.isEmpty }
+
+  func resetToTabRoot() {
+    path = []
+  }
 }
 
 // MARK: - Settings (sidebar selection | detail)
@@ -472,6 +537,20 @@ final class SettingsNav: RedditNavigator {
   }
 
   func reset() {
+    selection = .general
+    contentPath = []
+    detailPath = []
+    preferredColumn = .sidebar
+  }
+
+  var canResetToTabRoot: Bool {
+    selection != .general ||
+    !contentPath.isEmpty ||
+    !detailPath.isEmpty ||
+    preferredColumn != .sidebar
+  }
+
+  func resetToTabRoot() {
     selection = .general
     contentPath = []
     detailPath = []

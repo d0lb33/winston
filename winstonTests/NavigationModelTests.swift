@@ -347,6 +347,98 @@ struct StackNavTests {
 
 @MainActor
 struct AppNavBridgeTests {
+  @Test("Posts tab-root reset preserves selected feed and scroll position")
+  func postsTabRootPreservesFeedContext() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.community = "swift"
+    appNav.posts.feedScrollPositionID = "post-near-top"
+    appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "ios"))), from: .detail)
+
+    appNav.resetToTabRoot(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.feedScrollPositionID == "post-near-top")
+    #expect(appNav.posts.selectedPostID == nil)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.detailHighlightID == nil)
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.preferredColumn == .content)
+  }
+
+  @Test("Posts tab-root reset shows sidebar when no feed is selected")
+  func postsTabRootShowsSidebarWhenNoFeedSelected() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.community = nil
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+
+    appNav.resetToTabRoot(.posts)
+
+    #expect(appNav.posts.community == nil)
+    #expect(appNav.posts.preferredColumn == .sidebar)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+  }
+
+  @Test("Column tab-root reset clears source and detail navigation")
+  func columnTabRootClearsSourceAndDetailNavigation() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.search.contentPath = [.reddit(.user(User(id: "alice")))]
+    appNav.search.openPostInDetail(Post(id: "p1"), highlightID: "c1")
+    appNav.search.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .detail)
+
+    appNav.resetToTabRoot(.search)
+
+    #expect(appNav.search.contentPath.isEmpty)
+    #expect(appNav.search.detailPath.isEmpty)
+    #expect(appNav.search.detailPost == nil)
+    #expect(appNav.search.detailHighlightID == nil)
+    #expect(appNav.search.preferredColumn == .sidebar)
+  }
+
+  @Test("Inbox tab-root reset clears stack")
+  func inboxTabRootClearsStack() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.inbox.path = [.reddit(.user(User(id: "alice"))), .reddit(.post(Post(id: "p1")))]
+
+    appNav.resetToTabRoot(.inbox)
+
+    #expect(appNav.inbox.path.isEmpty)
+  }
+
+  @Test("Settings tab-root reset returns to General")
+  func settingsTabRootReturnsToGeneral() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.settings.select(.postSwipe)
+    appNav.settings.pushDetail(.reddit(.user(User(id: "alice"))))
+
+    appNav.resetToTabRoot(.settings)
+
+    #expect(appNav.settings.selection == .general)
+    #expect(appNav.settings.contentPath.isEmpty)
+    #expect(appNav.settings.detailPath.isEmpty)
+    #expect(appNav.settings.preferredColumn == .sidebar)
+  }
+
+  @Test("canResetSelectedSurfaceToTabRoot follows selected tab state")
+  func canResetSelectedSurfaceToTabRootFollowsSelectedTab() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .me
+
+    #expect(!appNav.canResetSelectedSurfaceToTabRoot)
+    appNav.me.contentPath = [.reddit(.user(User(id: "alice")))]
+    #expect(appNav.canResetSelectedSurfaceToTabRoot)
+  }
+
   @Test("resetAccountScopedSurfaces clears account tabs and preserves Settings")
   func resetAccountScopedSurfaces() {
     let appNav = AppNav.shared
