@@ -17,7 +17,142 @@
 //  migration. `NavDest` is lifted to a top-level type only when `Router` is deleted.
 //
 
+import Foundation
 import SwiftUI
+
+enum TabTapKind: Equatable {
+  case single
+  case double
+}
+
+enum PostsTabLayoutMode: Equatable {
+  case compact
+  case regular
+}
+
+enum PostsTabColumn: Equatable {
+  case sidebar
+  case content
+  case detail
+}
+
+struct PostsTabInteractionState: Equatable {
+  var layout: PostsTabLayoutMode = .regular
+  var activeColumn: PostsTabColumn = .content
+  var contentCanScrollToTop = false
+  var detailCanScrollToTop = false
+}
+
+enum PostsSurfaceCommand: Equatable {
+  case scrollContentToTop
+  case scrollDetailToTop
+}
+
+enum PostsNavigationAction: Equatable {
+  case backOneStep(PostsTabColumn)
+  case revealSubredditSelector
+}
+
+enum TabReselectAction: Equatable {
+  case surface(PostsSurfaceCommand)
+  case navigation(PostsNavigationAction)
+  case resetToTabRoot
+  case none
+
+  var diagnosticsName: String {
+    switch self {
+    case .surface(.scrollContentToTop): return "surface.scrollContentToTop"
+    case .surface(.scrollDetailToTop): return "surface.scrollDetailToTop"
+    case .navigation(.backOneStep(let column)): return "navigation.backOneStep.\(column.diagnosticsName)"
+    case .navigation(.revealSubredditSelector): return "navigation.revealSubredditSelector"
+    case .resetToTabRoot: return "resetToTabRoot"
+    case .none: return "none"
+    }
+  }
+}
+
+extension PostsTabColumn {
+  var diagnosticsName: String {
+    switch self {
+    case .sidebar: return "sidebar"
+    case .content: return "content"
+    case .detail: return "detail"
+    }
+  }
+}
+
+struct TabTapClassifier {
+  var doubleTapInterval: CFTimeInterval = 0.32
+  var duplicateCallbackInterval: CFTimeInterval = 0.08
+
+  private var lastEventID: ObjectIdentifier?
+  private var lastFallbackCallbackTab: AppNav.Tab?
+  private var lastFallbackCallbackTime: CFTimeInterval?
+  private var lastPhysicalTapTab: AppNav.Tab?
+  private var lastPhysicalTapTime: CFTimeInterval?
+
+  mutating func classify(tab: AppNav.Tab, eventID: ObjectIdentifier?, time: CFTimeInterval) -> TabTapKind? {
+    if let eventID {
+      guard lastEventID != eventID else { return nil }
+      lastEventID = eventID
+    } else if let lastTab = lastFallbackCallbackTab,
+              let lastTime = lastFallbackCallbackTime,
+              lastTab == tab,
+              time - lastTime <= duplicateCallbackInterval {
+      return nil
+    }
+
+    lastFallbackCallbackTab = tab
+    lastFallbackCallbackTime = time
+
+    guard lastPhysicalTapTab == tab,
+          let lastPhysicalTapTime,
+          time - lastPhysicalTapTime <= doubleTapInterval
+    else {
+      lastPhysicalTapTab = tab
+      lastPhysicalTapTime = time
+      return .single
+    }
+
+    self.lastPhysicalTapTab = nil
+    self.lastPhysicalTapTime = nil
+    return .double
+  }
+}
+
+@MainActor
+final class TabTapClassifierBox {
+  private var classifier = TabTapClassifier()
+
+  func classify(tab: AppNav.Tab, eventID: ObjectIdentifier?, time: CFTimeInterval) -> TabTapKind? {
+    classifier.classify(tab: tab, eventID: eventID, time: time)
+  }
+}
+
+@MainActor
+enum TabReselectActionExecutor {
+  static func execute(_ action: TabReselectAction, for tab: AppNav.Tab, appNav: AppNav) {
+    switch action {
+    case .surface(let command):
+      guard tab == .posts else { return }
+      appNav.posts.requestSurfaceCommand(command)
+    case .navigation(.backOneStep(let column)):
+      guard tab == .posts else { return }
+      switch column {
+      case .detail: _ = appNav.posts.goBackDetailOneStepForTabReselect()
+      case .content: _ = appNav.posts.goBackContentOneStepForTabReselect()
+      case .sidebar: break
+      }
+    case .navigation(.revealSubredditSelector):
+      guard tab == .posts else { return }
+      appNav.posts.revealSubredditSelector()
+    case .resetToTabRoot:
+      appNav.resetToTabRoot(tab)
+    case .none:
+      break
+    }
+  }
+}
 
 enum DefaultLaunchFeed: Equatable {
   case home
@@ -161,10 +296,7 @@ final class AppNav {
   }
 
   func canReselectTab(_ tab: Tab) -> Bool {
-    switch tab {
-    case .posts: return posts.canHandleTabReselect
-    case .inbox, .me, .search, .settings: return canResetToTabRoot(tab)
-    }
+    handleTabReselect(tab, tap: .single) != .none
   }
 
   func canResetToTabRoot(_ tab: Tab) -> Bool {
@@ -186,11 +318,19 @@ final class AppNav {
   }
 
   func reselectTab(_ tab: Tab) {
+    let action = handleTabReselect(tab, tap: .single)
+    TabReselectActionExecutor.execute(action, for: tab, appNav: self)
+  }
+
+  func handleTabReselect(_ tab: Tab, tap: TabTapKind) -> TabReselectAction {
     switch tab {
     case .posts:
-      posts.handleTabReselect()
+      if tap == .double {
+        return .navigation(.revealSubredditSelector)
+      }
+      return posts.tabReselectAction()
     case .inbox, .me, .search, .settings:
-      resetToTabRoot(tab)
+      return canResetToTabRoot(tab) ? .resetToTabRoot : .none
     }
   }
 
@@ -267,6 +407,9 @@ final class PostsNav: RedditNavigator {
   /// Which column the collapsed (compact) layout shows. Derived from state, never from a
   /// history stack.
   var preferredColumn: NavigationSplitViewColumn = .content
+  var tabInteractionState = PostsTabInteractionState()
+  var contentScrollToTopRequest = 0
+  var detailScrollToTopRequest = 0
 
   init(launchFeed: DefaultLaunchFeed = .popular) {
     community = launchFeed.selection
@@ -319,6 +462,8 @@ final class PostsNav: RedditNavigator {
     contentPath = []
     detailPath = []
     preferredColumn = .content
+    updateContentCanScrollToTop(false)
+    updateDetailCanScrollToTop(false)
   }
 
   func goBackOneStep() -> Bool {
@@ -354,6 +499,7 @@ final class PostsNav: RedditNavigator {
     community = launchFeed.selection
     resetContentAndDetail()
     preferredColumn = launchFeed.preferredColumn
+    updateRenderedActiveColumn(launchFeed.preferredColumn == .sidebar ? .sidebar : .content)
   }
 
   func resetToSidebarRoot() {
@@ -394,45 +540,114 @@ final class PostsNav: RedditNavigator {
     preferredColumn = .sidebar
   }
 
-  func handleTabReselect() {
-    if isShowingSubredditSelector {
-      return
-    } else if isAtFeedRoot {
-      revealSubredditSelector()
-    } else if canResetToTabRoot {
-      resetToTabRootFromTabReselect()
-    } else if preferredColumn != .sidebar {
-      revealSubredditSelector()
+  func tabReselectAction() -> TabReselectAction {
+    switch tabInteractionState.layout {
+    case .compact:
+      return compactTabReselectAction()
+    case .regular:
+      return regularTabReselectAction()
     }
   }
 
-  var canHandleTabReselect: Bool {
-    !isShowingSubredditSelector && (canResetToTabRoot || preferredColumn != .sidebar)
+  func requestSurfaceCommand(_ command: PostsSurfaceCommand) {
+    switch command {
+    case .scrollContentToTop:
+      contentScrollToTopRequest += 1
+    case .scrollDetailToTop:
+      detailScrollToTopRequest += 1
+    }
   }
 
-  private func resetToTabRootFromTabReselect() {
-    let feedScrollPositionID = feedScrollPositionID
-    selectedPostID = nil
-    detailPost = nil
-    detailHighlightID = nil
-    contentPath = []
-    detailPath = []
-    self.feedScrollPositionID = feedScrollPositionID
-    preferredColumn = community == nil ? .sidebar : .content
+  func updateInteractionLayout(_ layout: PostsTabLayoutMode) {
+    guard tabInteractionState.layout != layout else { return }
+    tabInteractionState.layout = layout
   }
 
-  private var isShowingSubredditSelector: Bool {
-    isAtFeedRoot &&
-    preferredColumn == .sidebar
+  func updateRenderedActiveColumn(_ column: PostsTabColumn) {
+    guard tabInteractionState.activeColumn != column else { return }
+    tabInteractionState.activeColumn = column
   }
 
-  private var isAtFeedRoot: Bool {
-    community != nil &&
-    selectedPostID == nil &&
-    detailPost == nil &&
-    detailHighlightID == nil &&
-    contentPath.isEmpty &&
-    detailPath.isEmpty
+  func updateContentCanScrollToTop(_ canScroll: Bool) {
+    guard tabInteractionState.contentCanScrollToTop != canScroll else { return }
+    tabInteractionState.contentCanScrollToTop = canScroll
+  }
+
+  func updateDetailCanScrollToTop(_ canScroll: Bool) {
+    guard tabInteractionState.detailCanScrollToTop != canScroll else { return }
+    tabInteractionState.detailCanScrollToTop = canScroll
+  }
+
+  var canGoBackDetailOneStepForTabReselect: Bool {
+    !detailPath.isEmpty || selectedPostID != nil || detailPost != nil || detailHighlightID != nil
+  }
+
+  var canGoBackContentOneStepForTabReselect: Bool {
+    !contentPath.isEmpty
+  }
+
+  func goBackDetailOneStepForTabReselect() -> Bool {
+    if !detailPath.isEmpty {
+      detailPath.removeLast()
+      preferredColumn = .detail
+      return true
+    }
+
+    if selectedPostID != nil || detailPost != nil || detailHighlightID != nil {
+      selectedPostID = nil
+      detailPost = nil
+      detailHighlightID = nil
+      preferredColumn = community == nil ? .sidebar : .content
+      return true
+    }
+
+    return false
+  }
+
+  func goBackContentOneStepForTabReselect() -> Bool {
+    guard !contentPath.isEmpty else { return false }
+    contentPath.removeLast()
+    preferredColumn = .content
+    return true
+  }
+
+  private func compactTabReselectAction() -> TabReselectAction {
+    switch tabInteractionState.activeColumn {
+    case .detail:
+      if tabInteractionState.detailCanScrollToTop {
+        return .surface(.scrollDetailToTop)
+      }
+      if canGoBackDetailOneStepForTabReselect {
+        return .navigation(.backOneStep(.detail))
+      }
+    case .content:
+      if tabInteractionState.contentCanScrollToTop {
+        return .surface(.scrollContentToTop)
+      }
+      if canGoBackContentOneStepForTabReselect {
+        return .navigation(.backOneStep(.content))
+      }
+    case .sidebar:
+      break
+    }
+
+    return canResetToTabRoot ? .resetToTabRoot : .none
+  }
+
+  private func regularTabReselectAction() -> TabReselectAction {
+    if tabInteractionState.contentCanScrollToTop {
+      return .surface(.scrollContentToTop)
+    }
+    if tabInteractionState.detailCanScrollToTop {
+      return .surface(.scrollDetailToTop)
+    }
+    if canGoBackDetailOneStepForTabReselect {
+      return .navigation(.backOneStep(.detail))
+    }
+    if canGoBackContentOneStepForTabReselect {
+      return .navigation(.backOneStep(.content))
+    }
+    return canResetToTabRoot ? .resetToTabRoot : .none
   }
 
   static func postDetail(from destination: NavDest) -> (post: Post, highlightID: String?)? {

@@ -522,54 +522,176 @@ struct AppNavBridgeTests {
     #expect(appNav.settings.selection == .behavior)
   }
 
-  @Test("Posts tab reselect roots feed first, then reveals subreddit selector")
-  func postsTabReselectRootsFeedThenRevealsSubredditSelector() {
+  @Test("Posts compact detail scrolled returns surface scroll detail")
+  func postsCompactDetailScrolledReturnsScrollDetail() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.selectedTab = .posts
-    appNav.posts.community = "swift"
-    appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
-    appNav.posts.openPostInDetail(Post(id: "swift-post-1"), highlightID: "swift-comment-1")
-    appNav.posts.navigate(.reddit(.user(User(id: "bob"))), from: .detail)
-    appNav.posts.feedScrollPositionID = "swift-post-8"
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.tabInteractionState = PostsTabInteractionState(
+      layout: .compact,
+      activeColumn: .detail,
+      contentCanScrollToTop: false,
+      detailCanScrollToTop: true
+    )
 
-    appNav.reselectTab(.posts)
-
-    #expect(appNav.posts.community == "swift")
-    #expect(appNav.posts.feedScrollPositionID == "swift-post-8")
-    #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.detailHighlightID == nil)
-    #expect(appNav.posts.contentPath.isEmpty)
-    #expect(appNav.posts.detailPath.isEmpty)
-    #expect(appNav.posts.preferredColumn == .content)
-
-    appNav.reselectTab(.posts)
-
-    #expect(appNav.posts.community == "swift")
-    #expect(appNav.posts.feedScrollPositionID == "swift-post-8")
-    #expect(appNav.posts.preferredColumn == .sidebar)
-
-    appNav.reselectTab(.posts)
-
-    #expect(appNav.posts.community == "swift")
-    #expect(appNav.posts.preferredColumn == .sidebar)
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .surface(.scrollDetailToTop))
   }
 
-  @Test("Posts tab reselect reveals selector from feed root even when compact column is stale")
-  func postsTabReselectRevealsSelectorFromFeedRootWithStaleColumn() {
+  @Test("Posts compact detail at top returns detail back")
+  func postsCompactDetailAtTopReturnsDetailBack() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.selectedTab = .posts
-    appNav.posts.community = "swift"
-    appNav.posts.preferredColumn = .detail
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
 
-    appNav.reselectTab(.posts)
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.detail)))
+  }
+
+  @Test("Posts compact feed root returns none")
+  func postsCompactFeedRootReturnsNone() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .content)
+
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
+  }
+
+  @Test("Posts regular feed scroll wins before detail")
+  func postsRegularFeedScrollWinsBeforeDetail() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(
+      layout: .regular,
+      activeColumn: .detail,
+      contentCanScrollToTop: true,
+      detailCanScrollToTop: true
+    )
+
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .surface(.scrollContentToTop))
+  }
+
+  @Test("Posts regular detail scroll wins before detail back")
+  func postsRegularDetailScrollWinsBeforeDetailBack() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(
+      layout: .regular,
+      activeColumn: .detail,
+      contentCanScrollToTop: false,
+      detailCanScrollToTop: true
+    )
+
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .surface(.scrollDetailToTop))
+  }
+
+  @Test("Posts regular detail back is chosen before content back")
+  func postsRegularDetailBackBeforeContentBack() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.contentPath = [.reddit(.user(User(id: "source")))]
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .regular, activeColumn: .detail)
+
+    let first = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(first == .navigation(.backOneStep(.detail)))
+    TabReselectActionExecutor.execute(first, for: .posts, appNav: appNav)
+
+    let second = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(second == .navigation(.backOneStep(.detail)))
+    TabReselectActionExecutor.execute(second, for: .posts, appNav: appNav)
+
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.content)))
+  }
+
+  @Test("Posts double tap reveals selector")
+  func postsDoubleTapRevealsSelector() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+
+    #expect(appNav.handleTabReselect(.posts, tap: .double) == .navigation(.revealSubredditSelector))
+  }
+
+  @Test("Double tap after immediate single still ends at selector")
+  func doubleTapAfterImmediateSingleStillEndsAtSelector() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.community = "swift"
+    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
+
+    let single = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(single == .navigation(.backOneStep(.detail)))
+    TabReselectActionExecutor.execute(single, for: .posts, appNav: appNav)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.detailPost != nil)
+
+    let double = appNav.handleTabReselect(.posts, tap: .double)
+    #expect(double == .navigation(.revealSubredditSelector))
+    TabReselectActionExecutor.execute(double, for: .posts, appNav: appNav)
 
     #expect(appNav.posts.community == "swift")
-    #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.contentPath.isEmpty)
-    #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.preferredColumn == .sidebar)
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.detailPath.isEmpty)
+  }
+
+  @Test("Non-Posts tab reselect returns reset only when dirty")
+  func nonPostsTabReselectReturnsResetOnlyWhenDirty() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+
+    #expect(appNav.handleTabReselect(.search, tap: .single) == .none)
+
+    appNav.search.contentPath = [.reddit(.user(User(id: "alice")))]
+
+    #expect(appNav.handleTabReselect(.search, tap: .single) == .resetToTabRoot)
+  }
+}
+
+struct TabTapClassifierTests {
+  private final class EventToken {}
+
+  @Test("duplicate callbacks for one physical tap emit one single")
+  func duplicateCallbacksForOnePhysicalTapEmitOneSingle() {
+    var classifier = TabTapClassifier()
+    let token = EventToken()
+    let eventID = ObjectIdentifier(token)
+
+    #expect(classifier.classify(tab: .posts, eventID: eventID, time: 10) == .single)
+    #expect(classifier.classify(tab: .posts, eventID: eventID, time: 10.01) == nil)
+  }
+
+  @Test("two physical taps inside interval emit single then double")
+  func twoPhysicalTapsInsideIntervalEmitSingleThenDouble() {
+    var classifier = TabTapClassifier()
+
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 10) == .single)
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 10.2) == .double)
+  }
+
+  @Test("two physical taps outside interval emit two singles")
+  func twoPhysicalTapsOutsideIntervalEmitTwoSingles() {
+    var classifier = TabTapClassifier()
+
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 10) == .single)
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 11) == .single)
+  }
+
+  @Test("switching tabs resets double tap pairing")
+  func switchingTabsResetsDoubleTapPairing() {
+    var classifier = TabTapClassifier()
+
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 10) == .single)
+    #expect(classifier.classify(tab: .search, eventID: nil, time: 10.2) == .single)
+    #expect(classifier.classify(tab: .posts, eventID: nil, time: 10.4) == .single)
   }
 }
 

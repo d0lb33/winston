@@ -18,9 +18,13 @@ import Defaults
 import MarkdownUI
 
 struct AuroraPostDetail: View {
+  private static let topID = "aurora-post-detail-top"
+
   @ObservedObject var post: Post
   var subreddit: Subreddit
   var highlightID: String?
+  var scrollToTopRequest: Int
+  var onScrollStateChanged: (Bool) -> Void
 
   @State private var model: CommentTreeModel
   @State private var sort: CommentSortOption
@@ -41,11 +45,15 @@ struct AuroraPostDetail: View {
   init(
     post: Post,
     subreddit: Subreddit,
-    highlightID: String? = nil
+    highlightID: String? = nil,
+    scrollToTopRequest: Int = 0,
+    onScrollStateChanged: @escaping (Bool) -> Void = { _ in }
   ) {
     self.post = post
     self.subreddit = subreddit
     self.highlightID = highlightID
+    self.scrollToTopRequest = scrollToTopRequest
+    self.onScrollStateChanged = onScrollStateChanged
     self.maxMediaHeightPct = min(Defaults[.PostLinkDefSettings].maxMediaHeightScreenPercentage, 45)
 
     let defSettings = Defaults[.PostPageDefSettings]
@@ -64,6 +72,14 @@ struct AuroraPostDetail: View {
         let contentWidth = max(1, geometry.size.width)
 
         List {
+          Color.clear
+            .frame(height: 0)
+            .id(Self.topID)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .accessibilityHidden(true)
+
           Section {
             if let winstonData = post.winstonData {
               if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
@@ -113,15 +129,27 @@ struct AuroraPostDetail: View {
         .toolbar { sortToolbar }
         .safeAreaInset(edge: .bottom) { composer }
         .refreshable { await fetch(true) }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.contentOffset.y
+        } action: { _, offsetY in
+          onScrollStateChanged(offsetY > 8)
+        }
         .onAppear {
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
             Task { await fetch(post.data == nil) }
           }
         }
+        .onDisappear {
+          onScrollStateChanged(false)
+        }
         .onChange(of: sort) { _, _ in
           Defaults[.PostPageDefSettings].postSorts[post.id] = sort
           Task { await fetch(true) }
+        }
+        .onChange(of: scrollToTopRequest) { _, _ in
+          withAnimation(.snappy) { proxy.scrollTo(Self.topID, anchor: .top) }
+          onScrollStateChanged(false)
         }
         .onChange(of: model.rows.count) { _, _ in
           if let target = pendingHighlight {

@@ -119,7 +119,11 @@ struct AuroraRoot: View {
     }
     .diagnosticScreen("aurora.posts")
     .onAppear {
+      updateInteractionLayout()
       reloadSavedListSummaries()
+    }
+    .onChange(of: hSize) { _, _ in
+      updateInteractionLayout()
     }
     .onChange(of: posts.community) { _, newID in
       // Ignore transient deselection (the sidebar List clears its selection when the
@@ -162,6 +166,10 @@ struct AuroraRoot: View {
     model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
   }
 
+  private func updateInteractionLayout() {
+    posts.updateInteractionLayout(hSize == .compact ? .compact : .regular)
+  }
+
   // MARK: - Columns
 
   private var contentColumn: some View {
@@ -173,6 +181,7 @@ struct AuroraRoot: View {
         .redditDestinations(posts, origin: .content)
     }
     .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+    .onAppear { posts.updateRenderedActiveColumn(.content) }
   }
 
   @ViewBuilder private func feedContent(selectedPostID: Binding<String?>) -> some View {
@@ -186,6 +195,7 @@ struct AuroraRoot: View {
         onCommentSelected: selectSavedComment
       )
       .diagnosticScreen("aurora.savedLists")
+      .onAppear { posts.updateContentCanScrollToTop(false) }
     } else if let listID = SavedListsRoute.listID(from: posts.community) {
       SavedListDetailScreen(
         listID: listID,
@@ -193,14 +203,18 @@ struct AuroraRoot: View {
         onCommentSelected: selectSavedComment
       )
       .diagnosticScreen("aurora.savedList.\(listID.uuidString)")
+      .onAppear { posts.updateContentCanScrollToTop(false) }
     } else if model.subreddit.id == "saved" {
       AuroraSavedScreen(onPostSelected: selectSavedPost, onCommentSelected: selectSavedComment)
         .diagnosticScreen("aurora.saved")
+        .onAppear { posts.updateContentCanScrollToTop(false) }
     } else {
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: selectedPostID,
                  scrollPositionID: $posts.feedScrollPositionID,
-                 sort: $sort) { destination in
+                 sort: $sort,
+                 scrollToTopRequest: posts.contentScrollToTopRequest,
+                 onScrollStateChanged: { canScroll in posts.updateContentCanScrollToTop(canScroll) }) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -214,6 +228,7 @@ struct AuroraRoot: View {
         .redditNavigation(posts, origin: .detail)
         .redditDestinations(posts, origin: .detail)
     }
+    .onAppear { posts.updateRenderedActiveColumn(.detail) }
   }
 
   @ViewBuilder private var detailContent: some View {
@@ -221,12 +236,15 @@ struct AuroraRoot: View {
       AuroraPostDetail(
         post: selectedPost,
         subreddit: detailSubreddit(for: selectedPost),
-        highlightID: posts.detailHighlightID
+        highlightID: posts.detailHighlightID,
+        scrollToTopRequest: posts.detailScrollToTopRequest,
+        onScrollStateChanged: { canScroll in posts.updateDetailCanScrollToTop(canScroll) }
       )
         .id("\(selectedPost.id)-\(posts.detailHighlightID ?? "root")")
         .diagnosticScreen("aurora.post.\(selectedPost.id)")
     } else {
       AuroraDetailPlaceholder()
+        .onAppear { posts.updateDetailCanScrollToTop(false) }
     }
   }
 
@@ -303,6 +321,7 @@ struct AuroraRoot: View {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .navigationTitle("Aurora")
+    .onAppear { posts.updateRenderedActiveColumn(.sidebar) }
     .refreshable {
       await refreshSubscriptions()
     }

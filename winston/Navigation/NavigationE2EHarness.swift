@@ -22,9 +22,10 @@ struct NavigationE2EHarnessView: View {
   private static let tabOrder: [AppNav.Tab] = [.posts, .inbox, .me, .search, .settings]
 
   @State private var appNav = AppNav.shared
-  @State private var tabReselectGate = TabReselectGate()
+  @State private var tabTapClassifier = TabTapClassifierBox()
   @State private var acceptsSwiftUISameSelection = false
   @State private var lastRootedTab = "none"
+  @State private var lastAction = "none"
   @State private var bridgeStatus = "unattached"
 
   private var tabSelection: Binding<AppNav.Tab> {
@@ -33,10 +34,7 @@ struct NavigationE2EHarnessView: View {
       set: { newTab in
         if appNav.selectedTab == newTab {
           guard acceptsSwiftUISameSelection else { return }
-          tabReselectGate.emit(tab: newTab, source: "swiftui-selection") { tab in
-            lastRootedTab = tab.rawValue
-            appNav.reselectTab(tab)
-          }
+          handleTabReselect(newTab, source: "swiftui-selection")
           return
         } else {
           appNav.selectedTab = newTab
@@ -93,11 +91,8 @@ struct NavigationE2EHarnessView: View {
     .tabViewStyle(.sidebarAdaptable)
     .introspect(.tabView, on: .iOS(.v13...)) { tabBarController in
       bridgeStatus = "attached-\(tabBarController.viewControllers?.count ?? 0)"
-      TabReselectDelegateInstaller.install(on: tabBarController, tabOrder: Self.tabOrder) { tab in
-        tabReselectGate.emit(tab: tab, source: "introspect") { tab in
-          lastRootedTab = tab.rawValue
-          appNav.reselectTab(tab)
-        }
+      TabReselectDelegateInstaller.install(on: tabBarController, tabOrder: Self.tabOrder, classifier: tabTapClassifier) { tab, tap in
+        executeTabReselect(tab, tap: tap, source: "introspect")
       }
     }
     .overlay(alignment: .topLeading) {
@@ -107,10 +102,14 @@ struct NavigationE2EHarnessView: View {
         .opacity(0.01)
     }
     .overlay(alignment: .topTrailing) {
-      Text(verbatim: "Bridge: \(bridgeStatus)")
-        .font(.caption2)
-        .accessibilityIdentifier("navE2E.bridgeStatus")
-        .opacity(0.01)
+      VStack {
+        Text(verbatim: "Bridge: \(bridgeStatus)")
+          .accessibilityIdentifier("navE2E.bridgeStatus")
+        Text(verbatim: "Last Action: \(lastAction)")
+          .accessibilityIdentifier("navE2E.lastAction")
+      }
+      .font(.caption2)
+      .opacity(0.01)
     }
     .safeAreaInset(edge: .top) {
       HStack(spacing: 8) {
@@ -139,6 +138,22 @@ struct NavigationE2EHarnessView: View {
   }
 
   private static let copiedCommentURL = "https://www.reddit.com/r/swift/comments/copiedpost123/navigation_regression/copiedcomment456/"
+
+  private func handleTabReselect(_ tab: AppNav.Tab, source: String) {
+    guard let tap = tabTapClassifier.classify(
+      tab: tab,
+      eventID: nil,
+      time: ProcessInfo.processInfo.systemUptime
+    ) else { return }
+    executeTabReselect(tab, tap: tap, source: source)
+  }
+
+  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) {
+    let action = appNav.handleTabReselect(tab, tap: tap)
+    lastRootedTab = tab.rawValue
+    lastAction = "\(tap == .double ? "double" : "single").\(action.diagnosticsName)"
+    TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+  }
 }
 
 private struct NavigationE2EPostsSurface: View {
@@ -151,8 +166,16 @@ private struct NavigationE2EPostsSurface: View {
       List {
         Text(verbatim: "Subreddit Selector")
           .accessibilityIdentifier("navE2E.posts.selector")
+        Button {
+          posts.updateInteractionLayout(.compact)
+          posts.updateRenderedActiveColumn(.sidebar)
+        } label: {
+          Text(verbatim: "Set Active Sidebar")
+        }
+        .accessibilityIdentifier("navE2E.posts.activeSidebar")
       }
       .navigationTitle(Text(verbatim: "Posts"))
+      .onAppear { posts.updateRenderedActiveColumn(.sidebar) }
     } content: {
       NavigationStack(path: $posts.contentPath) {
         List {
@@ -160,6 +183,29 @@ private struct NavigationE2EPostsSurface: View {
             .accessibilityIdentifier("navE2E.posts.feedRoot")
           Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
             .accessibilityIdentifier("navE2E.posts.scrollPosition")
+          Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
+            .accessibilityIdentifier("navE2E.posts.interactionState")
+          Text(verbatim: "Content Scroll Request: \(posts.contentScrollToTopRequest)")
+            .accessibilityIdentifier("navE2E.posts.contentScrollRequest")
+          Button {
+            posts.updateInteractionLayout(.compact)
+            posts.updateRenderedActiveColumn(.content)
+          } label: {
+            Text(verbatim: "Set Compact Content")
+          }
+          .accessibilityIdentifier("navE2E.posts.compactContent")
+          Button {
+            posts.updateInteractionLayout(.regular)
+          } label: {
+            Text(verbatim: "Set Regular Layout")
+          }
+          .accessibilityIdentifier("navE2E.posts.regularLayout")
+          Button {
+            posts.updateContentCanScrollToTop(true)
+          } label: {
+            Text(verbatim: "Mark Feed Scrolled")
+          }
+          .accessibilityIdentifier("navE2E.posts.markFeedScrolled")
           Button {
             let post = Post(id: "popular-post-1")
             posts.community = "popular"
@@ -176,6 +222,7 @@ private struct NavigationE2EPostsSurface: View {
           NavigationE2EDestinationView(destination: destination)
         }
       }
+      .onAppear { posts.updateRenderedActiveColumn(.content) }
     } detail: {
       NavigationStack(path: $posts.detailPath) {
         if posts.detailPost != nil {
@@ -188,6 +235,21 @@ private struct NavigationE2EPostsSurface: View {
               .accessibilityIdentifier("navE2E.posts.detailHighlightID")
             Text(verbatim: "Posts Column: \(columnName(posts.preferredColumn))")
               .accessibilityIdentifier("navE2E.posts.preferredColumn")
+            Text(verbatim: "Detail Scroll Request: \(posts.detailScrollToTopRequest)")
+              .accessibilityIdentifier("navE2E.posts.detailScrollRequest")
+            Button {
+              posts.updateInteractionLayout(.compact)
+              posts.updateRenderedActiveColumn(.detail)
+            } label: {
+              Text(verbatim: "Set Compact Detail")
+            }
+            .accessibilityIdentifier("navE2E.posts.compactDetail")
+            Button {
+              posts.updateDetailCanScrollToTop(true)
+            } label: {
+              Text(verbatim: "Mark Detail Scrolled")
+            }
+            .accessibilityIdentifier("navE2E.posts.markDetailScrolled")
             Button {
               posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
             } label: {
@@ -204,6 +266,17 @@ private struct NavigationE2EPostsSurface: View {
             .accessibilityIdentifier("navE2E.posts.emptyDetail")
         }
       }
+      .onAppear { posts.updateRenderedActiveColumn(.detail) }
+    }
+    .onAppear {
+      posts.updateInteractionLayout(.compact)
+      posts.updateRenderedActiveColumn(.content)
+    }
+    .onChange(of: posts.contentScrollToTopRequest) { _, _ in
+      posts.updateContentCanScrollToTop(false)
+    }
+    .onChange(of: posts.detailScrollToTopRequest) { _, _ in
+      posts.updateDetailCanScrollToTop(false)
     }
   }
 }
@@ -213,6 +286,11 @@ private func columnName(_ column: NavigationSplitViewColumn) -> String {
   if column == .content { return "content" }
   if column == .detail { return "detail" }
   return "unknown"
+}
+
+private func interactionStateLabel(_ state: PostsTabInteractionState) -> String {
+  let layout = state.layout == .compact ? "compact" : "regular"
+  return "\(layout).\(state.activeColumn.diagnosticsName).contentScroll=\(state.contentCanScrollToTop).detailScroll=\(state.detailCanScrollToTop)"
 }
 
 private struct NavigationE2EColumnSurface: View {

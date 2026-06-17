@@ -23,27 +23,69 @@ final class NavigationE2ETests: XCTestCase {
     super.tearDown()
   }
 
-  func testPostsSameTabReselectReturnsFromNestedDetailToFeedRoot() {
+  func testPostsCompactSameTabReselectScrollsThenBacksToFeedRoot() {
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
     XCTAssertTrue(bridgeStatusLabel().contains("attached"))
 
     button("navE2E.posts.openPost").tap()
     XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
+    button("navE2E.posts.compactDetail").tap()
+    button("navE2E.posts.markDetailScrolled").tap()
 
     button("navE2E.posts.openAuthor").tap()
     XCTAssertTrue(text("navE2E.posts.detailUser").waitForExistence(timeout: 5))
 
     selectTab("Posts")
 
-    XCTAssertTrue(text("navE2E.lastRootedTab").label.contains("posts"))
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.surface.scrollDetailToTop"))
+    XCTAssertTrue(text("navE2E.posts.detailUser").waitForExistence(timeout: 5))
+
+    waitPastDoubleTapInterval()
+    selectTab("Posts")
+
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.navigation.backOneStep.detail"))
+    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
+    XCTAssertFalse(text("navE2E.posts.detailUser").exists)
+
+    waitPastDoubleTapInterval()
+    selectTab("Posts")
+
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
     XCTAssertTrue(text("navE2E.posts.scrollPosition").label.contains("popular-post-8"))
     XCTAssertFalse(text("navE2E.posts.detailUser").exists)
+  }
+
+  func testPostsRegularSameTabReselectScrollsFeedBeforeDetailBack() {
+    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+    button("navE2E.posts.regularLayout").tap()
+    button("navE2E.posts.markFeedScrolled").tap()
+    button("navE2E.posts.openPost").tap()
+    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
 
     selectTab("Posts")
 
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.surface.scrollContentToTop"))
+    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
+
+    waitPastDoubleTapInterval()
+    selectTab("Posts")
+
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.navigation.backOneStep.detail"))
+    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+  }
+
+  func testPostsDoubleTapRevealsSelectorAfterImmediateSingle() {
+    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+    button("navE2E.posts.openPost").tap()
+    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
+    button("navE2E.posts.compactDetail").tap()
+    button("navE2E.posts.openAuthor").tap()
+    XCTAssertTrue(text("navE2E.posts.detailUser").waitForExistence(timeout: 5))
+
+    doubleTapTab("Posts")
+
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("double.navigation.revealSubredditSelector"))
     XCTAssertTrue(text("navE2E.posts.selector").waitForExistence(timeout: 5))
-    XCTAssertFalse(text("navE2E.posts.detailUser").exists)
   }
 
   func testEachTabCanReturnToItsRootWithSameTabReselect() {
@@ -110,6 +152,16 @@ final class NavigationE2ETests: XCTestCase {
     let sidebarButton = app.buttons[title]
     XCTAssertTrue(sidebarButton.waitForExistence(timeout: 5), "Missing tab or sidebar item: \(title)")
     sidebarButton.tap()
+  }
+
+  private func doubleTapTab(_ title: String) {
+    selectTab(title)
+    Thread.sleep(forTimeInterval: 0.16)
+    selectTab(title)
+  }
+
+  private func waitPastDoubleTapInterval() {
+    Thread.sleep(forTimeInterval: 0.38)
   }
 
   private func button(_ identifier: String) -> XCUIElement {

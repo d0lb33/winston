@@ -88,6 +88,8 @@ struct AuroraFeed: View {
   let community: Subreddit?
   @Binding private var selectedPostID: String?
   @Binding private var sort: SubListingSortOption
+  let scrollToTopRequest: Int
+  let onScrollStateChanged: (Bool) -> Void
   var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
@@ -103,6 +105,8 @@ struct AuroraFeed: View {
     selectedPostID: Binding<String?>,
     scrollPositionID: Binding<String?>,
     sort: Binding<SubListingSortOption>,
+    scrollToTopRequest: Int = 0,
+    onScrollStateChanged: @escaping (Bool) -> Void = { _ in },
     onCompactNavigate: ((NavDest) -> Void)? = nil
   ) {
     self.model = model
@@ -111,6 +115,8 @@ struct AuroraFeed: View {
     self._selectedPostID = selectedPostID
     self._scrollPositionID = scrollPositionID
     self._sort = sort
+    self.scrollToTopRequest = scrollToTopRequest
+    self.onScrollStateChanged = onScrollStateChanged
     self.onCompactNavigate = onCompactNavigate
   }
 
@@ -125,7 +131,15 @@ struct AuroraFeed: View {
     GeometryReader { geometry in
       let rowWidth = max(1, geometry.size.width)
 
-      List(selection: $selectedPostID) {
+      ScrollViewReader { proxy in
+        List(selection: $selectedPostID) {
+          Color.clear
+            .frame(height: 0)
+            .id(Self.topID)
+            .listRowInsets(EdgeInsets())
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+            .accessibilityHidden(true)
           if let community {
             AuroraCommunityHeader(sub: community)
               .listRowBackground(Color.clear)
@@ -189,20 +203,29 @@ struct AuroraFeed: View {
           AuroraFeedLoadingFooter(model: model)
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
-      }
-      .scrollPosition(id: $scrollPositionID)
-      .onScrollGeometryChange(for: CGFloat.self) { geometry in
-        geometry.contentOffset.y
-      } action: { _, offsetY in
-        ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
-          readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
         }
+        .scrollPosition(id: $scrollPositionID)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.contentOffset.y
+        } action: { _, offsetY in
+          onScrollStateChanged(offsetY > 8)
+          ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
+            readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
+          }
+        }
+        .onChange(of: scrollToTopRequest) { _, _ in
+          withAnimation(.snappy) {
+            proxy.scrollTo(Self.topID, anchor: .top)
+          }
+          scrollPositionID = Self.topID
+          onScrollStateChanged(false)
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed", posts: visiblePosts)
+        .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
+        .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
       }
-      .listStyle(.plain)
-      .scrollContentBackground(.hidden)
-      .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed", posts: visiblePosts)
-      .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
-      .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
     }
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
@@ -228,6 +251,7 @@ struct AuroraFeed: View {
       )
     }
     .onDisappear {
+      onScrollStateChanged(false)
       ScrollPerfDiagnostics.event(
         "Aurora feed disappeared",
         metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
