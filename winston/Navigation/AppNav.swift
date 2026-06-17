@@ -160,6 +160,13 @@ final class AppNav {
     canResetToTabRoot(selectedTab)
   }
 
+  func canReselectTab(_ tab: Tab) -> Bool {
+    switch tab {
+    case .posts: return posts.canHandleTabReselect
+    case .inbox, .me, .search, .settings: return canResetToTabRoot(tab)
+    }
+  }
+
   func canResetToTabRoot(_ tab: Tab) -> Bool {
     switch tab {
     case .posts: return posts.canResetToTabRoot
@@ -172,6 +179,19 @@ final class AppNav {
 
   func resetSelectedSurfaceToTabRoot() {
     resetToTabRoot(selectedTab)
+  }
+
+  func reselectSelectedTab() {
+    reselectTab(selectedTab)
+  }
+
+  func reselectTab(_ tab: Tab) {
+    switch tab {
+    case .posts:
+      posts.handleTabReselect()
+    case .inbox, .me, .search, .settings:
+      resetToTabRoot(tab)
+    }
   }
 
   func resetToTabRoot(_ tab: Tab) {
@@ -353,12 +373,66 @@ final class PostsNav: RedditNavigator {
   }
 
   func resetToTabRoot() {
+    let feedScrollPositionID = feedScrollPositionID
     selectedPostID = nil
     detailPost = nil
     detailHighlightID = nil
     contentPath = []
     detailPath = []
+    self.feedScrollPositionID = feedScrollPositionID
     preferredColumn = community == nil ? .sidebar : .content
+  }
+
+  func revealSubredditSelector() {
+    let feedScrollPositionID = feedScrollPositionID
+    selectedPostID = nil
+    detailPost = nil
+    detailHighlightID = nil
+    contentPath = []
+    detailPath = []
+    self.feedScrollPositionID = feedScrollPositionID
+    preferredColumn = .sidebar
+  }
+
+  func handleTabReselect() {
+    if isShowingSubredditSelector {
+      return
+    } else if isAtFeedRoot {
+      revealSubredditSelector()
+    } else if canResetToTabRoot {
+      resetToTabRootFromTabReselect()
+    } else if preferredColumn != .sidebar {
+      revealSubredditSelector()
+    }
+  }
+
+  var canHandleTabReselect: Bool {
+    !isShowingSubredditSelector && (canResetToTabRoot || preferredColumn != .sidebar)
+  }
+
+  private func resetToTabRootFromTabReselect() {
+    let feedScrollPositionID = feedScrollPositionID
+    selectedPostID = nil
+    detailPost = nil
+    detailHighlightID = nil
+    contentPath = []
+    detailPath = []
+    self.feedScrollPositionID = feedScrollPositionID
+    preferredColumn = community == nil ? .sidebar : .content
+  }
+
+  private var isShowingSubredditSelector: Bool {
+    isAtFeedRoot &&
+    preferredColumn == .sidebar
+  }
+
+  private var isAtFeedRoot: Bool {
+    community != nil &&
+    selectedPostID == nil &&
+    detailPost == nil &&
+    detailHighlightID == nil &&
+    contentPath.isEmpty &&
+    detailPath.isEmpty
   }
 
   static func postDetail(from destination: NavDest) -> (post: Post, highlightID: String?)? {

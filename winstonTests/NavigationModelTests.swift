@@ -345,6 +345,7 @@ struct StackNavTests {
 
 // MARK: - AppNav facade bridge
 
+@Suite(.serialized)
 @MainActor
 struct AppNavBridgeTests {
   @Test("Posts tab-root reset preserves selected feed and scroll position")
@@ -519,6 +520,56 @@ struct AppNavBridgeTests {
     #expect(appNav.posts.detailHighlightID == "copiedcomment456")
     #expect(appNav.posts.preferredColumn == .detail)
     #expect(appNav.settings.selection == .behavior)
+  }
+
+  @Test("Posts tab reselect roots feed first, then reveals subreddit selector")
+  func postsTabReselectRootsFeedThenRevealsSubredditSelector() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+    appNav.posts.community = "swift"
+    appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
+    appNav.posts.openPostInDetail(Post(id: "swift-post-1"), highlightID: "swift-comment-1")
+    appNav.posts.navigate(.reddit(.user(User(id: "bob"))), from: .detail)
+    appNav.posts.feedScrollPositionID = "swift-post-8"
+
+    appNav.reselectTab(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.feedScrollPositionID == "swift-post-8")
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.detailHighlightID == nil)
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.preferredColumn == .content)
+
+    appNav.reselectTab(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.feedScrollPositionID == "swift-post-8")
+    #expect(appNav.posts.preferredColumn == .sidebar)
+
+    appNav.reselectTab(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.preferredColumn == .sidebar)
+  }
+
+  @Test("Posts tab reselect reveals selector from feed root even when compact column is stale")
+  func postsTabReselectRevealsSelectorFromFeedRootWithStaleColumn() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+    appNav.posts.community = "swift"
+    appNav.posts.preferredColumn = .detail
+
+    appNav.reselectTab(.posts)
+
+    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.detailPost == nil)
+    #expect(appNav.posts.contentPath.isEmpty)
+    #expect(appNav.posts.detailPath.isEmpty)
+    #expect(appNav.posts.preferredColumn == .sidebar)
   }
 }
 

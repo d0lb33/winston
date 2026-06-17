@@ -22,6 +22,8 @@ struct NavigationE2EHarnessView: View {
   private static let tabOrder: [AppNav.Tab] = [.posts, .inbox, .me, .search, .settings]
 
   @State private var appNav = AppNav.shared
+  @State private var tabReselectGate = TabReselectGate()
+  @State private var acceptsSwiftUISameSelection = false
   @State private var lastRootedTab = "none"
   @State private var bridgeStatus = "unattached"
 
@@ -30,8 +32,12 @@ struct NavigationE2EHarnessView: View {
       get: { appNav.selectedTab },
       set: { newTab in
         if appNav.selectedTab == newTab {
-          lastRootedTab = newTab.rawValue
-          appNav.resetToTabRoot(newTab)
+          guard acceptsSwiftUISameSelection else { return }
+          tabReselectGate.emit(tab: newTab, source: "swiftui-selection") { tab in
+            lastRootedTab = tab.rawValue
+            appNav.reselectTab(tab)
+          }
+          return
         } else {
           appNav.selectedTab = newTab
         }
@@ -88,8 +94,10 @@ struct NavigationE2EHarnessView: View {
     .introspect(.tabView, on: .iOS(.v13...)) { tabBarController in
       bridgeStatus = "attached-\(tabBarController.viewControllers?.count ?? 0)"
       TabReselectDelegateInstaller.install(on: tabBarController, tabOrder: Self.tabOrder) { tab in
-        lastRootedTab = tab.rawValue
-        appNav.resetToTabRoot(tab)
+        tabReselectGate.emit(tab: tab, source: "introspect") { tab in
+          lastRootedTab = tab.rawValue
+          appNav.reselectTab(tab)
+        }
       }
     }
     .overlay(alignment: .topLeading) {
@@ -123,6 +131,10 @@ struct NavigationE2EHarnessView: View {
     }
     .onAppear {
       appNav.resetAll()
+    }
+    .task {
+      await Task.yield()
+      acceptsSwiftUISameSelection = true
     }
   }
 

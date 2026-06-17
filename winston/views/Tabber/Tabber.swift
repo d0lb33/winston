@@ -16,6 +16,8 @@ struct Tabber: View, Equatable {
   private static let tabOrder: [AppNav.Tab] = [.posts, .inbox, .me, .search, .settings]
 
   @State private var appNav = AppNav.shared
+  @State private var tabReselectGate = TabReselectGate()
+  @State private var acceptsSwiftUISameSelection = false
   @ObservedObject private var wire = RedditWire.shared
 
   @Environment(\.useTheme) private var currentTheme
@@ -48,7 +50,11 @@ struct Tabber: View, Equatable {
       get: { appNav.selectedTab },
       set: { newTab in
         if appNav.selectedTab == newTab {
-          appNav.resetToTabRoot(newTab)
+          guard acceptsSwiftUISameSelection else { return }
+          tabReselectGate.emit(tab: newTab, source: "swiftui-selection") { tab in
+            appNav.reselectTab(tab)
+          }
+          return
         } else {
           appNav.selectedTab = newTab
         }
@@ -99,13 +105,18 @@ struct Tabber: View, Equatable {
     .tabBarMinimizeBehavior(.onScrollDown)
     .introspect(.tabView, on: .iOS(.v13...)) { tabBarController in
       TabReselectDelegateInstaller.install(on: tabBarController, tabOrder: Self.tabOrder) { tab in
-        AppDiagnostics.asyncBreadcrumb("Tab reselected", metadata: ["tab": tab.rawValue, "source": "introspect"])
-        appNav.resetToTabRoot(tab)
+        tabReselectGate.emit(tab: tab, source: "introspect") { tab in
+          appNav.reselectTab(tab)
+        }
       }
     }
     .environment(\.videoDefSettings, videoDefSettings)
     .openFromWebListener()
     .clipboardRedditLinkListener()
+    .task {
+      await Task.yield()
+      acceptsSwiftUISameSelection = true
+    }
     .task(priority: .background) {
       migrateOldDefaults()
       cleanCredentialOrphanEntities()
@@ -138,6 +149,27 @@ enum TabReselectDelegateInstaller {
 }
 
 @MainActor
+@Observable
+final class TabReselectGate {
+  private let duplicateWindow: TimeInterval = 0.15
+  private var lastEmission: (tab: AppNav.Tab, date: Date)?
+
+  func emit(tab: AppNav.Tab, source: String, action: (AppNav.Tab) -> Void) {
+    let now = Date()
+    if let lastEmission,
+       lastEmission.tab == tab,
+       now.timeIntervalSince(lastEmission.date) < duplicateWindow {
+      AppDiagnostics.asyncBreadcrumb("Tab reselect duplicate suppressed", metadata: ["tab": tab.rawValue, "source": source])
+      return
+    }
+
+    lastEmission = (tab, now)
+    AppDiagnostics.asyncBreadcrumb("Tab reselected", metadata: ["tab": tab.rawValue, "source": source])
+    action(tab)
+  }
+}
+
+@MainActor
 private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   var tabOrder: [AppNav.Tab] = []
   var onReselect: ((AppNav.Tab) -> Void)?
@@ -159,7 +191,7 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
     if viewController === tabBarController.selectedViewController,
        let tab = tab(for: viewController, in: tabBarController) {
-      onReselect?(tab)
+      emitReselect(tab)
       return false
     }
 
@@ -178,12 +210,16 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
       previousDelegate?.tabBarController?(tabBarController, didSelect: viewController)
     }
 
+    if #available(iOS 18.0, *) {
+      return
+    }
+
     guard let selectedIndex = selectedIndex(in: tabBarController),
           selectedIndex == lastSelectedIndex,
           let tab = tab(for: viewController, in: tabBarController)
     else { return }
 
-    onReselect?(tab)
+    emitReselect(tab)
   }
 
   @available(iOS 18.0, *)
@@ -197,6 +233,10 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
           let tab = appTab(for: selectedTab, in: tabBarController)
     else { return }
 
+    emitReselect(tab)
+  }
+
+  private func emitReselect(_ tab: AppNav.Tab) {
     onReselect?(tab)
   }
 
@@ -263,11 +303,11 @@ struct TabRootResetToolbarModifier: ViewModifier {
         ToolbarItem(placement: .topBarTrailing) {
           Button {
             AppDiagnostics.asyncBreadcrumb("Tab root button tapped", metadata: ["tab": tab.rawValue])
-            appNav.resetToTabRoot(tab)
+            appNav.reselectTab(tab)
           } label: {
             Label("Root", systemImage: "arrow.uturn.backward")
           }
-          .disabled(!appNav.canResetToTabRoot(tab))
+          .disabled(!appNav.canReselectTab(tab))
           .accessibilityIdentifier("tabRootResetButton.\(tab.rawValue)")
         }
       }

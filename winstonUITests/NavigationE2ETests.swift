@@ -35,8 +35,14 @@ final class NavigationE2ETests: XCTestCase {
 
     selectTab("Posts")
 
+    XCTAssertTrue(text("navE2E.lastRootedTab").label.contains("posts"))
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
     XCTAssertTrue(text("navE2E.posts.scrollPosition").label.contains("popular-post-8"))
+    XCTAssertFalse(text("navE2E.posts.detailUser").exists)
+
+    selectTab("Posts")
+
+    XCTAssertTrue(text("navE2E.posts.selector").waitForExistence(timeout: 5))
     XCTAssertFalse(text("navE2E.posts.detailUser").exists)
   }
 
