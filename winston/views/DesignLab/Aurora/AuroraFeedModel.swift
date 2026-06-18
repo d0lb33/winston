@@ -44,7 +44,12 @@ final class AuroraFeedModel {
   @ObservationIgnored private var after: String?
   @ObservationIgnored private var inFlight = false
   @ObservationIgnored private var hidingReadPostsUntilUnread = false
-  @ObservationIgnored private var retriedEmptyInitialPage = false
+  /// How many times the INITIAL page came back empty and we auto-retried. A transient empty
+  /// (e.g. Home/subscriptions not hydrated yet, or a momentary empty response) is the classic
+  /// "go Home → blank until I pull-to-refresh" cause; we retry a few times with backoff before
+  /// settling into `.empty`, instead of latching blank after a single attempt.
+  @ObservationIgnored private var emptyInitialRetries = 0
+  @ObservationIgnored private static let maxEmptyInitialRetries = 2
   @ObservationIgnored private var loadGeneration = 0
   @ObservationIgnored private var hiddenPostIDs: Set<String> = []
   @ObservationIgnored private let pageLoader: PageLoader
@@ -89,17 +94,34 @@ final class AuroraFeedModel {
     phase = .idle
     reachedEnd = false
     hidingReadPostsUntilUnread = false
-    retriedEmptyInitialPage = false
+    emptyInitialRetries = 0
   }
 
   func loadInitialIfNeeded(sort: SubListingSortOption, contentWidth: CGFloat) async {
-    guard posts.isEmpty, !inFlight, phase != .empty else { return }
+    // Recover from ANY non-loaded state when there's no content and nothing in flight —
+    // including `.empty`/`.failed`/`.cancelled`/`.idle`. (The old `phase != .empty` guard
+    // latched the feed blank: an empty/cancelled first load could never auto-retry, so the
+    // only recovery was a manual pull-to-refresh — the "go Home → blank until I refresh" bug.)
+    // This is called once per view appearance (from `.task(id:)` + `.onAppear`) and is
+    // in-flight-guarded, so it never loops.
+    guard posts.isEmpty, !inFlight else {
+      AppDiagnostics.asyncBreadcrumb("Aurora initial load skipped", metadata: [
+        "feedIdentity": feedIdentity,
+        "reason": !posts.isEmpty ? "hasContent" : "inFlight",
+        "phase": "\(phase)",
+        "posts": "\(posts.count)"
+      ])
+      return
+    }
+    AppDiagnostics.asyncBreadcrumb("Aurora initial load starting", metadata: [
+      "feedIdentity": feedIdentity, "phase": "\(phase)", "emptyRetries": "\(emptyInitialRetries)"
+    ])
     await load(more: false, sort: sort, contentWidth: contentWidth)
   }
 
   func reload(sort: SubListingSortOption, contentWidth: CGFloat) async {
     resetHiddenPosts()
-    retriedEmptyInitialPage = false
+    emptyInitialRetries = 0
     await load(more: false, sort: sort, contentWidth: contentWidth)
   }
 
@@ -169,7 +191,12 @@ final class AuroraFeedModel {
 
   @discardableResult
   private func load(more: Bool, sort: SubListingSortOption, contentWidth: CGFloat) async -> Int {
-    guard !inFlight else { return 0 }
+    guard !inFlight else {
+      AppDiagnostics.asyncBreadcrumb("Aurora feed load skipped (already in flight)", metadata: [
+        "feedIdentity": feedIdentity, "more": "\(more)", "phase": "\(phase)"
+      ])
+      return 0
+    }
     let start = ScrollPerfDiagnostics.now()
     let generation = loadGeneration
     let requestIdentity = feedIdentity
@@ -181,6 +208,14 @@ final class AuroraFeedModel {
         if phase == .loading {
           phase = posts.isEmpty ? .idle : .loaded
         }
+      } else {
+        // A newer load (via prepare) superseded this one and owns `inFlight`; don't touch it.
+        // `prepare`/`resetFeedState` already reset `inFlight`, so this can't latch — but log it
+        // so a future stuck-spinner is traceable.
+        AppDiagnostics.asyncBreadcrumb("Aurora feed load superseded mid-flight", metadata: [
+          "requestIdentity": requestIdentity, "feedIdentity": feedIdentity,
+          "loadGen": "\(generation)", "currentGen": "\(loadGeneration)"
+        ])
       }
     }
 
@@ -240,17 +275,38 @@ final class AuroraFeedModel {
     }
 
     if shouldRetryEmptyInitialPage(more: more, received: newPosts.count, nextAfter: nextAfter) {
-      retriedEmptyInitialPage = true
+      emptyInitialRetries += 1
+      // Exponential backoff: 300ms, 600ms, … — covers a feed that's empty for a moment while
+      // subscriptions/auth hydrate, without hammering the API.
+      let delayNanos = UInt64(300_000_000) << (emptyInitialRetries - 1)
       AppDiagnostics.asyncRecord(
         .warning,
         category: "ui.aurora.feed",
-        message: "Aurora feed initial page was empty; retrying once",
-        metadata: ["sub": subreddit.id, "feedIdentity": requestIdentity, "sort": sort.rawVal.value]
+        message: "Aurora feed initial page empty; retrying",
+        metadata: [
+          "sub": subreddit.id, "feedIdentity": requestIdentity, "sort": sort.rawVal.value,
+          "attempt": "\(emptyInitialRetries)/\(Self.maxEmptyInitialRetries)",
+          "delayMs": "\(delayNanos / 1_000_000)"
+        ]
       )
-      try? await Task.sleep(nanoseconds: 350_000_000)
+      try? await Task.sleep(nanoseconds: delayNanos)
       guard !Task.isCancelled, requestIdentity == feedIdentity else { return 0 }
       inFlight = false
       return await load(more: false, sort: sort, contentWidth: contentWidth)
+    }
+
+    // Not retrying. If the INITIAL page is genuinely empty, log that we've settled — a future
+    // "blank Home" report is then immediately distinguishable (settled-empty vs. stuck/cancelled).
+    if !more && newPosts.isEmpty {
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.aurora.feed",
+        message: "Aurora feed settled empty",
+        metadata: [
+          "sub": subreddit.id, "feedIdentity": requestIdentity, "sort": sort.rawVal.value,
+          "emptyRetries": "\(emptyInitialRetries)"
+        ]
+      )
     }
 
     let fresh = ScrollPerfDiagnostics.measure("auroraFeedModel.dedupe", slowThresholdMs: 4, slowMessage: "Aurora feed dedupe was slow", metadata: ["received": "\(newPosts.count)", "loaded": "\(loadedIDs.count)"]) {
@@ -299,7 +355,7 @@ final class AuroraFeedModel {
   }
 
   private func shouldRetryEmptyInitialPage(more: Bool, received: Int, nextAfter: String?) -> Bool {
-    !more && posts.isEmpty && received == 0 && nextAfter == nil && !retriedEmptyInitialPage
+    !more && posts.isEmpty && received == 0 && nextAfter == nil && emptyInitialRetries < Self.maxEmptyInitialRetries
   }
 
   private func refreshVisiblePosts() {

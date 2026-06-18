@@ -41,7 +41,9 @@ struct CommentRowView: View {
       }
       decoratedContent
     }
-    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+    // Zero the row insets so the row content (and its full-width collapse layer) reaches the
+    // screen edges; the former 16pt horizontal insets are folded into `decoratedContent`.
+    .listRowInsets(EdgeInsets())
     .listRowSeparator(.hidden)
     .commentSwipeActions(
       comment: comment,
@@ -53,10 +55,28 @@ struct CommentRowView: View {
   }
 
   @ViewBuilder private var decoratedContent: some View {
-    rowContent
+    // Indent + thread rails first (rails stay aligned to the indent), THEN the 16pt horizontal
+    // inset (was `listRowInsets`). For comment rows the WHOLE row is one collapse tap target
+    // (`contentShape` + `onTapGesture`): a tap anywhere — the left gutter, the padding, empty
+    // header space, or plain body text — collapses/expands, because those areas have no inner
+    // gesture and fall to this one. The real controls (author, votes, media, links, spoiler)
+    // are deeper child gestures and win their own taps. This is the single collapse hit layer
+    // (replaces the old header tap + inner clear background + on-text overlay) and keeps the
+    // "never a gesture inside CommentBodyNative" performance property.
+    let base = rowContent
       .padding(.leading, indent)
       .frame(maxWidth: .infinity, alignment: .leading)
       .background(alignment: .leading) { ThreadRails(depth: row.depth) }
+      .padding(.horizontal, 16)
+      .frame(maxWidth: .infinity, alignment: .leading)
+    if row.kind == .comment {
+      base
+        .contentShape(Rectangle())
+        .onTapGesture { toggleCollapse() }
+        .diagnosticTapTarget("comment collapse (row)", color: .orange)
+    } else {
+      base
+    }
   }
 
   @ViewBuilder private var rowContent: some View {
@@ -79,15 +99,14 @@ struct CommentRowView: View {
     if let data = comment.data {
       let collapsed = row.isCollapsed
       let hasBody = data.body?.isEmpty == false
-      // Collapse is attached per-region (header + body) rather than to the whole
-      // row, so the author name's own tap (open profile) and inline media's tap
-      // (fullscreen) reliably win — mirrors the legacy CommentLinkContent.
+      // Collapse is handled by ONE full-width clear layer in `decoratedContent` (behind this
+      // content). The author name's own tap (open profile), inline media's tap (fullscreen),
+      // links, votes, and the spoiler button are foreground children, so they win their taps;
+      // everything else — empty header space, padding, the indent gutter, plain body text —
+      // falls through to that collapse layer. No gesture is attached to the body/text view.
       VStack(alignment: .leading, spacing: 0) {
         header(data, isCollapsed: collapsed)
           .padding(.bottom, !collapsed && hasBody ? 6 : 0)
-          .contentShape(Rectangle())
-          .onTapGesture { toggleCollapse() }
-          .diagnosticTapTarget("comment collapse header", color: .orange)
         if !collapsed, hasBody, let body = data.body {
           CommentBodyNative(
             markdown: body,
@@ -100,20 +119,12 @@ struct CommentRowView: View {
             cornerRadius: 12,
             maxMediaHeightScreenPercentage: maxMediaHeightPct,
             diagnosticContext: "commentNative:\(data.id)",
-            onTextTap: toggleCollapse
+            onTextTap: nil
           )
         }
       }
       .padding(.vertical, collapsed ? 8 : 10)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .diagnosticTapTarget("comment collapse fallback", color: .orange)
-      .background {
-        // Covers row chrome and spacing without putting a gesture back on CommentBodyNative.
-        Rectangle()
-          .fill(.clear)
-          .contentShape(Rectangle())
-          .onTapGesture { toggleCollapse() }
-      }
       .accessibilityElement(children: .contain)
       .accessibilityAction(named: collapsed ? Text("Expand thread") : Text("Collapse thread")) {
         toggleCollapse()

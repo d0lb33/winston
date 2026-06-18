@@ -82,8 +82,15 @@ struct PostHeaderNative: View {
         Markdown(MarkdownUtil.formatForMarkdown(data.selftext))
           .markdownTheme(.winstonMarkdown(fontSize: 16, lineSpacing: 2))
           .frame(maxWidth: .infinity, alignment: .leading)
-          .contentShape(Rectangle())
-          .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
+          // Collapse via a clear layer BEHIND the text (not a gesture on the Markdown view),
+          // so plain-text taps collapse, links inside still open, and there's no tap-handling
+          // hitch on the text view.
+          .background {
+            Rectangle()
+              .fill(.clear)
+              .contentShape(Rectangle())
+              .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
+          }
       }
 
       PostHeaderAuthorRow(data: data, avatarRequest: winstonData.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)

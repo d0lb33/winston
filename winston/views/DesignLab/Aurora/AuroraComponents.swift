@@ -701,9 +701,13 @@ private struct AuroraPostCardSurface: View {
             .zIndex(2)
         }
 
+        // No outer `.contentShape(Rectangle())`: the media subview (the clipped image in
+        // GalleryThumb) already defines its own hit shape. An outer rectangle re-expands the
+        // tap target to the whole block frame, so taps in the block's empty/letterboxed space
+        // open fullscreen instead of the post. Without it, only the visible image is tappable
+        // and the surrounding space falls through to the card-open tap.
         mediaBlock(data)
           .clipped()
-          .contentShape(Rectangle())
           .zIndex(0)
 
         if let flair = flairWithoutEmojis(str: data.link_flair_text)?.first, !flair.isEmpty {

@@ -1028,6 +1028,10 @@ struct NavigationScenarioTests {
 
 // MARK: - AuroraFeedModel
 
+/// Mutable call counter for stateful page-loader fixtures (MainActor-only, like the loader).
+@MainActor
+private final class FeedLoadCallCounter { var n = 0 }
+
 @MainActor
 struct AuroraFeedModelTests {
   @Test("cancelled initial load stays non-terminal")
@@ -1069,8 +1073,10 @@ struct AuroraFeedModelTests {
     #expect(model.phase == .idle)
   }
 
-  @Test("real empty initial load enters empty phase")
+  @Test("a genuinely empty feed settles in empty phase after exhausting retries")
   func realEmptyInitialLoadEntersEmptyPhase() async {
+    // Always-empty loader: the model retries the empty initial page a bounded number of times,
+    // then settles `.empty` (does not loop or stay stuck loading).
     let model = AuroraFeedModel(
       subreddit: Subreddit(id: "empty"),
       pageLoader: { _, _, _, _, _ in .success(posts: [], after: nil) }
@@ -1081,6 +1087,50 @@ struct AuroraFeedModelTests {
     #expect(model.posts.isEmpty)
     #expect(model.phase == .empty)
     #expect(model.reachedEnd)
+  }
+
+  @Test("transient empty initial page recovers via auto-retry (the go-Home-blank fix)")
+  func transientEmptyInitialRecovers() async {
+    let calls = FeedLoadCallCounter()
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "home"),
+      pageLoader: { _, _, _, _, _ in
+        calls.n += 1
+        // First attempt comes back empty (e.g. subscriptions not hydrated yet); the retry has
+        // content. The model must recover automatically instead of latching blank.
+        return calls.n >= 2
+          ? .success(posts: [Post(id: "p1")], after: "next")
+          : .success(posts: [], after: nil)
+      }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+
+    #expect(model.posts.map(\.id) == ["p1"])
+    #expect(model.phase == .loaded)
+    #expect(calls.n >= 2) // it retried past the empty first page
+  }
+
+  @Test("loadInitialIfNeeded recovers from a previously empty/idle state on re-entry")
+  func loadInitialRecoversFromEmptyOnReentry() async {
+    let calls = FeedLoadCallCounter()
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "home"),
+      pageLoader: { _, _, _, _, _ in
+        calls.n += 1
+        // Every attempt during the FIRST loadInitialIfNeeded is empty (it settles .empty);
+        // once the backing data is ready, a later attempt returns content.
+        return calls.n > 3 ? .success(posts: [Post(id: "p1")], after: nil) : .success(posts: [], after: nil)
+      }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+    #expect(model.phase == .empty)            // settled empty (old code would latch here forever)
+
+    // A re-appearance re-attempts even though phase == .empty (old guard blocked this).
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+    #expect(model.posts.map(\.id) == ["p1"])
+    #expect(model.phase == .loaded)
   }
 
   @Test("non-empty initial load applies posts")

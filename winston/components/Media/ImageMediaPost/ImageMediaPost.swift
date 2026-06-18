@@ -169,6 +169,10 @@ private struct ImageMediaSinglePreview: View {
         !compact
         ? GeometryReader { geo in
           Color.clear
+            // Measurement-only: must not be a tap target. `Color.clear` is hit-testable by
+            // default and spans the GalleryThumb frame, so without this it steals taps around
+            // the visible image and opens fullscreen (e.g. a header tap landing here).
+            .allowsHitTesting(false)
             .onAppear {
               writeMediaSize(geo.size)
             }

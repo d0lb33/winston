@@ -315,6 +315,11 @@ struct AuroraFeed: View {
         "Aurora feed appeared",
         metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
       )
+      // Belt-and-suspenders recovery: if a previous load was cancelled or settled empty and
+      // the `.task(id:)` doesn't re-fire on this re-appearance, re-attempt here. The model's
+      // in-flight + has-content guards make this a no-op when a load is running or content
+      // exists, so it never double-loads.
+      Task { @MainActor in await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth) }
     }
     .onDisappear {
       onScrollStateChanged(false)

@@ -357,8 +357,14 @@ private struct AuroraPostHeader: View {
         Markdown(MarkdownUtil.formatForMarkdown(data.selftext))
           .markdownTheme(.winstonMarkdown(fontSize: 16, lineSpacing: 2))
           .frame(maxWidth: .infinity, alignment: .leading)
-          .contentShape(Rectangle())
-          .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
+          // Collapse via a clear layer behind the text (links inside still open; no gesture
+          // on the Markdown view → no tap-handling hitch).
+          .background {
+            Rectangle()
+              .fill(.clear)
+              .contentShape(Rectangle())
+              .onTapGesture { withAnimation(.snappy) { bodyCollapsed = true } }
+          }
       }
 
       PostHeaderAuthorRow(data: data, avatarRequest: post.winstonData?.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)

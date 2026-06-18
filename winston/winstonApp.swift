@@ -46,6 +46,8 @@ struct winstonApp: App {
       Group {
         if NavigationE2ELaunch.isEnabled {
           NavigationE2EHarnessView()
+        } else if TapTargetE2ELaunch.isEnabled {
+          TapTargetE2EHarnessView()
         } else {
           AppContent()
         }
