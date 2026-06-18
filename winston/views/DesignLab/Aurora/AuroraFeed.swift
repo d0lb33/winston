@@ -138,6 +138,7 @@ struct AuroraFeed: View {
   @Binding private var scrollPositionID: String?
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
+  @State private var handledInitialAppear = false
 
   init(
     model: AuroraFeedModel,
@@ -278,10 +279,15 @@ struct AuroraFeed: View {
           onScrollStateChanged(false)
         }
         .onAppear {
+          guard !handledInitialAppear else { return }
+          handledInitialAppear = true
           // The compact (NavigationStack) and wide (NavigationSplitView) shells are separate
           // view trees, so folding/unfolding recreates this List. Restore to the post that was
           // at the top before the swap (recorded in the shared binding during scroll) so the
-          // fresh List lands where we left off instead of jumping to the top.
+          // fresh List lands where we left off instead of jumping to the top. Do this only for
+          // this feed view's initial appearance; returning from a pushed post can also trigger
+          // onAppear, and reapplying the saved top-visible anchor there moves the user above the
+          // post they opened.
           if let id = scrollPositionID, id != Self.topID {
             proxy.scrollTo(id, anchor: .top)
           }

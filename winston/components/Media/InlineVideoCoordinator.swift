@@ -554,6 +554,11 @@ final class InlineVideoCoordinator {
     updatePlaybackStates()
   }
 
+  private func clearActiveVideo() {
+    setActive(nil)
+    electCenteredVideo(updateWarmSet: false, force: true)
+  }
+
   func setHostHasFrame(_ hasFrame: Bool, for key: String) {
     let state = self.state(for: key)
     if state.hostHasFrame != hasFrame {
@@ -750,7 +755,7 @@ final class InlineVideoCoordinator {
       // During a fast fling, do not start MediaToolbox work for each card that briefly
       // crosses center. Keep the current active video until it leaves; elect the next one
       // when scrolling slows or settles.
-      if !isFastScrolling {
+      if !isFastScrolling || activeVideoKey == nil {
         electCenteredVideo(updateWarmSet: false)
       }
       return latestVisibilities
@@ -768,7 +773,7 @@ final class InlineVideoCoordinator {
 
   /// Pick the sufficiently visible video nearest the viewport center and make it active.
   /// Called when the feed settles, or while slow scrolling.
-  func electCenteredVideo(updateWarmSet: Bool = true) {
+  func electCenteredVideo(updateWarmSet: Bool = true, force: Bool = false) {
     let center = viewportFrameGlobal == .zero ? viewportHeight / 2 : viewportFrameGlobal.midY
     let nearestCandidate = latestVisibilities
       .filter { $0.visibleFraction >= playVisibleThreshold }
@@ -781,7 +786,7 @@ final class InlineVideoCoordinator {
       return
     }
 
-    if shouldSwitchActiveVideo(to: nearest, viewportCenter: center) {
+    if force || shouldSwitchActiveVideo(to: nearest, viewportCenter: center) {
       setActive(nearest.key)
     }
     if updateWarmSet {
@@ -848,11 +853,11 @@ final class InlineVideoCoordinator {
   private func pauseActiveIfNeeded() {
     guard let activeVideoKey else { return }
     guard let visibility = latestVisibilities.first(where: { $0.key == activeVideoKey }) else {
-      setActive(nil)
+      clearActiveVideo()
       return
     }
     if visibility.visibleFraction < pauseVisibleThreshold {
-      setActive(nil)
+      clearActiveVideo()
     }
   }
 
@@ -1176,9 +1181,8 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
 private final class InlinePlaybackResourceController {
   static let shared = InlinePlaybackResourceController()
 
-  private var activeKey: String?
-  private var activeVideo: SharedVideo?
-  private var loopObserver: NSObjectProtocol?
+  private var attachedVideos: [String: SharedVideo] = [:]
+  private var loopObservers: [String: NSObjectProtocol] = [:]
 
   private init() {}
 
@@ -1187,26 +1191,19 @@ private final class InlinePlaybackResourceController {
     let wasPlayerLoaded = video.isPlayerLoaded
     InlineVideoCoordinator.shared.recordInlineAttachStarted(key: key)
 
-    if activeKey != key {
-      detach()
+    if let existingVideo = attachedVideos[key], existingVideo !== video {
+      detach(key: key)
+    }
+
+    if attachedVideos[key] == nil {
       ScrollPerfProbe.shared.bump("inlineResourceCreate")
-      activeKey = key
-      activeVideo = video
+      attachedVideos[key] = video
     } else {
       ScrollPerfProbe.shared.bump("inlineResourceReuse")
     }
 
     let player = video.player
-    player.isMuted = muted
-    player.volume = muted ? 0 : 1
-    player.currentItem?.preferredForwardBufferDuration = 2
-    configureLooping(player: player, enabled: loop)
-
-    if autoplay {
-      player.play()
-    } else {
-      player.pause()
-    }
+    applyPlaybackConfiguration(player: player, key: key, muted: muted, loop: loop, autoplay: autoplay)
 
     InlineVideoCoordinator.shared.recordInlineAttachCompleted(
       key: key,
@@ -1221,25 +1218,48 @@ private final class InlinePlaybackResourceController {
     return player
   }
 
-  func detach(key: String? = nil, preserveForFullscreen: Bool = false) {
-    guard key == nil || key == activeKey else { return }
-    if preserveForFullscreen {
-      removeLoopObserver()
-      return
-    }
-    if activeVideo?.isPlayerLoaded == true {
-      activeVideo?.player.pause()
-      ScrollPerfProbe.shared.bump("inlineResourcePause")
-    }
-    activeKey = nil
-    activeVideo = nil
-    removeLoopObserver()
+  func updatePlayback(key: String, muted: Bool, loop: Bool, autoplay: Bool) {
+    guard let video = attachedVideos[key], video.isPlayerLoaded else { return }
+    applyPlaybackConfiguration(player: video.player, key: key, muted: muted, loop: loop, autoplay: autoplay)
   }
 
-  private func configureLooping(player: AVPlayer, enabled: Bool) {
-    removeLoopObserver()
+  private func applyPlaybackConfiguration(player: AVPlayer, key: String, muted: Bool, loop: Bool, autoplay: Bool) {
+    player.isMuted = muted
+    player.volume = muted ? 0 : 1
+    player.currentItem?.preferredForwardBufferDuration = 2
+    configureLooping(player: player, key: key, enabled: loop)
+
+    if autoplay {
+      player.play()
+    } else {
+      player.pause()
+    }
+  }
+
+  func detach(key: String? = nil, preserveForFullscreen: Bool = false) {
+    guard let key else {
+      for key in Array(attachedVideos.keys) {
+        detach(key: key, preserveForFullscreen: preserveForFullscreen)
+      }
+      return
+    }
+    guard let video = attachedVideos[key] else { return }
+    if preserveForFullscreen {
+      removeLoopObserver(for: key)
+      return
+    }
+    if video.isPlayerLoaded {
+      video.player.pause()
+      ScrollPerfProbe.shared.bump("inlineResourcePause")
+    }
+    attachedVideos.removeValue(forKey: key)
+    removeLoopObserver(for: key)
+  }
+
+  private func configureLooping(player: AVPlayer, key: String, enabled: Bool) {
+    removeLoopObserver(for: key)
     guard enabled, let item = player.currentItem else { return }
-    loopObserver = NotificationCenter.default.addObserver(
+    loopObservers[key] = NotificationCenter.default.addObserver(
       forName: AVPlayerItem.didPlayToEndTimeNotification,
       object: item,
       queue: .main
@@ -1249,10 +1269,9 @@ private final class InlinePlaybackResourceController {
     }
   }
 
-  private func removeLoopObserver() {
-    if let loopObserver {
+  private func removeLoopObserver(for key: String) {
+    if let loopObserver = loopObservers.removeValue(forKey: key) {
       NotificationCenter.default.removeObserver(loopObserver)
-      self.loopObserver = nil
     }
   }
 }
@@ -1281,10 +1300,15 @@ struct InlineRowPlaybackLayerHost: View {
       sharedVideo.downloadURL?.absoluteString ?? "",
       sharedVideo.posterURL?.absoluteString ?? "",
       "\(sharedVideo.size.width)x\(sharedVideo.size.height)",
+      "\(shouldMount)"
+    ].joined(separator: "|")
+  }
+
+  private var playbackConfigurationID: String {
+    [
       "\(muted)",
       "\(loop)",
-      "\(autoplay)",
-      "\(shouldMount)"
+      "\(autoplay)"
     ].joined(separator: "|")
   }
 
@@ -1311,6 +1335,9 @@ struct InlineRowPlaybackLayerHost: View {
     }
     .onChange(of: attachmentID) { _, _ in
       scheduleAttachment()
+    }
+    .onChange(of: playbackConfigurationID) { _, _ in
+      updatePlaybackConfiguration()
     }
     .onDisappear {
       detachAttached()
@@ -1347,6 +1374,16 @@ struct InlineRowPlaybackLayerHost: View {
       player = attachedPlayer
       ScrollPerfProbe.shared.bump("inlineRowHost.playerSwap")
     }
+  }
+
+  private func updatePlaybackConfiguration() {
+    guard shouldMount, attachedKey == key else { return }
+    InlinePlaybackResourceController.shared.updatePlayback(
+      key: key,
+      muted: muted,
+      loop: loop,
+      autoplay: autoplay
+    )
   }
 
   private func detachAttached() {
@@ -1415,7 +1452,12 @@ private struct InlinePlaybackRenderState: Equatable {
       sharedVideo.url.absoluteString,
       sharedVideo.downloadURL?.absoluteString ?? "",
       sharedVideo.posterURL?.absoluteString ?? "",
-      "\(sharedVideo.size.width)x\(sharedVideo.size.height)",
+      "\(sharedVideo.size.width)x\(sharedVideo.size.height)"
+    ].joined(separator: "|")
+  }
+
+  var playbackConfigurationID: String {
+    [
       "\(muted)",
       "\(loop)",
       "\(autoplay)"
@@ -1483,6 +1525,9 @@ private struct InlinePlaybackLayerContainer: View {
       .onChange(of: renderState?.attachmentID) { _, _ in
         scheduleAttachment(renderState)
       }
+      .onChange(of: renderState?.playbackConfigurationID) { _, _ in
+        updatePlaybackConfiguration(renderState)
+      }
       .onDisappear {
         detachAttached()
       }
@@ -1519,6 +1564,16 @@ private struct InlinePlaybackLayerContainer: View {
       player = attachedPlayer
       ScrollPerfProbe.shared.bump("inlineReusableHost.playerSwap")
     }
+  }
+
+  private func updatePlaybackConfiguration(_ state: InlinePlaybackRenderState?) {
+    guard let state, attachedKey == state.key else { return }
+    InlinePlaybackResourceController.shared.updatePlayback(
+      key: state.key,
+      muted: state.muted,
+      loop: state.loop,
+      autoplay: state.autoplay
+    )
   }
 
   private func detachAttached() {
