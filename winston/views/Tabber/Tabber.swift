@@ -109,6 +109,7 @@ struct Tabber: View, Equatable {
     .environment(\.videoDefSettings, videoDefSettings)
     .openFromWebListener()
     .clipboardRedditLinkListener()
+    .inAppBrowserURLRouter()
     .task {
       await Task.yield()
       acceptsSwiftUISameSelection = true

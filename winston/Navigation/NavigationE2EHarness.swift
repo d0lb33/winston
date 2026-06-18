@@ -223,7 +223,7 @@ private struct NavigationE2EFeedSurface: View {
         .accessibilityIdentifier("navE2E.posts.feedRoot")
       Text(verbatim: "Scope: \(posts.scope.token)")
         .accessibilityIdentifier("navE2E.posts.scope")
-      Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
+      Text(verbatim: "Scroll Position: \(posts.feedScrollPosition?.id ?? "none")")
         .accessibilityIdentifier("navE2E.posts.scrollPosition")
       Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
         .accessibilityIdentifier("navE2E.posts.interactionState")
@@ -246,7 +246,7 @@ private struct NavigationE2EFeedSurface: View {
       }
       .accessibilityIdentifier("navE2E.posts.pushSub")
       Button {
-        posts.feedScrollPositionID = "popular-post-8"
+        posts.feedScrollPosition = AuroraFeedScrollPosition(id: "popular-post-8", anchorY: 0.38)
         let post = Post(id: "popular-post-1")
         posts.selectedPostID = post.id
         posts.selectFeedPost(post)

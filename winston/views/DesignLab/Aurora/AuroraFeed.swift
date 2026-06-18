@@ -74,48 +74,59 @@ private struct AuroraReadFrame: Equatable {
   let maxY: CGFloat
   let viewportHeight: CGFloat
 
+  var height: CGFloat {
+    max(maxY - minY, 1)
+  }
+
   var isVisible: Bool {
     maxY > 0 && minY < viewportHeight
   }
 }
 
-/// Names the topmost-visible post so scroll position can be restored across the compact↔wide
+struct AuroraFeedScrollPosition: Equatable {
+  let id: String
+  let anchorY: CGFloat
+
+  var unitPoint: UnitPoint {
+    UnitPoint(x: 0.5, y: min(1, max(0, anchorY)))
+  }
+}
+
+/// Names the focused visible post so scroll position can be restored across the compact↔wide
 /// shell swap. A plain (non-observable) box so per-frame geometry churn never triggers a view
 /// re-render. `List` does not write its scroll position back through `.scrollPosition(id:)`
-/// (that's a ScrollView API — verified nil on List), so we derive the top row from row frames.
+/// (that's a ScrollView API — verified nil on List), so we derive the focus row from row frames.
 private final class AuroraVisibleRowsBox {
   private var frames: [String: AuroraReadFrame] = [:]
 
   func update(_ frame: AuroraReadFrame, id: String) { frames[id] = frame }
   func remove(_ id: String) { frames.removeValue(forKey: id) }
 
-  /// The row at the top of the viewport — the content the user is reading.
-  ///
-  /// Prefer the row crossing the top edge (minY <= 0 < maxY): that IS the topmost visible
-  /// content, even when it's a tall post whose top is far above the viewport. Among crossing
-  /// rows pick the largest minY (closest to the edge from above) — normally there's exactly
-  /// one, but this is safe if more than one qualifies. Only when nothing crosses the edge
-  /// (we're at the very top, the first row starts below 0) fall back to the first row below
-  /// it (smallest positive minY). Rows fully off the top (maxY <= 0, left stale by a
-  /// fast-scroll missed `onDisappear`) and rows below the viewport are excluded.
-  ///
-  /// NOTE: a plain `argmin |minY|` is wrong here — a tall crossing row at minY = -300 would
-  /// lose to the next post at minY = +200, so a fold/unfold restore would jump DOWN past the
-  /// post the user was still reading.
-  func topVisibleID() -> String? {
-    var crossingID: String?
-    var crossingMinY = -CGFloat.greatestFiniteMagnitude
-    var belowID: String?
-    var belowMinY = CGFloat.greatestFiniteMagnitude
-    for (id, frame) in frames {
-      guard frame.maxY > 0, frame.minY < frame.viewportHeight else { continue }
-      if frame.minY <= 0 {
-        if frame.minY > crossingMinY { crossingMinY = frame.minY; crossingID = id }
-      } else if frame.minY < belowMinY {
-        belowMinY = frame.minY; belowID = id
-      }
+  /// The row around the user's reading line, plus an anchor that keeps that row in roughly
+  /// the same viewport position after a resize. Saving the topmost sliver and restoring it to
+  /// `.top` makes repeated rotate/fold cycles "walk" upward through the feed.
+  func focusedPosition() -> AuroraFeedScrollPosition? {
+    let visibleFrames = frames.filter { _, frame in frame.isVisible }
+    guard !visibleFrames.isEmpty else { return nil }
+    let viewportHeight = visibleFrames.first?.value.viewportHeight ?? 1
+    let focusY = viewportHeight * 0.38
+
+    let focused = visibleFrames.min { lhs, rhs in
+      focusDistance(frame: lhs.value, focusY: focusY) < focusDistance(frame: rhs.value, focusY: focusY)
     }
-    return crossingID ?? belowID
+    guard let (id, frame) = focused else { return nil }
+    return AuroraFeedScrollPosition(id: id, anchorY: restoreAnchorY(for: frame))
+  }
+
+  private func focusDistance(frame: AuroraReadFrame, focusY: CGFloat) -> CGFloat {
+    if frame.minY <= focusY, frame.maxY >= focusY { return 0 }
+    return min(abs(frame.minY - focusY), abs(frame.maxY - focusY))
+  }
+
+  private func restoreAnchorY(for frame: AuroraReadFrame) -> CGFloat {
+    let denominator = frame.viewportHeight - frame.height
+    guard abs(denominator) > 1 else { return 0.5 }
+    return min(1, max(0, frame.minY / denominator))
   }
 }
 
@@ -135,7 +146,7 @@ struct AuroraFeed: View {
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
 
-  @Binding private var scrollPositionID: String?
+  @Binding private var scrollPosition: AuroraFeedScrollPosition?
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
   @State private var handledInitialAppear = false
@@ -145,7 +156,7 @@ struct AuroraFeed: View {
     title: String,
     community: Subreddit?,
     selectedPostID: Binding<String?>,
-    scrollPositionID: Binding<String?>,
+    scrollPosition: Binding<AuroraFeedScrollPosition?>,
     sort: Binding<SubListingSortOption>,
     scrollToTopRequest: Int = 0,
     onScrollStateChanged: @escaping (Bool) -> Void = { _ in },
@@ -155,7 +166,7 @@ struct AuroraFeed: View {
     self.title = title
     self.community = community
     self._selectedPostID = selectedPostID
-    self._scrollPositionID = scrollPositionID
+    self._scrollPosition = scrollPosition
     self._sort = sort
     self.scrollToTopRequest = scrollToTopRequest
     self.onScrollStateChanged = onScrollStateChanged
@@ -253,19 +264,19 @@ struct AuroraFeed: View {
         }
         // NOTE: `.scrollPosition(id:)` is a ScrollView (+ `scrollTargetLayout`) API — on a
         // `List` it never writes the position back through the binding (verified: the binding
-        // stays nil while scrolling). So we name the topmost-visible row ourselves below and
+        // stays nil while scrolling). So we name the focused visible row ourselves below and
         // restore it via the ScrollViewReader proxy on appear (see `.onAppear`).
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, offsetY in
           onScrollStateChanged(offsetY > 8)
-          // Persist where we are (the leading on-screen post) so a fold/unfold that recreates
+          // Persist where we are (the focused on-screen post) so a fold/unfold that recreates
           // this List can land back here instead of jumping to the top. Only record while
           // genuinely scrolled down (> 8pt): rotation tears the List down by collapsing its
           // offset toward 0, and writing the top sentinel there would clobber the saved post.
           // The top sentinel is recorded only by the explicit scroll-to-top action below.
-          if offsetY > 8, let topVisible = visibleRows.topVisibleID(), topVisible != scrollPositionID {
-            scrollPositionID = topVisible
+          if offsetY > 8, let focusedPosition = visibleRows.focusedPosition(), focusedPosition != scrollPosition {
+            scrollPosition = focusedPosition
           }
           ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
             readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
@@ -275,7 +286,7 @@ struct AuroraFeed: View {
           withAnimation(.snappy) {
             proxy.scrollTo(Self.topID, anchor: .top)
           }
-          scrollPositionID = Self.topID
+          scrollPosition = AuroraFeedScrollPosition(id: Self.topID, anchorY: 0)
           onScrollStateChanged(false)
         }
         .onAppear {
@@ -283,13 +294,12 @@ struct AuroraFeed: View {
           handledInitialAppear = true
           // The compact (NavigationStack) and wide (NavigationSplitView) shells are separate
           // view trees, so folding/unfolding recreates this List. Restore to the post that was
-          // at the top before the swap (recorded in the shared binding during scroll) so the
-          // fresh List lands where we left off instead of jumping to the top. Do this only for
-          // this feed view's initial appearance; returning from a pushed post can also trigger
-          // onAppear, and reapplying the saved top-visible anchor there moves the user above the
-          // post they opened.
-          if let id = scrollPositionID, id != Self.topID {
-            proxy.scrollTo(id, anchor: .top)
+          // near the user's reading line before the swap (recorded in the shared binding during
+          // scroll) so the fresh List lands where we left off instead of jumping to the top. Do
+          // this only for this feed view's initial appearance; returning from a pushed post can
+          // also trigger onAppear, and reapplying the saved anchor there moves the feed.
+          if let scrollPosition, scrollPosition.id != Self.topID {
+            proxy.scrollTo(scrollPosition.id, anchor: scrollPosition.unitPoint)
           }
         }
         .listStyle(.plain)
@@ -319,7 +329,7 @@ struct AuroraFeed: View {
     .onAppear {
       ScrollPerfDiagnostics.event(
         "Aurora feed appeared",
-        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPosition?.id ?? "nil", "scrollAnchorY": scrollPosition.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
       )
       // Belt-and-suspenders recovery: if a previous load was cancelled or settled empty and
       // the `.task(id:)` doesn't re-fire on this re-appearance, re-attempt here. The model's
@@ -331,7 +341,7 @@ struct AuroraFeed: View {
       onScrollStateChanged(false)
       ScrollPerfDiagnostics.event(
         "Aurora feed disappeared",
-        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPosition?.id ?? "nil", "scrollAnchorY": scrollPosition.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
       )
     }
     .onChange(of: sort) { _, newSort in

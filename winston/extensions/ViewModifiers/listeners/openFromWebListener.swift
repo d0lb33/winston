@@ -117,19 +117,10 @@ private struct ClipboardRedditLinkListenerModifier: ViewModifier {
     lastHandledPasteboardChangeCount = changeCount
     guard let string = pasteboard.string, let candidate = firstRedditLinkCandidate(in: string) else { return }
 
-    if isSupportedParsedRedditURL(candidate.parsed) {
+    if candidate.parsed.isSupportedRedditAppDestination {
       pendingAlert = .supported(url: candidate.url, parsed: candidate.parsed)
     } else if candidate.isRedditOwned {
       pendingAlert = .unsupported(url: candidate.url)
-    }
-  }
-
-  private func isSupportedParsedRedditURL(_ parsed: RedditURLType) -> Bool {
-    switch parsed {
-    case .post, .postID, .comment, .commentID, .subreddit, .user:
-      return true
-    default:
-      return false
     }
   }
 }
@@ -142,13 +133,7 @@ private func firstRedditLinkCandidate(in string: String) -> ClipboardRedditLinkC
   for match in matches {
     guard let url = match.url else { continue }
     let parsed = parseRedditURL(url.absoluteString)
-    let isSupported: Bool
-    switch parsed {
-    case .post, .postID, .comment, .commentID, .subreddit, .user:
-      isSupported = true
-    default:
-      isSupported = false
-    }
+    let isSupported = parsed.isSupportedRedditAppDestination
 
     let isRedditOwned = isRedditOwnedURL(url)
     if isSupported || isRedditOwned {
@@ -157,16 +142,6 @@ private func firstRedditLinkCandidate(in string: String) -> ClipboardRedditLinkC
   }
 
   return nil
-}
-
-private func isRedditOwnedURL(_ url: URL) -> Bool {
-  guard let host = url.host?.lowercased() else { return false }
-  return host == "reddit.com"
-    || host.hasSuffix(".reddit.com")
-    || host == "redd.it"
-    || host.hasSuffix(".redd.it")
-    || host == "reddit.app.link"
-    || host.hasSuffix(".reddit.app.link")
 }
 
 private struct OpenFromWebListenerModifier: ViewModifier {
@@ -178,9 +153,7 @@ private struct OpenFromWebListenerModifier: ViewModifier {
       .onOpenURL { url in
         let parsed = parseRedditURL(url.absoluteString)
         if !openParsedRedditURL(parsed) {
-          let urlStringWithoutScheme = url.absoluteString.replacingOccurrences(of: "winstonapp://", with: "")
-
-          if let safariURL = URL(string: "https://" + urlStringWithoutScheme) {
+          if let safariURL = AppURLRouter.normalizedWebURL(from: url) {
             if isImageUrl(safariURL.absoluteString) {
               externalImage = ExternalImagePresentation(url: safariURL)
             } else {

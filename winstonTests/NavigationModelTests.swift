@@ -15,6 +15,65 @@ import Foundation
 import SwiftUI
 @testable import winston
 
+// MARK: - App URL routing
+
+struct AppURLRouterTests {
+  @Test("non-Reddit web links open in app when setting is enabled")
+  func nonRedditWebLinksOpenInAppWhenEnabled() throws {
+    let url = try #require(URL(string: "https://example.com/path?q=1"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: true)
+
+    #expect(decision == .openInAppBrowser(url))
+  }
+
+  @Test("non-Reddit web links open externally when setting is disabled")
+  func nonRedditWebLinksOpenExternallyWhenDisabled() throws {
+    let url = try #require(URL(string: "https://example.com/path?q=1"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: false)
+
+    #expect(decision == .openExternally(url))
+  }
+
+  @Test("supported Reddit links route inside Winston")
+  func supportedRedditLinksRouteInsideWinston() throws {
+    let url = try #require(URL(string: "https://www.reddit.com/r/swift/comments/abc123/title/def456/"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: true)
+
+    #expect(decision == .openInternalReddit(.comment(id: "def456", postID: "abc123", subreddit: "swift")))
+  }
+
+  @Test("unsupported Reddit-owned links open externally")
+  func unsupportedRedditOwnedLinksOpenExternally() throws {
+    let url = try #require(URL(string: "https://www.reddit.com/r/swift/wiki/index"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: true)
+
+    #expect(decision == .openExternally(url))
+  }
+
+  @Test("Winston Reddit deep links route inside Winston")
+  func winstonRedditDeepLinksRouteInsideWinston() throws {
+    let url = try #require(URL(string: "winstonapp://r/swift"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: true)
+
+    #expect(decision == .openInternalReddit(.subreddit(name: "swift")))
+  }
+
+  @Test("Winston encoded external links open in app")
+  func winstonEncodedExternalLinksOpenInApp() throws {
+    let url = try #require(URL(string: "winstonapp://example.com/article"))
+    let expectedURL = try #require(URL(string: "https://example.com/article"))
+
+    let decision = AppURLRouter.decision(for: url, openLinksInApp: true)
+
+    #expect(decision == .openInAppBrowser(expectedURL))
+  }
+}
+
 // MARK: - Apollo read history import
 
 struct ApolloReadHistoryImporterTests {
@@ -421,7 +480,7 @@ struct AppNavBridgeTests {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.posts.presentScopeFeed(.subreddit(id: "swift"))
-    appNav.posts.feedScrollPositionID = "post-near-top"
+    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "post-near-top", anchorY: 0)
     appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "ios"))), from: .detail)
@@ -431,7 +490,7 @@ struct AppNavBridgeTests {
     // Reset drops the feed (→ root list) and its scroll, but remembers the scope.
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.compactFeedPresented == false)
-    #expect(appNav.posts.feedScrollPositionID == nil)
+    #expect(appNav.posts.feedScrollPosition == nil)
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailHighlightID == nil)
@@ -861,7 +920,7 @@ struct NavigationScenarioTests {
 
     let popularPost = Post(id: "popular-post-4")
     appNav.posts.scope = .popular
-    appNav.posts.feedScrollPositionID = "popular-post-8"
+    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "popular-post-8", anchorY: 0)
     appNav.posts.selectedPostID = popularPost.id
     appNav.posts.selectFeedPost(popularPost)
 
@@ -873,7 +932,7 @@ struct NavigationScenarioTests {
     #expect(appNav.selectedTab == .posts)
     #expect(appNav.posts.scope == .popular)
     #expect(appNav.posts.compactFeedPresented == false) // returned to the root list
-    #expect(appNav.posts.feedScrollPositionID == nil)   // the feed scroll is dropped with it
+    #expect(appNav.posts.feedScrollPosition == nil)     // the feed scroll is dropped with it
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
@@ -889,7 +948,7 @@ struct NavigationScenarioTests {
 
     let swiftPost = Post(id: "swift-post-2")
     appNav.posts.scope = .subreddit(id: "swift")
-    appNav.posts.feedScrollPositionID = "swift-post-12"
+    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "swift-post-12", anchorY: 0)
     appNav.posts.contentPath = [.reddit(.user(User(id: "source-profile")))]
     appNav.posts.selectedPostID = swiftPost.id
     appNav.posts.selectFeedPost(swiftPost)
@@ -899,7 +958,7 @@ struct NavigationScenarioTests {
 
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.compactFeedPresented == false)
-    #expect(appNav.posts.feedScrollPositionID == nil)
+    #expect(appNav.posts.feedScrollPosition == nil)
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)

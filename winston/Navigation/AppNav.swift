@@ -454,8 +454,8 @@ final class PostsNav: RedditNavigator {
   /// pushes the post instead, but still routes through this via the feed `List(selection:)`.)
   var selectedPostID: String?
 
-  /// The feed row nearest the top of the feed, preserved across shell swaps / rotation.
-  var feedScrollPositionID: String?
+  /// The feed row near the user's reading line, preserved across shell swaps / rotation.
+  var feedScrollPosition: AuroraFeedScrollPosition?
 
   /// Compact only: whether the scope's feed is PUSHED on top of the root scope list. `false`
   /// == showing the root list (the Apollo-style home). The wide split ignores this — it always
@@ -600,7 +600,7 @@ final class PostsNav: RedditNavigator {
   /// Clear the open post and any in-feed pushes (e.g. when the feed scope changes).
   func resetContentAndDetail() {
     selectedPostID = nil
-    feedScrollPositionID = nil
+    feedScrollPosition = nil
     detailPost = nil
     detailHighlightID = nil
     contentPath = []
@@ -646,7 +646,7 @@ final class PostsNav: RedditNavigator {
     detailHighlightID = nil
     contentPath = []
     detailPath = []
-    feedScrollPositionID = nil
+    feedScrollPosition = nil
   }
 
   func tabReselectAction() -> TabReselectAction {

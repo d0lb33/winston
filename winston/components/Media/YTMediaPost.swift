@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 import YouTubePlayerKit
 import Defaults
 import Combine
@@ -48,8 +49,13 @@ struct YTMediaPostPlayer: View, Equatable {
     .allowsHitTesting(!openYoutubeApp)
     .contentShape(Rectangle())
     .highPriorityGesture(!openYoutubeApp && showPlayer ? nil : TapGesture().onEnded {
+      let youtubeURL = URL(string: "https://www.youtube.com/watch?v=\(ytMediaExtracted.videoID)")!
       if openYoutubeApp || compact {
-        openURL(URL(string: "https://www.youtube.com/watch?v=\(ytMediaExtracted.videoID)")!)
+        if openYoutubeApp {
+          UIApplication.shared.open(youtubeURL)
+        } else {
+          openURL(youtubeURL)
+        }
       } else {
         withAnimation { showPlayer = true }
       }

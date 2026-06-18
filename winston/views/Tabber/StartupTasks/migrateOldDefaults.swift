@@ -10,6 +10,7 @@ import Defaults
 
 func migrateOldDefaults() {
   guard !Defaults[.wereOldDefaultsMigrated] else { return }
+  let legacyOpenLinksInSafari = UserDefaults.standard.object(forKey: "openLinksInSafari") as? Bool
   let newPostLinkDefSettings = PostLinkDefSettings(
     compactMode: .init(
       enabled: Defaults[._compactMode],
@@ -45,6 +46,7 @@ func migrateOldDefaults() {
   )
   let newBehaviorDefSettings = BehaviorDefSettings(
     openYoutubeApp: Defaults[._openYoutubeApp],
+    openLinksInApp: legacyOpenLinksInSafari.map { !$0 } ?? true,
     preferenceDefaultFeed: Defaults[._preferenceDefaultFeed],
     doLiveText: Defaults[._doLiveText],
     iCloudSyncCredentials: Defaults[._syncKeyChainAndSettings]

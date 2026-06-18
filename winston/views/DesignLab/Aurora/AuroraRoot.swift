@@ -223,7 +223,7 @@ struct AuroraRoot: View {
     case .home, .popular, .subreddit:
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: selectedPostID,
-                 scrollPositionID: $posts.feedScrollPositionID,
+                 scrollPosition: $posts.feedScrollPosition,
                  sort: $sort,
                  scrollToTopRequest: posts.contentScrollToTopRequest,
                  onScrollStateChanged: { canScroll in posts.updateContentCanScrollToTop(canScroll) }) { destination in

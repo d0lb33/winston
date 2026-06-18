@@ -18,7 +18,7 @@ struct AuroraSubFeedScreen: View {
   @State private var model: AuroraFeedModel
   @State private var sort: SubListingSortOption = .hot
   @State private var selectedPostID: String?
-  @State private var scrollPositionID: String?
+  @State private var scrollPosition: AuroraFeedScrollPosition?
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
@@ -48,7 +48,7 @@ struct AuroraSubFeedScreen: View {
           title: subreddit.displayTitle,
           community: isCommunity ? subreddit : nil,
           selectedPostID: $selectedPostID,
-          scrollPositionID: $scrollPositionID,
+          scrollPosition: $scrollPosition,
           sort: $sort,
           onCompactNavigate: navigateFromSubFeed
         )
