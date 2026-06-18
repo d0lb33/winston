@@ -342,6 +342,8 @@ final class AppDiagnostics: ObservableObject {
 
   private func appSnapshot() -> [String: String] {
     let bundle = Bundle.main
+    let defaults = UserDefaults.standard
+    let auroraMediaPrefix = "diagnostics.auroraMediaViewer."
     return [
       "version": bundle.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
       "build": bundle.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
@@ -349,7 +351,10 @@ final class AppDiagnostics: ObservableObject {
       "selectedTab": Nav.shared.activeTab.rawValue,
       "selectedThemeID": Defaults[.ThemesDefSettings].selectedThemeID,
       "appearance.showUsernameInTabBar": "\(Defaults[.AppearanceDefSettings].showUsernameInTabBar)",
-      "postsInBoxCount": "\(Defaults[.postsInBox].count)"
+      "postsInBoxCount": "\(Defaults[.postsInBox].count)",
+      "auroraMediaViewer.lastEvent": defaults.string(forKey: "\(auroraMediaPrefix)lastEvent") ?? "nil",
+      "auroraMediaViewer.lastEventUnixTime": "\(defaults.double(forKey: "\(auroraMediaPrefix)lastEventUnixTime"))",
+      "auroraMediaViewer.lastMetadata": defaults.string(forKey: "\(auroraMediaPrefix)lastMetadata") ?? "nil"
     ]
   }
 

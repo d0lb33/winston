@@ -17,7 +17,8 @@ struct BehaviorPanel: View {
   @Default(.SubredditFeedDefSettings) var subredditFeedDefSettings
   @Default(.GeneralDefSettings) var generalDefSettings
   @Default(.VideoDefSettings) var videoDefSettings
-  
+  @Default(.BetaFeaturesDefSettings) var betaDefSettings
+
   
   @State private var imageAnalyzerSupport: Bool = true
   var body: some View {
@@ -209,6 +210,15 @@ struct BehaviorPanel: View {
           }
         }
         
+        Section {
+          Toggle("New media viewer (BETA)", isOn: $betaDefSettings.newMediaViewer)
+            .accessibilityIdentifier("settings.behavior.newMediaViewer")
+        } header: {
+          Text("Beta")
+        } footer: {
+          Text("Liquid-glass fullscreen viewer with native swipe-to-dismiss and press-and-hold horizontal scrubbing for GIFs and videos.")
+        }
+
         Section("Comments") {
           NativeSettingsNavigationRow(.setting(.commentSwipe), title: "Comments Swipe Settings")
           

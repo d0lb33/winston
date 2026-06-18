@@ -78,15 +78,27 @@ struct ImageMediaPost: View, Equatable {
     .frame(maxWidth: compact ? nil : .infinity)
     .fullScreenCover(item: $fullscreenSelection) { selection in
       let index = min(max(selection.index, 0), max(images.count - 1, 0))
-      LightBoxImage(
-        postTitle: postTitle,
-        badgeKit: badgeKit,
-        avatarImageRequest: avatarImageRequest,
-        markAsSeen: markAsSeen,
-        i: index,
-        imagesArr: images,
-        doLiveText: Defaults[.BehaviorDefSettings].doLiveText
-      )
+      Group {
+        if Defaults[.BetaFeaturesDefSettings].newMediaViewer {
+          AuroraMediaViewer(
+            pages: images.map { .image($0) },
+            startIndex: index,
+            postTitle: postTitle,
+            doLiveText: Defaults[.BehaviorDefSettings].doLiveText,
+            markAsSeen: markAsSeen
+          )
+        } else {
+          LightBoxImage(
+            postTitle: postTitle,
+            badgeKit: badgeKit,
+            avatarImageRequest: avatarImageRequest,
+            markAsSeen: markAsSeen,
+            i: index,
+            imagesArr: images,
+            doLiveText: Defaults[.BehaviorDefSettings].doLiveText
+          )
+        }
+      }
       .navigationTransition(.zoom(sourceID: selection.index, in: mediaNS))
     }
   }

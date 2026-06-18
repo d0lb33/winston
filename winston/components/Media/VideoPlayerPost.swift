@@ -274,8 +274,14 @@ struct VideoPlayerPost: View, Equatable {
           openFullscreen(sharedVideo, branch: "controller")
         }
         .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
-            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
+          Group {
+            if Defaults[.BetaFeaturesDefSettings].newMediaViewer {
+              AuroraMediaViewer(pages: [.video(sharedVideo)])
+            } else {
+              FullScreenVP(sharedVideo: sharedVideo)
+            }
+          }
+          .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "controller", "videoSize": "\(videoSize.width)x\(videoSize.height)"])
@@ -322,8 +328,14 @@ struct VideoPlayerPost: View, Equatable {
           openFullscreen(sharedVideo, branch: "swiftuiVideoPlayer")
         }
         .fullScreenCover(isPresented: $fullscreen) {
-          FullScreenVP(sharedVideo: sharedVideo)
-            .navigationTransition(.zoom(sourceID: "video", in: videoNS))
+          Group {
+            if Defaults[.BetaFeaturesDefSettings].newMediaViewer {
+              AuroraMediaViewer(pages: [.video(sharedVideo)])
+            } else {
+              FullScreenVP(sharedVideo: sharedVideo)
+            }
+          }
+          .navigationTransition(.zoom(sourceID: "video", in: videoNS))
         }
         .onAppear {
           recordVideoEvent(.debug, message: "VideoPlayerPost appeared", sharedVideo: sharedVideo, extra: ["branch": "swiftuiVideoPlayer", "videoSize": "\(videoSize.width)x\(videoSize.height)"])

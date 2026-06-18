@@ -116,6 +116,16 @@ struct ScrubbableGIFImage: UIViewRepresentable {
   @Binding var playbackState: GIFPlaybackState?
   @Binding var isScrubbing: Bool
 
+  final class Coordinator {
+    var appliedURL: URL?
+    var appliedDataCount: Int?
+    var appliedProgress: Double?
+    var appliedScrubbing: Bool?
+    var hasApplied = false
+  }
+
+  func makeCoordinator() -> Coordinator { Coordinator() }
+
   func makeUIView(context: Context) -> ScrubbableGIFImageView {
     let view = ScrubbableGIFImageView(frame: .zero)
     view.clipsToBounds = true
@@ -134,10 +144,29 @@ struct ScrubbableGIFImage: UIViewRepresentable {
       isScrubbing = state.isScrubbing
     }
     view.configure(data: data, url: url)
-    view.setScrubProgress(requestedProgress, isScrubbing: isScrubbing)
+
+    // Only push scrub state into the view when something actually changed. Re-pushing on every
+    // render is a trap: setScrubProgress force-reports playback, which writes @State during the
+    // SwiftUI update, which schedules another render → an unbounded scrub feedback loop (it froze
+    // the BETA viewer once scrubbing drove it). Deduping breaks the loop and is a no-op improvement
+    // for normal playback (the CADisplayLink still drives frame reporting).
+    let coordinator = context.coordinator
+    if coordinator.appliedURL != url || coordinator.appliedDataCount != data.count {
+      coordinator.appliedURL = url
+      coordinator.appliedDataCount = data.count
+      coordinator.hasApplied = false
+    }
+    if !coordinator.hasApplied
+        || coordinator.appliedProgress != requestedProgress
+        || coordinator.appliedScrubbing != isScrubbing {
+      coordinator.hasApplied = true
+      coordinator.appliedProgress = requestedProgress
+      coordinator.appliedScrubbing = isScrubbing
+      view.setScrubProgress(requestedProgress, isScrubbing: isScrubbing)
+    }
   }
 
-  static func dismantleUIView(_ uiView: ScrubbableGIFImageView, coordinator: ()) {
+  static func dismantleUIView(_ uiView: ScrubbableGIFImageView, coordinator: Coordinator) {
     uiView.prepareForReuse()
   }
 }

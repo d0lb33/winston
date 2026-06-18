@@ -203,6 +203,16 @@
         }
       }
     },
+    "%@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ / %2$@"
+          }
+        }
+      }
+    },
     "%@ %@" : {
       "localizations" : {
         "en" : {
@@ -270,6 +280,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%lld"
+          }
+        }
+      }
+    },
+    "%lld / %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$lld / %2$lld"
           }
         }
       }
@@ -653,6 +673,9 @@
         }
       }
     },
+    "Beta" : {
+
+    },
     "BG type" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -853,6 +876,9 @@
 
     },
     "Clear Reports" : {
+
+    },
+    "Close" : {
 
     },
     "Close Design Lab preview" : {
@@ -2318,6 +2344,9 @@
         }
       }
     },
+    "Liquid-glass fullscreen viewer with native swipe-to-dismiss and press-and-hold horizontal scrubbing for GIFs and videos." : {
+
+    },
     "List name" : {
 
     },
@@ -2687,6 +2716,9 @@
         }
       }
     },
+    "Mute" : {
+
+    },
     "Mute video" : {
 
     },
@@ -2723,6 +2755,9 @@
 
     },
     "New List" : {
+
+    },
+    "New media viewer (BETA)" : {
 
     },
     "New post" : {
@@ -3076,6 +3111,9 @@
         }
       }
     },
+    "Pause" : {
+
+    },
     "Pause background audio on fullscreen" : {
 
     },
@@ -3101,6 +3139,9 @@
           }
         }
       }
+    },
+    "Play" : {
+
     },
     "Play video" : {
 
@@ -4504,6 +4545,9 @@
 
     },
     "Unfavorite" : {
+
+    },
+    "Unmute" : {
 
     },
     "Unmute video" : {

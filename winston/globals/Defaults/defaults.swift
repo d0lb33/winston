@@ -54,6 +54,7 @@ extension Defaults.Keys {
   static let CommentsSectionDefSettings = Key<CommentsSectionDefSettings>("CommentsSectionDefSettings", default: .init())
   static let PostPageDefSettings = Key<PostPageDefSettings>("PostPageDefSettings", default: .init())
   static let ThemesDefSettings = Key<ThemesDefSettings>("ThemesDefSettings", default: .init())
+  static let BetaFeaturesDefSettings = Key<BetaFeaturesDefSettings>("BetaFeaturesDefSettings", default: .init())
   
   /* <Heavy Defaults are kept separated, these should be in CoreData or something> */
   static let filteredSubreddits = Key<[String]>("filteredSubreddits", default: [])
