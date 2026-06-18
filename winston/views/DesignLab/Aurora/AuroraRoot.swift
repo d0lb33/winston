@@ -284,6 +284,10 @@ struct AuroraRoot: View {
 
   private func applyLayout(expanded: Bool) {
     posts.updateInteractionLayout(expanded ? .regular : .compact)
+    // The wide split always shows a feed column, so mark the feed presented — folding
+    // wide→compact then lands on that feed (preserving its scroll) instead of the root list.
+    // Compact launch leaves the flag false, so a cold iPhone start shows the root list.
+    if expanded { posts.compactFeedPresented = true }
   }
 
   private func selectSavedPost(_ post: Post) {
