@@ -32,6 +32,15 @@ struct AuroraPostDetail: View {
   @State private var commentLoadError: String? = nil
   @State private var isFetching = false
   @State private var pendingHighlight: String? = nil
+  /// The comment row currently tinted to draw the eye after a deep-link jump
+  /// (from a profile, search result, inbox reply, web link, or "continue thread").
+  @State private var highlightedRowID: String? = nil
+  @State private var highlightFadeTask: Task<Void, Never>? = nil
+  @State private var highlightScrollTask: Task<Void, Never>? = nil
+  /// Captured so the jump can be driven straight from the fetch (the rows are in
+  /// hand there) instead of depending on `onChange` timing, which races on cached
+  /// reopens where comments arrive before the List has laid out.
+  @State private var scrollProxy: ScrollViewProxy? = nil
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -113,6 +122,7 @@ struct AuroraPostDetail: View {
               postFullname: post.data?.name ?? "",
               opAuthor: post.data?.author,
               swipeActions: commentDefSettings.swipeActions,
+              highlightedID: highlightedRowID,
               maxMediaHeightPct: maxMediaHeightPct,
               contentWidth: contentWidth
             )
@@ -135,12 +145,15 @@ struct AuroraPostDetail: View {
           onScrollStateChanged(offsetY > 8)
         }
         .onAppear {
+          scrollProxy = proxy
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
             Task { await fetch(post.data == nil) }
           }
         }
         .onDisappear {
+          highlightFadeTask?.cancel()
+          highlightScrollTask?.cancel()
           onScrollStateChanged(false)
         }
         .onChange(of: sort) { _, _ in
@@ -152,10 +165,9 @@ struct AuroraPostDetail: View {
           onScrollStateChanged(false)
         }
         .onChange(of: model.rows.count) { _, _ in
-          if let target = pendingHighlight {
-            withAnimation(.snappy) { proxy.scrollTo(target, anchor: .center) }
-            pendingHighlight = nil
-          }
+          // Backstop for the fetch-driven jump: also fire when rows reshape (e.g. a
+          // "load more" splice brings the target into view after the initial fetch).
+          jumpToHighlight()
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
@@ -256,6 +268,9 @@ struct AuroraPostDetail: View {
     Button {
       withAnimation { showingAllComments = true }
       pendingHighlight = nil
+      highlightFadeTask?.cancel()
+      highlightScrollTask?.cancel()
+      withAnimation { highlightedRowID = nil }
       Task { await fetch(post.data == nil) }
     } label: {
       HStack(spacing: 10) {
@@ -281,6 +296,58 @@ struct AuroraPostDetail: View {
   @ToolbarContentBuilder private var sortToolbar: some ToolbarContent {
     ToolbarItem(placement: .topBarTrailing) {
       CommentSortMenu(selection: $sort)
+    }
+  }
+
+  /// Does this row refer to the deep-link target? The target can arrive as a bare
+  /// reddit id ("abc"), a fullname ("t1_abc"), or an entity id with a kind suffix
+  /// ("abct1") depending on the source (profile / inbox / web / continue-thread),
+  /// while a comment row's id is the entity id. Match across all of those shapes.
+  private static func row(_ row: CommentRow, matchesHighlight target: String) -> Bool {
+    guard row.kind == .comment, let data = row.comment.data else { return false }
+    if target == row.id || target == data.id || target == data.name { return true }
+    let bareTarget = target.hasPrefix("t1_") ? String(target.dropFirst(3)) : target
+    return bareTarget == data.id
+  }
+
+  /// Resolve the pending deep-link target against the live rows, then scroll to it
+  /// and flash it. Re-asserts the scroll across a few ticks because a single shot
+  /// is unreliable: on a cached reopen the rows arrive before the List has laid out
+  /// (the first scrollTo no-ops), and inline media above the target loads in later
+  /// and shifts the content offset, drifting the target back off-screen.
+  @MainActor
+  private func jumpToHighlight() {
+    guard let proxy = scrollProxy,
+          let target = pendingHighlight,
+          let row = model.rows.first(where: { Self.row($0, matchesHighlight: target) }) else { return }
+    pendingHighlight = nil
+    flashHighlight(row.id)
+    highlightScrollTask?.cancel()
+    highlightScrollTask = Task { @MainActor in
+      // The tail attempts cover the post-header media (the post's own image/video,
+      // which sits above every comment in single-thread mode) decoding in and
+      // pushing the target down well after the first scroll.
+      for (attempt, delayMs) in [0, 150, 400, 800, 1300].enumerated() {
+        if delayMs > 0 { try? await Task.sleep(for: .milliseconds(delayMs)) }
+        if Task.isCancelled { return }
+        let animation: Animation = attempt == 0 ? .snappy : .easeInOut(duration: 0.2)
+        withAnimation(animation) { proxy.scrollTo(row.id, anchor: .center) }
+      }
+    }
+  }
+
+  /// Tint the freshly jumped-to comment so the user can spot it, then fade the
+  /// highlight away after a beat. Cancels any in-flight fade so a second jump
+  /// re-arms cleanly.
+  private func flashHighlight(_ id: String) {
+    highlightFadeTask?.cancel()
+    withAnimation(.easeOut(duration: 0.25)) { highlightedRowID = id }
+    highlightFadeTask = Task { @MainActor in
+      try? await Task.sleep(for: .seconds(3))
+      guard !Task.isCancelled else { return }
+      withAnimation(.easeInOut(duration: 0.7)) {
+        if highlightedRowID == id { highlightedRowID = nil }
+      }
     }
   }
 
@@ -312,7 +379,12 @@ struct AuroraPostDetail: View {
         loadingComments = false
       }
       if let commentID {
-        pendingHighlight = commentID.hasPrefix("t1_") ? String(commentID.dropFirst(3)) : commentID
+        // Store the raw id; row resolution (Self.row(_:matchesHighlight:)) tolerates
+        // bare / fullname / entity-id forms. The rows are populated now (setRoots ran
+        // synchronously), so jump immediately rather than waiting on onChange — that
+        // path races on cached reopens.
+        pendingHighlight = commentID
+        jumpToHighlight()
       }
     case .empty:
       withAnimation {

@@ -20,6 +20,8 @@ struct CommentRowView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
+  /// Bare comment id (no `t1_` prefix) to tint after a deep-link jump; nil = no highlight.
+  var highlightedID: String? = nil
   /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
@@ -28,6 +30,7 @@ struct CommentRowView: View {
   @State private var loadingMore = false
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
+  @Environment(\.auroraTheme) private var theme
 
   private var indent: CGFloat { CGFloat(row.depth) * ThreadRails.step }
   private var bodyWidth: CGFloat { max(1, contentWidth - 32 - indent) }
@@ -69,6 +72,9 @@ struct CommentRowView: View {
       .background(alignment: .leading) { ThreadRails(depth: row.depth) }
       .padding(.horizontal, 16)
       .frame(maxWidth: .infinity, alignment: .leading)
+      // Deep-link highlight. The tint shape is ALWAYS in the tree (opacity-driven), so the
+      // row's opaque type never varies per comment — preserves the no-scroll-hitch property.
+      .background(highlightTint)
     if row.kind == .comment {
       base
         .contentShape(Rectangle())
@@ -85,6 +91,24 @@ struct CommentRowView: View {
     case .more: moreRow
     case .continueThread: continueThreadRow
     }
+  }
+
+  // MARK: - Deep-link highlight
+
+  private var isHighlighted: Bool { row.kind == .comment && highlightedID == row.id }
+
+  /// Tint card drawn behind a deep-linked comment. Kept structurally constant (opacity
+  /// flips with `isHighlighted`) so it animates in/out with the parent's transaction.
+  private var highlightTint: some View {
+    RoundedRectangle(cornerRadius: 12, style: .continuous)
+      .fill(theme.accent.opacity(isHighlighted ? 0.15 : 0))
+      .overlay(
+        RoundedRectangle(cornerRadius: 12, style: .continuous)
+          .strokeBorder(theme.accent.opacity(isHighlighted ? 0.4 : 0), lineWidth: 1)
+      )
+      .padding(.horizontal, 8)
+      .padding(.vertical, 1)
+      .allowsHitTesting(false)
   }
 
   // MARK: - Comment

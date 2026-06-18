@@ -22,6 +22,8 @@ struct CommentsTreeView: View {
   let postFullname: String
   let opAuthor: String?
   let swipeActions: SwipeActionsSet
+  /// Comment id (bare, no `t1_` prefix) to visually highlight after a deep-link jump.
+  let highlightedID: String?
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
 
@@ -33,6 +35,7 @@ struct CommentsTreeView: View {
     postFullname: String,
     opAuthor: String?,
     swipeActions: SwipeActionsSet,
+    highlightedID: String? = nil,
     maxMediaHeightPct: CGFloat,
     contentWidth: CGFloat = 0
   ) {
@@ -43,6 +46,7 @@ struct CommentsTreeView: View {
     self.postFullname = postFullname
     self.opAuthor = opAuthor
     self.swipeActions = swipeActions
+    self.highlightedID = highlightedID
     self.maxMediaHeightPct = maxMediaHeightPct
     self.contentWidth = contentWidth
   }
@@ -84,6 +88,7 @@ struct CommentsTreeView: View {
           postFullname: postFullname,
           opAuthor: opAuthor,
           swipeActions: swipeActions,
+          highlightedID: highlightedID,
           maxMediaHeightPct: maxMediaHeightPct,
           contentWidth: contentWidth
         )

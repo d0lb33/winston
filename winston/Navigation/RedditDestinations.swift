@@ -61,8 +61,17 @@ extension View {
           )
           .redditNavigation(posts, origin: .detail)
         } else {
+          // Origin depends on WHERE this screen sits in the flattened compact stack,
+          // not its type. A sub/user pushed ON TOP of the open post lives in
+          // `detailPath`, so its own link taps must append to the detail stack (a
+          // nested push). Only screens BEFORE the open post (the feed's content
+          // pushes) use `.content`, where a post tap replaces the detail. Without
+          // this, a post tapped inside a profile that was opened from a post detail
+          // takes the `.content` path → `openPostInDetail`, which clears `detailPath`
+          // and collapses the stack back to a single post instead of pushing.
+          let origin: RedditNavigationOrigin = posts.detailPath.contains(destination) ? .detail : .content
           RouterDestinationView(destination: destination)
-            .redditNavigation(posts, origin: .content)
+            .redditNavigation(posts, origin: origin)
         }
       }
     }
