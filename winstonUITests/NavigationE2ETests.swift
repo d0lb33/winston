@@ -23,49 +23,15 @@ final class NavigationE2ETests: XCTestCase {
     super.tearDown()
   }
 
-  // TEMP capture-only: verify the foldable scroll-preservation requirement on the LIVE app.
-  // Scroll the feed down, fold/unfold (rotate), and confirm the same content stays in view
-  // (the feed must NOT jump to top across the compact↔wide swap). Attaches screenshots.
-  func testZZZCaptureScrollPreservationAcrossFold() {
-    app.terminate()
-    let live = XCUIApplication()
-    live.launchArguments = []
-    live.launch()
-    Thread.sleep(forTimeInterval: 11)
-    capS("01-feed-top")
-
-    // Scroll down several screens so we're well past the top.
-    let win = live.windows.firstMatch
-    for _ in 0..<5 {
-      win.swipeUp(velocity: .fast)
-      Thread.sleep(forTimeInterval: 0.4)
-    }
-    Thread.sleep(forTimeInterval: 1.5)
-    capS("02-scrolled-down-portrait")
-
-    // Unfold → landscape (wide three-column split). Same post should stay in view.
-    XCUIDevice.shared.orientation = .landscapeLeft
-    Thread.sleep(forTimeInterval: 4)
-    capS("03-scrolled-landscape-wide")
-
-    // Fold back → portrait (compact). Should return to the same scroll position, not the top.
-    XCUIDevice.shared.orientation = .portrait
-    Thread.sleep(forTimeInterval: 4)
-    capS("04-scrolled-portrait-again")
-  }
-
-  private func capS(_ name: String) {
-    let a = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
-    a.name = name
-    a.lifetime = .keepAlways
-    add(a)
-  }
-
-  // Compact single-tap reselect: scroll the open post to top, then peel back one level per
-  // tap (author → post → feed root), exercising the real reselect wiring + compactPath.
+  // Compact single-tap reselect: from a pushed feed, scroll the open post to top, then peel
+  // back one level per tap (author → post → feed root), and finally pop the feed back to the
+  // root scope list — exercising the real reselect wiring + compactPath.
   func testPostsCompactSameTabReselectScrollsThenBacksToFeedRoot() {
-    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
     XCTAssertTrue(bridgeStatusLabel().contains("attached"))
+
+    button("navE2E.posts.pickPopular").tap()
+    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
 
     button("navE2E.posts.openPost").tap()
     XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
@@ -88,20 +54,41 @@ final class NavigationE2ETests: XCTestCase {
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
     XCTAssertTrue(text("navE2E.posts.scrollPosition").label.contains("popular-post-8"))
     XCTAssertFalse(text("navE2E.posts.detailUser").exists)
+
+    // At the feed root, the next reselect pops the feed back to the root scope list.
+    waitPastDoubleTapInterval()
+    selectTab("Posts")
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.navigation.popFeedToRoot"))
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+    XCTAssertFalse(text("navE2E.posts.feedRoot").exists)
   }
 
-  // Compact reselect at the feed root is a no-op (the scope picker reaches the subreddit
-  // list — the tab reselect does NOT jump to a hidden subreddit-list screen).
-  func testPostsCompactFeedRootSingleTapIsNoop() {
-    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+  // Compact reselect at the root scope list is a no-op (nothing is pushed above it).
+  func testPostsCompactRootListSingleTapIsNoop() {
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
 
     selectTab("Posts")
 
     XCTAssertTrue(text("navE2E.lastAction").label.contains("single.none"))
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+  }
+
+  // Picking a scope pushes the feed; reselecting at the feed root pops back to the root list.
+  func testPostsCompactPickScopePushesFeedThenReselectPopsToRootList() {
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+
+    button("navE2E.posts.pickPopular").tap()
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+
+    selectTab("Posts")
+    XCTAssertTrue(text("navE2E.lastAction").label.contains("single.navigation.popFeedToRoot"))
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+    XCTAssertFalse(text("navE2E.posts.feedRoot").exists)
   }
 
   func testPostsRegularSameTabReselectScrollsFeedBeforeDetailBack() {
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+    button("navE2E.posts.pickPopular").tap()
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
     button("navE2E.posts.regularLayout").tap()
     button("navE2E.posts.markFeedScrolled").tap()
@@ -118,8 +105,8 @@ final class NavigationE2ETests: XCTestCase {
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
   }
 
-  // NOTE: Double-tap-to-reset is covered by unit tests (`postsDoubleTapResetsToFeedRoot`,
-  // `doubleTapAfterImmediateSingleEndsAtFeedRoot`) rather than a UI test: XCUITest cannot
+  // NOTE: Double-tap-to-reset is covered by unit tests (`postsDoubleTapResetsToRootList`,
+  // `doubleTapAfterImmediateSingleEndsAtRootList`) rather than a UI test: XCUITest cannot
   // synthesize two tab-bar taps inside the 0.32s double-tap window.
 
   func testEachTabCanReturnToItsRootWithSameTabReselect() {

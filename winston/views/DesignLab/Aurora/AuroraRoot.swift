@@ -40,8 +40,6 @@ struct AuroraRoot: View {
   @State private var savedListSummaries: [SavedListSummary] = []
   /// The shell's measured width, used to pick the compact vs wide layout.
   @State private var measuredWidth: CGFloat = 0
-  /// Compact-only: the feed-scope picker sheet (the wide layout uses the sidebar instead).
-  @State private var scopePickerShown = false
 
   init(nav posts: PostsNav, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
@@ -116,7 +114,6 @@ struct AuroraRoot: View {
       .toolbarBackground(.hidden, for: .navigationBar)
       .overlay(alignment: .topTrailing) { closeButton }
       .diagnosticScreen("aurora.posts")
-      .sheet(isPresented: $scopePickerShown) { scopePickerSheet }
       .onAppear {
         applyLayout(expanded: expanded)
         reloadSavedListSummaries()
@@ -157,23 +154,15 @@ struct AuroraRoot: View {
     @Bindable var posts = posts
 
     return NavigationStack(path: $posts.compactPath) {
-      feedContent(selectedPostID: $posts.selectedPostID)
-        .redditNavigation(posts, origin: .content)
-        .compactPostsDestinations(posts)
-        .toolbar { scopePickerToolbar }
-    }
-  }
-
-  @ToolbarContentBuilder private var scopePickerToolbar: some ToolbarContent {
-    ToolbarItem(placement: .topBarLeading) {
-      Button { scopePickerShown = true } label: {
-        HStack(spacing: 5) {
-          Image(systemName: scopeIcon(posts.scope))
-          Text(scopeTitle(posts.scope)).fontWeight(.semibold).lineLimit(1)
-          Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
-        }
+      AuroraCompactRootList(
+        favoriteLists: savedListSummaries,
+        favoriteCommunities: favoriteCommunities,
+        subscribedCommunities: subscribedCommunities,
+        onSelect: { posts.presentScopeFeed($0) }
+      )
+      .compactPostsDestinations(posts) {
+        feedContent(selectedPostID: $posts.selectedPostID)
       }
-      .accessibilityIdentifier("aurora.scopePicker")
     }
   }
 
@@ -306,29 +295,6 @@ struct AuroraRoot: View {
     posts.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
   }
 
-  // MARK: - Scope title / icon
-
-  private func scopeTitle(_ scope: FeedScope) -> String {
-    switch scope {
-    case .home: return "Home"
-    case .popular: return "Popular"
-    case .saved: return "Saved"
-    case .savedListsOverview: return "Saved Lists"
-    case .savedList(let id): return savedListSummaries.first { $0.id == id }?.name ?? "List"
-    case .subreddit: return model.subreddit.displayTitle
-    }
-  }
-
-  private func scopeIcon(_ scope: FeedScope) -> String {
-    switch scope {
-    case .home: return "house.fill"
-    case .popular: return "chart.line.uptrend.xyaxis"
-    case .saved: return "bookmark.fill"
-    case .savedListsOverview, .savedList: return "list.bullet.rectangle"
-    case .subreddit: return "circle.grid.2x2.fill"
-    }
-  }
-
   // MARK: - Communities
 
   private var subscribedCommunities: [CachedSub] {
@@ -342,9 +308,11 @@ struct AuroraRoot: View {
   // MARK: - Wide sidebar
 
   /// The selection binding ignores transient nil (the `CachedSub` `@FetchRequest` clears the
-  /// `List` selection when it re-syncs); only a real new pick changes the scope.
+  /// `List` selection when it re-syncs); only a real new pick changes the scope. Routes through
+  /// `presentScopeFeed` so a wide-sidebar pick also marks the feed presented — folding
+  /// wide→compact then lands on that feed (not the root list) and preserves its scroll.
   private var scopeSelection: Binding<FeedScope?> {
-    Binding(get: { posts.scope }, set: { if let scope = $0 { posts.scope = scope } })
+    Binding(get: { posts.scope }, set: { if let scope = $0 { posts.presentScopeFeed(scope) } })
   }
 
   private var scopeSidebar: some View {
@@ -415,72 +383,6 @@ struct AuroraRoot: View {
     .listRowBackground(Color.clear)
   }
 
-  // MARK: - Compact scope picker sheet
-
-  private var scopePickerSheet: some View {
-    NavigationStack {
-      List {
-        Section {
-          scopeSheetRow("Home", scope: .home, systemImage: "house.fill")
-          scopeSheetRow("Popular", scope: .popular, systemImage: "chart.line.uptrend.xyaxis")
-          scopeSheetRow("Saved", scope: .saved, systemImage: "bookmark.fill")
-          scopeSheetRow("Saved Lists", scope: .savedListsOverview, systemImage: "list.bullet.rectangle")
-        }
-        if !savedListSummaries.isEmpty {
-          Section("Favorite Lists") {
-            ForEach(savedListSummaries) { list in
-              Button { pickScope(.savedList(id: list.id)) } label: {
-                Label(list.name, systemImage: "folder.fill")
-              }
-              .buttonStyle(.plain)
-            }
-          }
-        }
-        if !favoriteCommunities.isEmpty {
-          Section("Favorites") {
-            ForEach(favoriteCommunities, id: \.uuid) { sub in communitySheetRow(sub) }
-          }
-        }
-        Section("Communities") {
-          ForEach(subscribedCommunities, id: \.uuid) { sub in communitySheetRow(sub) }
-        }
-      }
-      .navigationTitle("Browse")
-      .navigationBarTitleDisplayMode(.inline)
-      .toolbar {
-        ToolbarItem(placement: .topBarTrailing) {
-          Button("Done") { scopePickerShown = false }
-        }
-      }
-      .refreshable { await refreshSubscriptions() }
-    }
-    .auroraShellChrome(theme: theme)
-    .presentationDetents([.large, .medium])
-  }
-
-  private func scopeSheetRow(_ label: String, scope: FeedScope, systemImage: String) -> some View {
-    Button { pickScope(scope) } label: {
-      HStack {
-        Label(label, systemImage: systemImage)
-        Spacer()
-        if posts.scope == scope { Image(systemName: "checkmark").foregroundStyle(theme.accent) }
-      }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-  }
-
-  private func communitySheetRow(_ sub: CachedSub) -> some View {
-    Button { pickScope(.subreddit(id: sub.uuid ?? "")) } label: {
-      AuroraSidebarCommunityRow(cachedSub: sub)
-    }
-    .buttonStyle(.plain)
-  }
-
-  private func pickScope(_ scope: FeedScope) {
-    posts.scope = scope
-    scopePickerShown = false
-  }
 
   // MARK: - Helpers
 
@@ -549,6 +451,86 @@ extension View {
       .fontDesign(theme.fontDesign)
       .preferredColorScheme(theme.colorScheme)
       .background { AuroraBackdrop(theme: theme) }
+  }
+}
+
+/// The COMPACT (iPhone) Posts "home" — a full-screen scope/subreddit list that is the
+/// `NavigationStack` root. Tapping a row pushes that scope's feed (Apollo style). Mirrors the
+/// wide `scopeSidebar` sections, but uses tap-to-push (`onSelect`) instead of `List(selection:)`.
+private struct AuroraCompactRootList: View {
+  let favoriteLists: [SavedListSummary]
+  let favoriteCommunities: [CachedSub]
+  let subscribedCommunities: [CachedSub]
+  let onSelect: (FeedScope) -> Void
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    List {
+      Section {
+        scopeRow("Home", scope: .home, systemImage: "house.fill")
+        scopeRow("Popular", scope: .popular, systemImage: "chart.line.uptrend.xyaxis")
+        scopeRow("Saved", scope: .saved, systemImage: "bookmark.fill")
+        scopeRow("Saved Lists", scope: .savedListsOverview, systemImage: "list.bullet.rectangle")
+      }
+      if !favoriteLists.isEmpty {
+        Section("Favorite Lists") {
+          ForEach(favoriteLists) { list in
+            Button { onSelect(.savedList(id: list.id)) } label: {
+              rowChrome {
+                Label {
+                  VStack(alignment: .leading, spacing: 2) {
+                    Text(list.name).lineLimit(1)
+                    Text("\(list.count) items").font(.caption).foregroundStyle(.secondary)
+                  }
+                } icon: { Image(systemName: "folder.fill") }
+              }
+            }
+            .buttonStyle(.plain)
+            .listRowBackground(Color.clear)
+          }
+        }
+      }
+      if !favoriteCommunities.isEmpty {
+        Section("Favorites") {
+          ForEach(favoriteCommunities, id: \.uuid) { sub in communityRow(sub) }
+        }
+      }
+      Section("Communities") {
+        ForEach(subscribedCommunities, id: \.uuid) { sub in communityRow(sub) }
+      }
+    }
+    .listStyle(.insetGrouped)
+    .scrollContentBackground(.hidden)
+    .navigationTitle("Subreddits")
+    .diagnosticScreen("aurora.compactRoot")
+  }
+
+  private func scopeRow(_ label: String, scope: FeedScope, systemImage: String) -> some View {
+    Button { onSelect(scope) } label: {
+      rowChrome { Label(label, systemImage: systemImage) }
+    }
+    .buttonStyle(.plain)
+    .listRowBackground(Color.clear)
+  }
+
+  private func communityRow(_ sub: CachedSub) -> some View {
+    // `AuroraSidebarCommunityRow` already carries its own trailing favorite star, so no chevron.
+    Button { onSelect(.subreddit(id: sub.uuid ?? "")) } label: {
+      AuroraSidebarCommunityRow(cachedSub: sub)
+    }
+    .buttonStyle(.plain)
+    .listRowBackground(Color.clear)
+  }
+
+  /// Adds a trailing disclosure chevron + full-width hit area to signal "tap to open".
+  private func rowChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    HStack {
+      content()
+      Spacer(minLength: 8)
+      Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
   }
 }
 

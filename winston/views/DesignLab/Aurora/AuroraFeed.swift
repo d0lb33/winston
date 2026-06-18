@@ -79,6 +79,46 @@ private struct AuroraReadFrame: Equatable {
   }
 }
 
+/// Names the topmost-visible post so scroll position can be restored across the compact↔wide
+/// shell swap. A plain (non-observable) box so per-frame geometry churn never triggers a view
+/// re-render. `List` does not write its scroll position back through `.scrollPosition(id:)`
+/// (that's a ScrollView API — verified nil on List), so we derive the top row from row frames.
+private final class AuroraVisibleRowsBox {
+  private var frames: [String: AuroraReadFrame] = [:]
+
+  func update(_ frame: AuroraReadFrame, id: String) { frames[id] = frame }
+  func remove(_ id: String) { frames.removeValue(forKey: id) }
+
+  /// The row at the top of the viewport — the content the user is reading.
+  ///
+  /// Prefer the row crossing the top edge (minY <= 0 < maxY): that IS the topmost visible
+  /// content, even when it's a tall post whose top is far above the viewport. Among crossing
+  /// rows pick the largest minY (closest to the edge from above) — normally there's exactly
+  /// one, but this is safe if more than one qualifies. Only when nothing crosses the edge
+  /// (we're at the very top, the first row starts below 0) fall back to the first row below
+  /// it (smallest positive minY). Rows fully off the top (maxY <= 0, left stale by a
+  /// fast-scroll missed `onDisappear`) and rows below the viewport are excluded.
+  ///
+  /// NOTE: a plain `argmin |minY|` is wrong here — a tall crossing row at minY = -300 would
+  /// lose to the next post at minY = +200, so a fold/unfold restore would jump DOWN past the
+  /// post the user was still reading.
+  func topVisibleID() -> String? {
+    var crossingID: String?
+    var crossingMinY = -CGFloat.greatestFiniteMagnitude
+    var belowID: String?
+    var belowMinY = CGFloat.greatestFiniteMagnitude
+    for (id, frame) in frames {
+      guard frame.maxY > 0, frame.minY < frame.viewportHeight else { continue }
+      if frame.minY <= 0 {
+        if frame.minY > crossingMinY { crossingMinY = frame.minY; crossingID = id }
+      } else if frame.minY < belowMinY {
+        belowMinY = frame.minY; belowID = id
+      }
+    }
+    return crossingID ?? belowID
+  }
+}
+
 struct AuroraFeed: View {
   private static let topID = "aurora-feed-top"
 
@@ -97,6 +137,7 @@ struct AuroraFeed: View {
 
   @Binding private var scrollPositionID: String?
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
+  @State private var visibleRows = AuroraVisibleRowsBox()
 
   init(
     model: AuroraFeedModel,
@@ -151,19 +192,22 @@ struct AuroraFeed: View {
               .tag(post.id)
               .id(post.id)
               .background {
-                if cardSettings.readOnScroll {
-                  Color.clear
-                    .onGeometryChange(for: AuroraReadFrame.self) { proxy in
-                      let frame = proxy.frame(in: .named("auroraFeed"))
-                      return AuroraReadFrame(
-                        minY: frame.minY,
-                        maxY: frame.maxY,
-                        viewportHeight: geometry.size.height
-                      )
-                    } action: { frame in
+                // Always on: feeds the topmost-visible tracker so scroll position survives a
+                // fold/unfold. Read-on-scroll piggybacks on the same single frame read.
+                Color.clear
+                  .onGeometryChange(for: AuroraReadFrame.self) { proxy in
+                    let frame = proxy.frame(in: .named("auroraFeed"))
+                    return AuroraReadFrame(
+                      minY: frame.minY,
+                      maxY: frame.maxY,
+                      viewportHeight: geometry.size.height
+                    )
+                  } action: { frame in
+                    visibleRows.update(frame, id: post.id)
+                    if cardSettings.readOnScroll {
                       readOnScrollTracker.updateFrame(frame, for: post.id)
                     }
-                }
+                  }
               }
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
@@ -194,6 +238,7 @@ struct AuroraFeed: View {
               }
               .onDisappear {
                 ScrollPerfDiagnostics.bump("auroraFeed.rowDisappear")
+                visibleRows.remove(post.id)
                 readOnScrollTracker.markIfDisappearedPastTop(post, readOnScroll: cardSettings.readOnScroll)
                 readOnScrollTracker.remove(postID: post.id)
               }
@@ -205,11 +250,22 @@ struct AuroraFeed: View {
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
-        .scrollPosition(id: $scrollPositionID)
+        // NOTE: `.scrollPosition(id:)` is a ScrollView (+ `scrollTargetLayout`) API — on a
+        // `List` it never writes the position back through the binding (verified: the binding
+        // stays nil while scrolling). So we name the topmost-visible row ourselves below and
+        // restore it via the ScrollViewReader proxy on appear (see `.onAppear`).
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, offsetY in
           onScrollStateChanged(offsetY > 8)
+          // Persist where we are (the leading on-screen post) so a fold/unfold that recreates
+          // this List can land back here instead of jumping to the top. Only record while
+          // genuinely scrolled down (> 8pt): rotation tears the List down by collapsing its
+          // offset toward 0, and writing the top sentinel there would clobber the saved post.
+          // The top sentinel is recorded only by the explicit scroll-to-top action below.
+          if offsetY > 8, let topVisible = visibleRows.topVisibleID(), topVisible != scrollPositionID {
+            scrollPositionID = topVisible
+          }
           ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
             readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
           }
@@ -223,9 +279,9 @@ struct AuroraFeed: View {
         }
         .onAppear {
           // The compact (NavigationStack) and wide (NavigationSplitView) shells are separate
-          // view trees, so folding/unfolding recreates this List. `.scrollPosition(id:)`
-          // restores from the shared binding, but explicitly re-asserting via the proxy makes
-          // the restore reliable across that recreation (otherwise the fresh List lands at top).
+          // view trees, so folding/unfolding recreates this List. Restore to the post that was
+          // at the top before the swap (recorded in the shared binding during scroll) so the
+          // fresh List lands where we left off instead of jumping to the top.
           if let id = scrollPositionID, id != Self.topID {
             proxy.scrollTo(id, anchor: .top)
           }
@@ -255,14 +311,12 @@ struct AuroraFeed: View {
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onAppear {
-      AppDiagnostics.asyncBreadcrumb("TMPSCROLL feed appeared", metadata: ["scrollPosition": scrollPositionID ?? "nil", "visiblePosts": "\(model.visiblePosts.count)"])
       ScrollPerfDiagnostics.event(
         "Aurora feed appeared",
         metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
       )
     }
     .onDisappear {
-      AppDiagnostics.asyncBreadcrumb("TMPSCROLL feed disappeared", metadata: ["scrollPosition": scrollPositionID ?? "nil", "visiblePosts": "\(model.visiblePosts.count)"])
       onScrollStateChanged(false)
       ScrollPerfDiagnostics.event(
         "Aurora feed disappeared",

@@ -212,15 +212,22 @@ struct PostsNavTests {
     #expect(nav.detailPath.isEmpty)
   }
 
-  @Test("compactPath projects content + open post + detail pushes, and decomposes on pop")
+  @Test("compactPath is empty at the root list, and projects .feed + pushes once a feed is presented")
   func compactPathProjectionRoundTrips() {
     let nav = PostsNav()
-    nav.scope = .popular
+
+    // Cold start: at the root scope list — no feed presented, empty path.
+    #expect(nav.compactFeedPresented == false)
+    #expect(nav.compactPath.isEmpty)
+
+    nav.presentScopeFeed(.popular)                                           // push the feed
+    #expect(nav.compactPath == [.feed])
+
     nav.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // content push
     nav.selectFeedPost(Post(id: "p1"))                                       // open post
     nav.navigate(.reddit(.user(User(id: "alice"))), from: .detail)          // detail push
 
-    #expect(nav.compactPath.count == 3) // [sub, post, user]
+    #expect(nav.compactPath.count == 4) // [.feed, sub, post, user]
 
     // Pop the detail push (system back gesture shrinks the path).
     nav.compactPath = Array(nav.compactPath.dropLast())
@@ -234,10 +241,48 @@ struct PostsNavTests {
     #expect(nav.selectedPostID == nil)
     #expect(nav.contentPath.count == 1)
 
-    // Pop the content push → back at the feed root.
-    nav.compactPath = []
+    // Pop the content push → back at the bare feed root (still presented).
+    nav.compactPath = [.feed]
     #expect(nav.contentPath.isEmpty)
+    #expect(nav.compactFeedPresented == true)
     #expect(nav.scope == .popular)
+
+    // Pop the feed itself → back at the root scope list.
+    nav.compactPath = []
+    #expect(nav.compactFeedPresented == false)
+    #expect(nav.scope == .popular) // scope is remembered; the list highlights it
+  }
+
+  @Test("presentScopeFeed sets the scope and pushes the feed")
+  func presentScopeFeedPushesFeed() {
+    let nav = PostsNav()
+    nav.presentScopeFeed(.home)
+    #expect(nav.scope == .home)
+    #expect(nav.compactFeedPresented == true)
+    #expect(nav.compactPath == [.feed])
+  }
+
+  @Test("Deep-link post presents the feed under it (compact stack: root list → feed → post)")
+  func deepLinkPostPresentsFeedThenPost() {
+    let nav = PostsNav()
+    #expect(nav.compactFeedPresented == false)
+
+    nav.openDeepLinkPostRoot(Post(id: "p1"), highlightID: "c1")
+
+    #expect(nav.compactFeedPresented == true)
+    #expect(nav.detailPost?.id == "p1")
+    #expect(nav.detailHighlightID == "c1")
+    #expect(nav.compactPath.count == 2)   // [.feed, .dest(post)]
+    #expect(nav.compactPath.first == .feed)
+  }
+
+  @Test("Deep-link feed token presents that scope's feed")
+  func deepLinkFeedTokenPresentsFeed() {
+    let nav = PostsNav()
+    #expect(nav.setDeepLinkFeed("home") == true)
+    #expect(nav.scope == .home)
+    #expect(nav.compactFeedPresented == true)
+    #expect(nav.compactPath == [.feed])
   }
 }
 
@@ -371,11 +416,11 @@ struct StackNavTests {
 @Suite(.serialized)
 @MainActor
 struct AppNavBridgeTests {
-  @Test("Posts tab-root reset preserves the feed scope and scroll position")
-  func postsTabRootPreservesFeedContext() {
+  @Test("Posts tab-root reset returns to the root list, keeping the scope but dropping the feed")
+  func postsTabRootReturnsToRootList() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.scope = .subreddit(id: "swift")
+    appNav.posts.presentScopeFeed(.subreddit(id: "swift"))
     appNav.posts.feedScrollPositionID = "post-near-top"
     appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
     appNav.posts.openPostInDetail(Post(id: "p1"))
@@ -383,8 +428,10 @@ struct AppNavBridgeTests {
 
     appNav.resetToTabRoot(.posts)
 
+    // Reset drops the feed (→ root list) and its scroll, but remembers the scope.
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
-    #expect(appNav.posts.feedScrollPositionID == "post-near-top")
+    #expect(appNav.posts.compactFeedPresented == false)
+    #expect(appNav.posts.feedScrollPositionID == nil)
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailHighlightID == nil)
@@ -570,20 +617,35 @@ struct AppNavBridgeTests {
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.detail)))
   }
 
-  @Test("Posts compact feed root single-tap is a no-op (scope picker reaches the list)")
-  func postsCompactFeedRootIsNoop() {
+  @Test("Posts compact root list single-tap is a no-op (nothing is pushed above it)")
+  func postsCompactRootListSingleTapIsNoop() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
 
+    #expect(appNav.posts.compactFeedPresented == false)
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
   }
 
-  @Test("Posts compact single-tap peels detail → content → feed root, one level per tap")
+  @Test("Posts compact feed-root single-tap pops the feed back to the root scope list")
+  func postsCompactFeedRootPopsToRootList() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.presentScopeFeed(.popular)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
+
+    let action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.popFeedToRoot))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.compactFeedPresented == false)
+    #expect(appNav.posts.scope == .popular) // scope remembered; the list highlights it
+  }
+
+  @Test("Posts compact single-tap peels detail → content → feed root → root list, one per tap")
   func postsCompactWalkBackPeelsOneLevelPerTap() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.scope = .popular
+    appNav.posts.presentScopeFeed(.popular)                                           // push the feed
     appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // contentPath = 1
     appNav.posts.selectFeedPost(Post(id: "p1"))                                       // open post
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)          // detailPath = 1
@@ -608,16 +670,22 @@ struct AppNavBridgeTests {
     TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
     #expect(appNav.posts.contentPath.isEmpty)
 
-    // 4. at the feed root → nothing left (the scope picker reaches the subreddit list)
-    #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
+    // 4. at the feed root → pop the feed back to the root scope list
+    action = appNav.handleTabReselect(.posts, tap: .single)
+    #expect(action == .navigation(.popFeedToRoot))
+    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
+    #expect(appNav.posts.compactFeedPresented == false)
     #expect(appNav.posts.scope == .popular)
+
+    // 5. at the root list → nothing left
+    #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
   }
 
   @Test("Posts compact scrolled feed scrolls to top before anything else")
   func postsCompactScrolledFeedScrollsFirst() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.scope = .popular
+    appNav.posts.presentScopeFeed(.popular)
     appNav.posts.tabInteractionState = PostsTabInteractionState(
       layout: .compact,
       contentCanScrollToTop: true
@@ -676,20 +744,37 @@ struct AppNavBridgeTests {
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.content)))
   }
 
-  @Test("Posts double tap resets a dirty surface to the feed root")
-  func postsDoubleTapResetsToFeedRoot() {
+  @Test("Posts compact double tap resets a dirty surface all the way to the root list")
+  func postsDoubleTapResetsToRootList() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.openPostInDetail(Post(id: "p1"))
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
+    appNav.posts.openPostInDetail(Post(id: "p1")) // presents the feed + opens a post
 
+    let double = appNav.handleTabReselect(.posts, tap: .double)
+    #expect(double == .resetToTabRoot)
+    TabReselectActionExecutor.execute(double, for: .posts, appNav: appNav)
+    #expect(appNav.posts.compactFeedPresented == false) // dropped the feed → the root list
+    #expect(appNav.posts.detailPost == nil)
+  }
+
+  @Test("Posts compact double tap from a presented feed root reaches the root list")
+  func postsDoubleTapFromFeedRootReachesRootList() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.posts.presentScopeFeed(.popular) // feed presented, nothing pushed
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
+
+    // Even with no pushes, a presented feed is resettable on compact.
+    #expect(appNav.posts.canResetToTabRoot == true)
     #expect(appNav.handleTabReselect(.posts, tap: .double) == .resetToTabRoot)
   }
 
-  @Test("Double tap after an immediate single still ends at the feed root")
-  func doubleTapAfterImmediateSingleEndsAtFeedRoot() {
+  @Test("Double tap after an immediate single still ends at the root list")
+  func doubleTapAfterImmediateSingleEndsAtRootList() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.scope = .subreddit(id: "swift")
+    appNav.posts.presentScopeFeed(.subreddit(id: "swift"))
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
     appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
@@ -704,7 +789,8 @@ struct AppNavBridgeTests {
     #expect(double == .resetToTabRoot)
     TabReselectActionExecutor.execute(double, for: .posts, appNav: appNav)
 
-    // Reset clears the open post but keeps the feed scope (the subreddit list is a tap away).
+    // Reset drops the feed too (root list) but keeps the scope (the list highlights it).
+    #expect(appNav.posts.compactFeedPresented == false)
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
@@ -786,7 +872,8 @@ struct NavigationScenarioTests {
 
     #expect(appNav.selectedTab == .posts)
     #expect(appNav.posts.scope == .popular)
-    #expect(appNav.posts.feedScrollPositionID == "popular-post-8")
+    #expect(appNav.posts.compactFeedPresented == false) // returned to the root list
+    #expect(appNav.posts.feedScrollPositionID == nil)   // the feed scroll is dropped with it
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
@@ -811,7 +898,8 @@ struct NavigationScenarioTests {
     appNav.resetToTabRoot(.posts)
 
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
-    #expect(appNav.posts.feedScrollPositionID == "swift-post-12")
+    #expect(appNav.posts.compactFeedPresented == false)
+    #expect(appNav.posts.feedScrollPositionID == nil)
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)

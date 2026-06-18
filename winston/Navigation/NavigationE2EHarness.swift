@@ -165,8 +165,9 @@ struct NavigationE2EHarnessView: View {
 }
 
 /// Compact Posts harness: a single `NavigationStack` bound to `posts.compactPath` (the same
-/// projection the live compact shell uses), with synthetic destinations so the UI tests
-/// drive the real model + reselect wiring without live Reddit.
+/// `[CompactRoute]` projection the live compact shell uses). The ROOT is the synthetic scope
+/// list; picking a scope pushes the `.feed` route; opening a post pushes a `.dest`. This drives
+/// the real model + reselect wiring (incl. the new pop-feed-to-root) without live Reddit.
 private struct NavigationE2EPostsSurface: View {
   let appNav: AppNav
 
@@ -175,53 +176,28 @@ private struct NavigationE2EPostsSurface: View {
 
     NavigationStack(path: $posts.compactPath) {
       List {
-        Text(verbatim: "Popular Feed Root")
-          .accessibilityIdentifier("navE2E.posts.feedRoot")
-        Text(verbatim: "Scope: \(posts.scope.token)")
-          .accessibilityIdentifier("navE2E.posts.scope")
-        Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
-          .accessibilityIdentifier("navE2E.posts.scrollPosition")
-        Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
-          .accessibilityIdentifier("navE2E.posts.interactionState")
-        Text(verbatim: "Content Scroll Request: \(posts.contentScrollToTopRequest)")
-          .accessibilityIdentifier("navE2E.posts.contentScrollRequest")
-        Button { posts.updateInteractionLayout(.compact) } label: {
-          Text(verbatim: "Set Compact Layout")
+        Text(verbatim: "Root Scope List")
+          .accessibilityIdentifier("navE2E.posts.rootList")
+        Button { posts.presentScopeFeed(.popular) } label: {
+          Text(verbatim: "Pick Popular")
         }
-        .accessibilityIdentifier("navE2E.posts.compactLayout")
-        Button { posts.updateInteractionLayout(.regular) } label: {
-          Text(verbatim: "Set Regular Layout")
-        }
-        .accessibilityIdentifier("navE2E.posts.regularLayout")
-        Button { posts.updateContentCanScrollToTop(true) } label: {
-          Text(verbatim: "Mark Feed Scrolled")
-        }
-        .accessibilityIdentifier("navE2E.posts.markFeedScrolled")
-        Button { posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) } label: {
-          Text(verbatim: "Push Subreddit")
-        }
-        .accessibilityIdentifier("navE2E.posts.pushSub")
-        Button { posts.scope = .home } label: {
-          Text(verbatim: "Pick Home Scope")
+        .accessibilityIdentifier("navE2E.posts.pickPopular")
+        Button { posts.presentScopeFeed(.home) } label: {
+          Text(verbatim: "Pick Home")
         }
         .accessibilityIdentifier("navE2E.posts.pickHome")
-        Button {
-          posts.scope = .popular
-          posts.feedScrollPositionID = "popular-post-8"
-          let post = Post(id: "popular-post-1")
-          posts.selectedPostID = post.id
-          posts.selectFeedPost(post)
-        } label: {
-          Text(verbatim: "Open Popular Post")
-        }
-        .accessibilityIdentifier("navE2E.posts.openPost")
       }
-      .navigationTitle(Text(verbatim: "Popular"))
-      .navigationDestination(for: NavDest.self) { destination in
-        if PostsNav.postDetail(from: destination) != nil {
-          NavigationE2EPostDetail(posts: posts)
-        } else {
-          NavigationE2EDestinationView(destination: destination)
+      .navigationTitle(Text(verbatim: "Subreddits"))
+      .navigationDestination(for: CompactRoute.self) { route in
+        switch route {
+        case .feed:
+          NavigationE2EFeedSurface(posts: posts)
+        case .dest(let destination):
+          if PostsNav.postDetail(from: destination) != nil {
+            NavigationE2EPostDetail(posts: posts)
+          } else {
+            NavigationE2EDestinationView(destination: destination)
+          }
         }
       }
     }
@@ -232,6 +208,54 @@ private struct NavigationE2EPostsSurface: View {
     .onChange(of: posts.detailScrollToTopRequest) { _, _ in
       posts.updateDetailCanScrollToTop(false)
     }
+  }
+}
+
+/// The `.feed` route — the synthetic feed pushed on top of the root list.
+private struct NavigationE2EFeedSurface: View {
+  let posts: PostsNav
+
+  var body: some View {
+    @Bindable var posts = posts
+
+    List {
+      Text(verbatim: "Feed Root")
+        .accessibilityIdentifier("navE2E.posts.feedRoot")
+      Text(verbatim: "Scope: \(posts.scope.token)")
+        .accessibilityIdentifier("navE2E.posts.scope")
+      Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
+        .accessibilityIdentifier("navE2E.posts.scrollPosition")
+      Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
+        .accessibilityIdentifier("navE2E.posts.interactionState")
+      Text(verbatim: "Content Scroll Request: \(posts.contentScrollToTopRequest)")
+        .accessibilityIdentifier("navE2E.posts.contentScrollRequest")
+      Button { posts.updateInteractionLayout(.compact) } label: {
+        Text(verbatim: "Set Compact Layout")
+      }
+      .accessibilityIdentifier("navE2E.posts.compactLayout")
+      Button { posts.updateInteractionLayout(.regular) } label: {
+        Text(verbatim: "Set Regular Layout")
+      }
+      .accessibilityIdentifier("navE2E.posts.regularLayout")
+      Button { posts.updateContentCanScrollToTop(true) } label: {
+        Text(verbatim: "Mark Feed Scrolled")
+      }
+      .accessibilityIdentifier("navE2E.posts.markFeedScrolled")
+      Button { posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) } label: {
+        Text(verbatim: "Push Subreddit")
+      }
+      .accessibilityIdentifier("navE2E.posts.pushSub")
+      Button {
+        posts.feedScrollPositionID = "popular-post-8"
+        let post = Post(id: "popular-post-1")
+        posts.selectedPostID = post.id
+        posts.selectFeedPost(post)
+      } label: {
+        Text(verbatim: "Open Popular Post")
+      }
+      .accessibilityIdentifier("navE2E.posts.openPost")
+    }
+    .navigationTitle(Text(verbatim: "Popular"))
   }
 }
 

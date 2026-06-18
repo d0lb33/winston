@@ -79,6 +79,15 @@ enum FeedScope: Hashable, Codable {
   }
 }
 
+/// The compact Posts `NavigationStack` path vocabulary. The root is the scope LIST page; the
+/// feed is PUSHED (`.feed`) so it gets a back button, and posts/subs/users pushed on top of the
+/// feed travel as `.dest(NavDest)`. Local to the compact Posts shell — it deliberately does NOT
+/// touch `NavDest` (the app-wide vocabulary shared with Me/Search/Inbox/Settings).
+enum CompactRoute: Hashable {
+  case feed
+  case dest(NavDest)
+}
+
 enum TabTapKind: Equatable {
   case single
   case double
@@ -108,6 +117,8 @@ enum PostsSurfaceCommand: Equatable {
 
 enum PostsNavigationAction: Equatable {
   case backOneStep(PostsTabColumn)
+  /// Compact only: pop the scope's feed off the stack, back to the root scope list.
+  case popFeedToRoot
 }
 
 enum TabReselectAction: Equatable {
@@ -121,6 +132,7 @@ enum TabReselectAction: Equatable {
     case .surface(.scrollContentToTop): return "surface.scrollContentToTop"
     case .surface(.scrollDetailToTop): return "surface.scrollDetailToTop"
     case .navigation(.backOneStep(let column)): return "navigation.backOneStep.\(column.diagnosticsName)"
+    case .navigation(.popFeedToRoot): return "navigation.popFeedToRoot"
     case .resetToTabRoot: return "resetToTabRoot"
     case .none: return "none"
     }
@@ -199,6 +211,9 @@ enum TabReselectActionExecutor {
       case .content: _ = appNav.posts.goBackContentOneStepForTabReselect()
       case .sidebar: break
       }
+    case .navigation(.popFeedToRoot):
+      guard tab == .posts else { return }
+      appNav.posts.popCompactFeedToRootList()
     case .resetToTabRoot:
       appNav.resetToTabRoot(tab)
     case .none:
@@ -377,8 +392,8 @@ final class AppNav {
   func handleTabReselect(_ tab: Tab, tap: TabTapKind) -> TabReselectAction {
     switch tab {
     case .posts:
-      // Double tap: jump straight back to the bare feed root (clears any open post / pushes,
-      // keeps the feed scope + scroll). The subreddit list lives behind the scope picker.
+      // Double tap: jump straight back to the tab root — on compact that's the root scope list
+      // (drops the feed too), on wide the bare feed root with the sidebar still showing.
       if tap == .double {
         return canResetToTabRoot(.posts) ? .resetToTabRoot : .none
       }
@@ -442,6 +457,12 @@ final class PostsNav: RedditNavigator {
   /// The feed row nearest the top of the feed, preserved across shell swaps / rotation.
   var feedScrollPositionID: String?
 
+  /// Compact only: whether the scope's feed is PUSHED on top of the root scope list. `false`
+  /// == showing the root list (the Apollo-style home). The wide split ignores this — it always
+  /// shows the feed column. Set true by `presentScopeFeed` (root list / wide sidebar / deep
+  /// link); cleared when the compact stack pops past the feed (the `compactPath` setter).
+  var compactFeedPresented = false
+
   /// The open post (a feed tap, a link, a deep link, or a saved item).
   var detailPost: Post?
   var detailHighlightID: String?
@@ -464,36 +485,57 @@ final class PostsNav: RedditNavigator {
 
   // MARK: Compact stack projection
 
-  /// The compact shell renders ONE `NavigationStack` whose path is a projection of this
-  /// model: `[content pushes] + (open post) + [detail pushes]`. Reading rebuilds the path;
-  /// writing (a system back gesture / programmatic pop) decomposes the shorter path back
-  /// into `contentPath` / `detailPost` / `detailPath`. There is no second source of truth —
-  /// the same state drives compact and wide, so fold/unfold preserves it.
-  var compactPath: [NavDest] {
+  /// The compact shell renders ONE `NavigationStack` whose ROOT is the scope LIST page and
+  /// whose path is a projection of this model: `[.feed] + [content pushes] + (open post) +
+  /// [detail pushes]` — but only when a feed is presented; otherwise `[]` (at the root list).
+  /// Reading rebuilds the path; writing (a system back gesture / programmatic pop) decomposes
+  /// the shorter path back into `compactFeedPresented` / `contentPath` / `detailPost` /
+  /// `detailPath`. There is no second source of truth — the same state drives compact and
+  /// wide, so fold/unfold preserves it.
+  var compactPath: [CompactRoute] {
     get {
-      var path = contentPath
+      guard compactFeedPresented else { return [] }
+      var path: [CompactRoute] = [.feed]
+      path.append(contentsOf: contentPath.map(CompactRoute.dest))
       if let detailPost {
-        path.append(Self.navDest(for: detailPost, highlightID: detailHighlightID))
-        path.append(contentsOf: detailPath)
+        path.append(.dest(Self.navDest(for: detailPost, highlightID: detailHighlightID)))
+        path.append(contentsOf: detailPath.map(CompactRoute.dest))
       }
       return path
     }
     set {
+      // Popped past the feed (empty, or somehow not led by `.feed`) → back at the root list.
+      guard case .feed? = newValue.first else {
+        compactFeedPresented = false
+        selectedPostID = nil
+        detailPost = nil
+        detailHighlightID = nil
+        contentPath = []
+        detailPath = []
+        return
+      }
+      compactFeedPresented = true
+      // Drop the leading `.feed`; the rest are `.dest(NavDest)` pushes. Decompose them with
+      // the same index math the feed-relative projection used.
+      let suffix: [NavDest] = newValue.dropFirst().compactMap { route in
+        if case .dest(let destination) = route { return destination }
+        return nil
+      }
       let postIndex = contentPath.count
       if detailPost != nil {
-        if newValue.count <= postIndex {
+        if suffix.count <= postIndex {
           // The open post (and anything pushed onto it) was popped.
           detailPost = nil
           detailHighlightID = nil
           selectedPostID = nil
           detailPath = []
-          contentPath = Array(newValue.prefix(postIndex))
+          contentPath = Array(suffix.prefix(postIndex))
         } else {
           // Post still on the stack; everything above it is the detail path.
-          detailPath = Array(newValue.dropFirst(postIndex + 1))
+          detailPath = Array(suffix.dropFirst(postIndex + 1))
         }
       } else {
-        contentPath = newValue
+        contentPath = suffix
       }
     }
   }
@@ -507,6 +549,9 @@ final class PostsNav: RedditNavigator {
   func navigate(_ destination: NavDest, from origin: RedditNavigationOrigin) {
     switch origin {
     case .content:
+      // Any content-level navigation implies a feed context (a feed-card tap, or a deep link).
+      // On compact this ensures the push is visible above the root list; on wide it's moot.
+      compactFeedPresented = true
       if let detail = Self.postDetail(from: destination) {
         openPostInDetail(detail.post, highlightID: detail.highlightID)
       } else {
@@ -519,8 +564,10 @@ final class PostsNav: RedditNavigator {
 
   // MARK: Intents
 
-  /// Open a post from a non-feed source (link / deep link / saved item).
+  /// Open a post from a non-feed source (link / deep link / saved item). On compact this sits
+  /// above the feed (root list → feed → post), so present the feed.
   func openPostInDetail(_ post: Post, highlightID: String? = nil) {
+    compactFeedPresented = true
     selectedPostID = nil
     detailPost = post
     detailHighlightID = highlightID
@@ -530,9 +577,24 @@ final class PostsNav: RedditNavigator {
   /// Promote a feed-list selection to the open post. Keeps `selectedPostID` for the wide
   /// feed row highlight.
   func selectFeedPost(_ post: Post) {
+    compactFeedPresented = true
     detailPost = post
     detailHighlightID = nil
     detailPath = []
+  }
+
+  /// Push the feed for `scope` (compact root-list pick, wide sidebar pick, or deep link). The
+  /// scope change drives `AuroraRoot.onChange(of: scope)` → resetContentAndDetail + model sync.
+  func presentScopeFeed(_ scope: FeedScope) {
+    self.scope = scope
+    compactFeedPresented = true
+  }
+
+  /// Compact only: pop the feed off the stack, back to the root scope list. Keeps `scope`
+  /// (the list highlights it) but drops the feed's pushes + scroll position.
+  func popCompactFeedToRootList() {
+    compactFeedPresented = false
+    resetContentAndDetail()
   }
 
   /// Clear the open post and any in-feed pushes (e.g. when the feed scope changes).
@@ -561,23 +623,30 @@ final class PostsNav: RedditNavigator {
 
   func reset(to launchFeed: DefaultLaunchFeed = .popular) {
     scope = launchFeed.scope
+    compactFeedPresented = false
     resetContentAndDetail()
   }
 
   var canResetToTabRoot: Bool {
-    !detailPath.isEmpty || selectedPostID != nil || detailPost != nil ||
-    detailHighlightID != nil || !contentPath.isEmpty
+    let base = !detailPath.isEmpty || selectedPostID != nil || detailPost != nil ||
+      detailHighlightID != nil || !contentPath.isEmpty
+    // Compact: a presented feed is itself resettable (double-tap drops it → the root list).
+    // Wide has no root list, so the flag is moot there and must not change its behavior.
+    if tabInteractionState.layout == .compact { return base || compactFeedPresented }
+    return base
   }
 
-  /// Clear everything back to the bare feed root (keeps the feed scope + scroll position).
+  /// Clear everything back to the tab root. On compact that's the root scope list (double-tap
+  /// jumps "all the way back to the subreddit selection"); on wide there is no list, so the
+  /// flag is moot and this lands on the bare feed root with the sidebar still showing.
   func resetToTabRoot() {
-    let feedScrollPositionID = feedScrollPositionID
+    compactFeedPresented = false
     selectedPostID = nil
     detailPost = nil
     detailHighlightID = nil
     contentPath = []
     detailPath = []
-    self.feedScrollPositionID = feedScrollPositionID
+    feedScrollPositionID = nil
   }
 
   func tabReselectAction() -> TabReselectAction {
@@ -635,19 +704,21 @@ final class PostsNav: RedditNavigator {
     return true
   }
 
-  // Compact single tap: peel back ONE layer — scroll the active surface to the top, then
-  // pop one navigation level, then remain at the feed root. The active surface is DERIVED
-  // from the model (a post open → the detail surface; otherwise the feed), not from any
-  // collapsed-column inference. Reaching the subreddit list is the scope picker's job, not
-  // the tab reselect's, so there is no "reveal subreddit selector" navigation here.
+  // Compact single tap: peel back ONE layer — scroll the active surface to the top, then pop
+  // one navigation level, and finally pop the feed itself back to the root scope list. The
+  // active surface is DERIVED from the model (a post open → the detail surface; otherwise the
+  // feed), not from any collapsed-column inference. At the root list there is nothing above,
+  // so reselect is a no-op.
   private func compactTabReselectAction() -> TabReselectAction {
+    guard compactFeedPresented else { return .none }
     if hasOpenPost {
       if tabInteractionState.detailCanScrollToTop { return .surface(.scrollDetailToTop) }
       return .navigation(.backOneStep(.detail))
     }
     if tabInteractionState.contentCanScrollToTop { return .surface(.scrollContentToTop) }
     if !contentPath.isEmpty { return .navigation(.backOneStep(.content)) }
-    return .none
+    // At the feed's own root → pop the feed back to the root scope list.
+    return .navigation(.popFeedToRoot)
   }
 
   private func regularTabReselectAction() -> TabReselectAction {

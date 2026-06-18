@@ -38,24 +38,32 @@ extension View {
     }
   }
 
-  /// Host destinations for the COMPACT Posts stack — a single `NavigationStack` whose path
-  /// is `PostsNav.compactPath` (content pushes + the open post + detail pushes). The open
-  /// post carries `.detail` origin (so links tapped inside it append to `detailPath`) and is
-  /// wired for tab-reselect scroll-to-top; every other destination carries `.content`
-  /// origin, so a sub/user opened from a feed card appends to `contentPath`.
-  func compactPostsDestinations(_ posts: PostsNav) -> some View {
-    navigationDestination(for: NavDest.self) { destination in
-      if let detail = PostsNav.postDetail(from: destination) {
-        RedditPostDestination(
-          post: detail.post,
-          highlightID: detail.highlightID,
-          scrollToTopRequest: posts.detailScrollToTopRequest,
-          onScrollStateChanged: { posts.updateDetailCanScrollToTop($0) }
-        )
-        .redditNavigation(posts, origin: .detail)
-      } else {
-        RouterDestinationView(destination: destination)
+  /// Host destinations for the COMPACT Posts stack — a single `NavigationStack` whose ROOT is
+  /// the scope LIST page and whose path is `PostsNav.compactPath` (`.feed` + content pushes +
+  /// the open post + detail pushes). The `.feed` route renders the scope's feed (the passed
+  /// `feed` builder) at `.content` origin so a sub/user tapped on a feed card appends to
+  /// `contentPath`. The open post carries `.detail` origin (links inside it append to
+  /// `detailPath`) and is wired for tab-reselect scroll-to-top; any other pushed destination
+  /// carries `.content` origin.
+  func compactPostsDestinations(_ posts: PostsNav, @ViewBuilder feed: @escaping () -> some View) -> some View {
+    navigationDestination(for: CompactRoute.self) { route in
+      switch route {
+      case .feed:
+        feed()
           .redditNavigation(posts, origin: .content)
+      case .dest(let destination):
+        if let detail = PostsNav.postDetail(from: destination) {
+          RedditPostDestination(
+            post: detail.post,
+            highlightID: detail.highlightID,
+            scrollToTopRequest: posts.detailScrollToTopRequest,
+            onScrollStateChanged: { posts.updateDetailCanScrollToTop($0) }
+          )
+          .redditNavigation(posts, origin: .detail)
+        } else {
+          RouterDestinationView(destination: destination)
+            .redditNavigation(posts, origin: .content)
+        }
       }
     }
   }
@@ -227,12 +235,13 @@ extension RedditDeepLinkConsuming {
 
 extension PostsNav: RedditDeepLinkConsuming {
   func openDeepLinkPostRoot(_ post: Post, highlightID: String?) {
+    // `openPostInDetail` presents the feed, so the compact stack is root list → feed → post.
     openPostInDetail(post, highlightID: highlightID)
   }
   var hasOpenDetailRoot: Bool { detailPost != nil || selectedPostID != nil }
   func setDeepLinkFeed(_ token: String) -> Bool {
     guard let scope = FeedScope(token: token) else { return false }
-    self.scope = scope
+    presentScopeFeed(scope)
     return true
   }
 }
