@@ -149,6 +149,7 @@ struct AuroraFeed: View {
           ForEach(visiblePosts) { post in
             AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate, settings: cardSettings)
               .tag(post.id)
+              .id(post.id)
               .background {
                 if cardSettings.readOnScroll {
                   Color.clear
@@ -219,6 +220,15 @@ struct AuroraFeed: View {
           }
           scrollPositionID = Self.topID
           onScrollStateChanged(false)
+        }
+        .onAppear {
+          // The compact (NavigationStack) and wide (NavigationSplitView) shells are separate
+          // view trees, so folding/unfolding recreates this List. `.scrollPosition(id:)`
+          // restores from the shared binding, but explicitly re-asserting via the proxy makes
+          // the restore reliable across that recreation (otherwise the fresh List lands at top).
+          if let id = scrollPositionID, id != Self.topID {
+            proxy.scrollTo(id, anchor: .top)
+          }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
