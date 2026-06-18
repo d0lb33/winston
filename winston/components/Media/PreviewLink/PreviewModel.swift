@@ -56,9 +56,17 @@ final class PreviewModel: ObservableObject, Equatable {
       if let og = try? await OpenGraph.fetch(url: previewURL, headers: headers) {
         let image = og[.image]?.escape
         if let image, let imgURL = URL(string: image) {
-          let imageSize = compact ? scaledCompactModeThumbSize(compact: compact) : 76
+          // Match the decode target the rendered card requests so the prefetch warms the right
+          // cache entry: a square thumb in compact, the wide hero banner otherwise.
+          let resizeTarget: CGSize
+          if compact {
+            let thumb = scaledCompactModeThumbSize(compact: compact)
+            resizeTarget = CGSize(width: thumb, height: thumb)
+          } else {
+            resizeTarget = PreviewLinkContentRaw.bannerImagePixelSize
+          }
           await MainActor.run {
-            Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: CGSize(width: imageSize, height: imageSize))], priority: .veryLow)])
+            Post.prefetcher.startPrefetching(with: [ImageRequest(url: imgURL, processors: [.resize(size: resizeTarget)], priority: .veryLow)])
           }
         }
         await MainActor.run {

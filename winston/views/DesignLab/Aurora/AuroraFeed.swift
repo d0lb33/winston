@@ -150,6 +150,11 @@ struct AuroraFeed: View {
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
   @State private var handledInitialAppear = false
+  /// Last observed content offset. Mirrors the live scroll geometry so reselect's
+  /// "can scroll to top" can be re-derived on every appearance (see `.onAppear`),
+  /// rather than depending on `onScrollGeometryChange` — a *change* handler that does
+  /// not re-fire for a preserved offset when this feed re-appears after a pushed post.
+  @State private var lastContentOffsetY: CGFloat = 0
 
   init(
     model: AuroraFeedModel,
@@ -269,6 +274,7 @@ struct AuroraFeed: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, offsetY in
+          lastContentOffsetY = offsetY
           onScrollStateChanged(offsetY > 8)
           // Persist where we are (the focused on-screen post) so a fold/unfold that recreates
           // this List can land back here instead of jumping to the top. Only record while
@@ -290,6 +296,13 @@ struct AuroraFeed: View {
           onScrollStateChanged(false)
         }
         .onAppear {
+          // Re-assert reselect's "can scroll to top" from the live offset on EVERY appearance.
+          // Returning from a pushed post (compact) fires onAppear with the List's offset
+          // preserved, but our onDisappear forced the flag false — so a scrolled feed looked
+          // "already at top" and a tab reselect popped instead of scrolling up. onScrollGeometry-
+          // Change is a *change* handler and won't re-fire for the preserved offset, so re-derive.
+          onScrollStateChanged(lastContentOffsetY > 8)
+
           guard !handledInitialAppear else { return }
           handledInitialAppear = true
           // The compact (NavigationStack) and wide (NavigationSplitView) shells are separate
@@ -300,6 +313,10 @@ struct AuroraFeed: View {
           // also trigger onAppear, and reapplying the saved anchor there moves the feed.
           if let scrollPosition, scrollPosition.id != Self.topID {
             proxy.scrollTo(scrollPosition.id, anchor: scrollPosition.unitPoint)
+            // The recreated List starts at offset 0, so the geometry handler hasn't run yet —
+            // mark us scrolled-down to match the restored anchor so reselect scrolls to top first.
+            lastContentOffsetY = max(lastContentOffsetY, 9)
+            onScrollStateChanged(true)
           }
         }
         .listStyle(.plain)

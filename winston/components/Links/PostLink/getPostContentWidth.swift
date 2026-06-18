@@ -123,7 +123,10 @@ func getPostDimensions(post: Post, winstonData: PostWinstonData? = nil, columnWi
           let actualHeight = (contentWidth * CGFloat(size.height)) / CGFloat(size.width)
           ACC_mediaSize = CGSize(width: contentWidth, height: actualHeight)
         case .link(_):
-          ACC_mediaSize = CGSize(width: contentWidth, height: PreviewLinkContentRaw.height)
+          // Image-forward hero card: full-bleed banner (1.91:1) + fixed title/source strip.
+          // Height must match what PreviewLinkContentRaw renders so the feed reserves the right
+          // space (the og:image loads async, so this is reserved before we know it exists).
+          ACC_mediaSize = CGSize(width: contentWidth, height: PreviewLinkContentRaw.cardHeight(forWidth: contentWidth))
         case .repost(let repost):
           if let repostSize = repost.winstonData?.postDimensions { ACC_mediaSize = repostSize.size }
         case .post(_):

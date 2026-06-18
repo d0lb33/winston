@@ -165,6 +165,11 @@ struct Tabber: View, Equatable {
       // so its re-render doesn't interrupt that native collapse.
       DispatchQueue.main.async {
         TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+        // Search reselect also opens + focuses the search field — even at the search root,
+        // where the action is `.none` — so a second tap on Search drops straight into typing.
+        if tab == .search {
+          appNav.search.searchFieldFocusRequest += 1
+        }
       }
     }
   }

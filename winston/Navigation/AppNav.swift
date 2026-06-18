@@ -752,6 +752,9 @@ final class ColumnNav: RedditNavigator {
   /// The post shown in the detail column (set from a source-view tap / link / deep link).
   var detailPost: Post?
   var detailHighlightID: String?
+  /// Bumped on a Search-tab reselect so the Search surface presents + focuses its
+  /// search field (opens the keyboard). Only the `search` instance consumes it.
+  var searchFieldFocusRequest = 0
   /// Pushes that stay in the leading (source) column.
   var contentPath: [NavDest] = []
   /// The open post's detail navigation stack.

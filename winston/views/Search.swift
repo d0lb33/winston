@@ -882,6 +882,18 @@ struct Search: View {
       .searchable(text: $searchQuery.text, isPresented: $isSearchPresented, placement: .toolbar)
       .autocorrectionDisabled(true)
       .textInputAutocapitalization(.none)
+      .onChange(of: nav.searchFieldFocusRequest) { _, _ in
+        // Reselecting the Search tab presents + focuses the field (opens the keyboard).
+        // Already focused & typing → leave it alone. Presented but unfocused (keyboard
+        // dismissed by scrolling) → re-assert so the keyboard comes back. Otherwise present.
+        guard !isSearching else { return }
+        if isSearchPresented {
+          isSearchPresented = false
+          DispatchQueue.main.async { isSearchPresented = true }
+        } else {
+          isSearchPresented = true
+        }
+      }
       .onChange(of: isSearching) { _, active in
         AppDiagnostics.asyncBreadcrumb(
           "Search focus changed",

@@ -41,6 +41,11 @@ struct AuroraPostDetail: View {
   /// hand there) instead of depending on `onChange` timing, which races on cached
   /// reopens where comments arrive before the List has laid out.
   @State private var scrollProxy: ScrollViewProxy? = nil
+  /// Last observed content offset, mirrored from the live scroll geometry so reselect's
+  /// "can scroll to top" can be re-derived on appearance — `onScrollGeometryChange` is a
+  /// *change* handler and won't re-fire when this detail re-appears (e.g. popping back from
+  /// a pushed link/profile) with its offset preserved.
+  @State private var lastContentOffsetY: CGFloat = 0
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
 
@@ -142,9 +147,14 @@ struct AuroraPostDetail: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, offsetY in
+          lastContentOffsetY = offsetY
           onScrollStateChanged(offsetY > 8)
         }
         .onAppear {
+          // Re-assert reselect's "can scroll to top" from the live offset: popping back to this
+          // detail (after a pushed link/profile) fires onAppear with the offset preserved, but
+          // onDisappear forced the flag false, so reselect would pop instead of scrolling up.
+          onScrollStateChanged(lastContentOffsetY > 8)
           scrollProxy = proxy
           ensureWinston()
           if model.rows.isEmpty || post.data == nil {
