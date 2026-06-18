@@ -38,6 +38,28 @@ extension View {
     }
   }
 
+  /// Host destinations for the COMPACT Posts stack — a single `NavigationStack` whose path
+  /// is `PostsNav.compactPath` (content pushes + the open post + detail pushes). The open
+  /// post carries `.detail` origin (so links tapped inside it append to `detailPath`) and is
+  /// wired for tab-reselect scroll-to-top; every other destination carries `.content`
+  /// origin, so a sub/user opened from a feed card appends to `contentPath`.
+  func compactPostsDestinations(_ posts: PostsNav) -> some View {
+    navigationDestination(for: NavDest.self) { destination in
+      if let detail = PostsNav.postDetail(from: destination) {
+        RedditPostDestination(
+          post: detail.post,
+          highlightID: detail.highlightID,
+          scrollToTopRequest: posts.detailScrollToTopRequest,
+          onScrollStateChanged: { posts.updateDetailCanScrollToTop($0) }
+        )
+        .redditNavigation(posts, origin: .detail)
+      } else {
+        RouterDestinationView(destination: destination)
+          .redditNavigation(posts, origin: .content)
+      }
+    }
+  }
+
   /// Host destinations for the Settings detail stack. Pushed panels are always at
   /// detail origin, and must carry BOTH the reddit nav seam (reddit links inside a
   /// panel) and the settings nav seam (nested settings links).
@@ -128,6 +150,11 @@ struct RouterDestinationView: View {
 private struct RedditPostDestination: View {
   @ObservedObject var post: Post
   var highlightID: String?
+  /// Wired by the compact Posts stack so a tab reselect can scroll the open post to the top
+  /// and so the post reports its scroll state. Defaults make plain pushes (crossposts, etc.)
+  /// behave exactly as before.
+  var scrollToTopRequest: Int = 0
+  var onScrollStateChanged: (Bool) -> Void = { _ in }
 
   private var subreddit: Subreddit? {
     post.winstonData?.subreddit ?? post.data.map { Subreddit(id: $0.subreddit) }
@@ -135,7 +162,8 @@ private struct RedditPostDestination: View {
 
   var body: some View {
     if let subreddit {
-      AuroraPostDetail(post: post, subreddit: subreddit, highlightID: highlightID)
+      AuroraPostDetail(post: post, subreddit: subreddit, highlightID: highlightID,
+                       scrollToTopRequest: scrollToTopRequest, onScrollStateChanged: onScrollStateChanged)
         .diagnosticScreen(diagnosticName)
     } else {
       ProgressView()
@@ -202,7 +230,11 @@ extension PostsNav: RedditDeepLinkConsuming {
     openPostInDetail(post, highlightID: highlightID)
   }
   var hasOpenDetailRoot: Bool { detailPost != nil || selectedPostID != nil }
-  func setDeepLinkFeed(_ token: String) -> Bool { community = token; return true }
+  func setDeepLinkFeed(_ token: String) -> Bool {
+    guard let scope = FeedScope(token: token) else { return false }
+    self.scope = scope
+    return true
+  }
 }
 
 extension ColumnNav: RedditDeepLinkConsuming {

@@ -2,23 +2,21 @@
 //  AuroraRoot.swift
 //  winston
 //
-//  Aurora — the shared experience: an adaptive NavigationSplitView (communities
-//  sidebar | feed | post+comments). Collapses to a single stack on compact width
-//  (fold closed / iPhone), expands to 2–3 panes when wide (fold open / iPad / Stage
-//  Manager). The same value-based selections drive both layouts.
+//  Aurora — the Posts surface. Two shells render one shared `PostsNav`, chosen by the
+//  ACTUAL available width (never the device idiom):
 //
-//  Navigation rebuild: the surface's entire navigation state lives in one `PostsNav`
-//  (`@State`, owned here). The detail stack is `posts.detailPath` — owned in the model,
-//  not an external `Router.fullPath` — so there is nothing to reconcile across
-//  size-class transitions; `NavigationSplitView` re-renders straight from `posts` on
-//  resize/fold. `preferredCompactColumn` is the single framework-blessed knob for which
-//  column the collapsed layout shows; the framework moves it back on the system back
-//  button, and selecting a post moves it forward.
+//  - Compact width (folded foldable, iPhone, narrow split view): one `NavigationStack`
+//    with the feed as the root. Home / Popular / Saved / subreddits / saved lists are feed
+//    SCOPES picked from a toolbar picker — NOT a collapsed `NavigationSplitView` sidebar
+//    column. This is the whole point of the rebuild: the compact path never depends on
+//    `preferredCompactColumn` choreography.
+//  - Wide width (unfolded foldable, iPad, Stage Manager): one `NavigationSplitView`
+//    (scopes sidebar | feed | post). `.regular` is forced into the split's environment so
+//    it always shows its columns regardless of the device's reported size class.
 //
-//  Legacy deep links (`Nav.to`, shortcuts, URL opens) still arrive via the tab `Router`
-//  (`contextualDestination` / `fullPath`); this view observes that Router as a write-only
-//  inbox and translates anything that lands there into `posts`. That bridge is removed
-//  when `Router` is finally deleted.
+//  Both shells bind to the same `PostsNav`, so fold/unfold preserves the feed scope, the
+//  open post, the detail path, and (by row id) the feed scroll position. The feed
+//  `AuroraFeedModel` is owned here, above the shell switch, so it survives the swap.
 //
 
 import SwiftUI
@@ -40,6 +38,10 @@ struct AuroraRoot: View {
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
   @State private var savedListSummaries: [SavedListSummary] = []
+  /// The shell's measured width, used to pick the compact vs wide layout.
+  @State private var measuredWidth: CGFloat = 0
+  /// Compact-only: the feed-scope picker sheet (the wide layout uses the sidebar instead).
+  @State private var scopePickerShown = false
 
   init(nav posts: PostsNav, accountID: UUID? = nil, themeOverride: AuroraTheme? = nil, onClose: (() -> Void)? = nil) {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
@@ -47,7 +49,11 @@ struct AuroraRoot: View {
     self.accountID = accountID
     self.themeOverride = themeOverride
     self.onClose = onClose
-    _model = State(initialValue: AuroraFeedModel(subreddit: launchFeed.initialSubreddit))
+    // Initialise the feed model from the CURRENT scope (the source of truth), not the launch
+    // preference — otherwise a scope≠model mismatch makes the first appear fire an extra
+    // `model.prepare`, which cancels the feed's in-flight fetch and leaves it stuck loading.
+    let initialSub = posts.scope.feedSubredditID.map { Subreddit(id: $0) } ?? launchFeed.initialSubreddit
+    _model = State(initialValue: AuroraFeedModel(subreddit: initialSub))
     if let cid = accountID {
       _subs = FetchRequest<CachedSub>(
         sortDescriptors: [NSSortDescriptor(key: "display_name", ascending: true)],
@@ -63,181 +69,169 @@ struct AuroraRoot: View {
     }
   }
 
-  // MARK: - Selection → entity resolution
+  // MARK: - Scope → entity resolution
 
-  private func resolve(_ selection: String?) -> (sub: Subreddit, community: Subreddit?) {
-    guard let selection else { return (Subreddit(id: "popular"), nil) }
-    if feedsAndSuch.contains(selection) { return (Subreddit(id: selection), nil) }
-    if let cached = subs.first(where: { $0.uuid == selection }) {
-      let sub = Subreddit(data: SubredditData(entity: cached))
-      return (sub, sub)
+  /// The `Subreddit` the feed model should load for a post-feed scope. Resolves a
+  /// `.subreddit(id:)` uuid to its cached community (for the real display name / icon).
+  private func subreddit(for scope: FeedScope) -> Subreddit {
+    switch scope {
+    case .home: return Subreddit(id: "home")
+    case .popular: return Subreddit(id: "popular")
+    case .saved: return Subreddit(id: "saved")
+    case .subreddit(let id):
+      if let cached = subs.first(where: { $0.uuid == id }) {
+        return Subreddit(data: SubredditData(entity: cached))
+      }
+      return Subreddit(id: id)
+    case .savedList, .savedListsOverview:
+      return model.subreddit
     }
-    return (Subreddit(id: selection), nil)
   }
 
-  /// Title + community derive from the feed the model is ACTUALLY showing, not from
-  /// `posts.community` — the sidebar List selection is flaky (it clears transiently when
-  /// the CachedSub @FetchRequest re-syncs), and deriving display state from it made the
-  /// header snap back to Popular. `model.subreddit` is the stable source of truth.
+  /// The real community backing the feed header (nil for Home/Popular). Derived from the
+  /// feed the model is ACTUALLY showing — the stable source of truth.
   private var currentCommunity: Subreddit? {
     feedsAndSuch.contains(model.subreddit.id) ? nil : model.subreddit
   }
 
-  private var feedTitle: String {
-    model.subreddit.displayTitle
-  }
+  private var feedTitle: String { model.subreddit.displayTitle }
 
   private var selectedPost: Post? {
-    if let id = posts.selectedPostID, let post = model.post(id: id) {
-      return post
-    }
+    if let id = posts.selectedPostID, let post = model.post(id: id) { return post }
     return posts.detailPost
   }
 
-  /// Below this available width the Posts split renders as a single collapsed column
-  /// (the "folded / outer display" experience). At or above it, the split expands to its
-  /// 2–3 native columns (the "unfolded / inner display"). Chosen to put iPad-mini portrait
-  /// (~744pt) in the folded column and iPad-mini landscape (~1133pt) in the expanded split,
-  /// while iPhone (always narrow) stays folded and larger iPads stay expanded.
+  /// At or above this width the wide three-column split is used; below it, the compact
+  /// single-column stack. Width-driven, not idiom-driven, so a folded foldable / iPad-mini
+  /// portrait / narrow split-view get the compact shell and an unfolded / landscape / large
+  /// window gets the wide shell.
   static let expandedLayoutMinWidth: CGFloat = 820
 
   var body: some View {
-    // Drive the layout off the ACTUAL available width, not the raw size class: iPad-mini
-    // portrait reports a `.regular` size class but is narrow enough that a 3-column split
-    // collapses to an empty detail. Injecting an effective size class derived from width
-    // makes portrait behave like the folded/compact phone layout and landscape like the
-    // expanded tablet layout — and because all state lives in `posts`, the compact↔regular
-    // flip on rotation/unfold re-renders from the model and preserves scroll/navigation.
-    GeometryReader { proxy in
-      split(availableWidth: proxy.size.width)
+    let expanded = measuredWidth >= Self.expandedLayoutMinWidth
+
+    shell(expanded: expanded)
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { measuredWidth = $0 }
+      .auroraShellChrome(theme: theme)
+      .toolbarBackground(.hidden, for: .navigationBar)
+      .overlay(alignment: .topTrailing) { closeButton }
+      .diagnosticScreen("aurora.posts")
+      .sheet(isPresented: $scopePickerShown) { scopePickerSheet }
+      .onAppear {
+        applyLayout(expanded: expanded)
+        reloadSavedListSummaries()
+        syncModelToScope()
+      }
+      .onChange(of: expanded) { _, isExpanded in applyLayout(expanded: isExpanded) }
+      .onChange(of: posts.scope) { _, _ in handleScopeChange() }
+      .onChange(of: accountID) { _, _ in
+        resetAccountScopedState()
+        reloadSavedListSummaries()
+      }
+      .onChange(of: posts.selectedPostID) { _, newID in
+        // Promote a feed-row selection to the open post (wide highlight + compact push).
+        guard let newID, let post = model.post(id: newID) else { return }
+        posts.selectFeedPost(post)
+        AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
+      }
+      .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
+        reloadSavedListSummaries()
+      }
+  }
+
+  @ViewBuilder private func shell(expanded: Bool) -> some View {
+    if expanded { wideShell } else { compactShell }
+  }
+
+  @ViewBuilder private var closeButton: some View {
+    if let onClose {
+      DesignLabClose(tint: theme.onGlass) { onClose() }
+        .padding(.top, 8)
+        .padding(.trailing, 14)
     }
   }
 
-  @ViewBuilder private func split(availableWidth: CGFloat) -> some View {
+  // MARK: - Compact shell (feed root + scope picker; no NavigationSplitView)
+
+  private var compactShell: some View {
     @Bindable var posts = posts
 
-    let expanded = availableWidth >= Self.expandedLayoutMinWidth
-    let effectiveSizeClass: UserInterfaceSizeClass = expanded ? .regular : .compact
-
-    NavigationSplitView(columnVisibility: $posts.columnVisibility, preferredCompactColumn: $posts.preferredColumn) {
-      sidebar
-        .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
-    } content: {
-      contentColumn
-    } detail: {
-      detailColumn
-    }
-    .navigationSplitViewStyle(.balanced)
-    .environment(\.horizontalSizeClass, effectiveSizeClass)
-    .auroraShellChrome(theme: theme)
-    .toolbarBackground(.hidden, for: .navigationBar)
-    .overlay(alignment: .topTrailing) {
-      if let onClose {
-        DesignLabClose(tint: theme.onGlass) { onClose() }
-          .padding(.top, 8)
-          .padding(.trailing, 14)
-      }
-    }
-    .diagnosticScreen("aurora.posts")
-    .onAppear {
-      applyLayout(expanded: expanded)
-      reloadSavedListSummaries()
-    }
-    .onChange(of: expanded) { _, isExpanded in
-      applyLayout(expanded: isExpanded)
-    }
-    .onChange(of: posts.community) { _, newID in
-      // Ignore transient deselection (the sidebar List clears its selection when the
-      // CachedSub @FetchRequest re-syncs); only react to a real new pick.
-      guard let newID else { return }
-      if newID == SavedListsRoute.overviewID || SavedListsRoute.listID(from: newID) != nil {
-        posts.resetContentAndDetail()
-        return
-      }
-      let sub = resolve(newID).sub
-      AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["selection": newID, "sub": sub.id])
-      model.prepare(for: sub)
-      posts.resetContentAndDetail()
-    }
-    .onChange(of: accountID) { _, _ in
-      resetAccountScopedState()
-      reloadSavedListSummaries()
-    }
-    .onChange(of: posts.selectedPostID) { _, newID in
-      // Advance to the post detail when a card is selected (regular width).
-      guard let newID, let post = model.post(id: newID) else { return }
-      posts.selectFeedPost(post)
-      AppDiagnostics.asyncBreadcrumb("Aurora post selected", metadata: ["post": newID])
-    }
-    .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
-      reloadSavedListSummaries()
-    }
-  }
-
-  // MARK: - Account / external navigation bridges
-
-  private func resetAccountScopedState() {
-    resetToLaunchFeed()
-    sort = .hot
-  }
-
-  private func resetToLaunchFeed() {
-    let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
-    posts.reset(to: launchFeed)
-    model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
-  }
-
-  private func applyLayout(expanded: Bool) {
-    posts.updateInteractionLayout(expanded ? .regular : .compact)
-    // When expanded, pin the feed + post pair visible so the split never collapses to a
-    // bare "Pick a post" detail (the iPad-mini-portrait failure). The communities sidebar
-    // stays one tap away on its toggle, which keeps the open post readably wide. Ignored
-    // while collapsed (compact uses `preferredColumn`).
-    let desired: NavigationSplitViewVisibility = expanded ? .doubleColumn : .automatic
-    if posts.columnVisibility != desired {
-      posts.columnVisibility = desired
-    }
-  }
-
-  // MARK: - Columns
-
-  private var contentColumn: some View {
-    @Bindable var posts = posts
-
-    return NavigationStack(path: $posts.contentPath) {
+    return NavigationStack(path: $posts.compactPath) {
       feedContent(selectedPostID: $posts.selectedPostID)
         .redditNavigation(posts, origin: .content)
-        .redditDestinations(posts, origin: .content)
+        .compactPostsDestinations(posts)
+        .toolbar { scopePickerToolbar }
     }
-    .navigationSplitViewColumnWidth(min: 360, ideal: 440)
-    .onAppear { posts.updateRenderedActiveColumn(.content) }
   }
+
+  @ToolbarContentBuilder private var scopePickerToolbar: some ToolbarContent {
+    ToolbarItem(placement: .topBarLeading) {
+      Button { scopePickerShown = true } label: {
+        HStack(spacing: 5) {
+          Image(systemName: scopeIcon(posts.scope))
+          Text(scopeTitle(posts.scope)).fontWeight(.semibold).lineLimit(1)
+          Image(systemName: "chevron.down").font(.caption2.weight(.bold)).foregroundStyle(.secondary)
+        }
+      }
+      .accessibilityIdentifier("aurora.scopePicker")
+    }
+  }
+
+  // MARK: - Wide shell (scopes sidebar | feed | post)
+
+  private var wideShell: some View {
+    @Bindable var posts = posts
+
+    return NavigationSplitView {
+      scopeSidebar
+        .navigationSplitViewColumnWidth(min: 230, ideal: 272, max: 320)
+    } content: {
+      NavigationStack(path: $posts.contentPath) {
+        feedContent(selectedPostID: $posts.selectedPostID)
+          .redditNavigation(posts, origin: .content)
+          .redditDestinations(posts, origin: .content)
+      }
+      .navigationSplitViewColumnWidth(min: 360, ideal: 440)
+    } detail: {
+      NavigationStack(path: $posts.detailPath) {
+        detailContent
+          .redditNavigation(posts, origin: .detail)
+          .redditDestinations(posts, origin: .detail)
+      }
+    }
+    .navigationSplitViewStyle(.balanced)
+    // Force the split to stay expanded (show its columns) regardless of the device's
+    // reported size class — the compact case is handled by the separate `compactShell`.
+    .environment(\.horizontalSizeClass, .regular)
+  }
+
+  // MARK: - Shared feed surface (scope-driven)
 
   @ViewBuilder private func feedContent(selectedPostID: Binding<String?>) -> some View {
     @Bindable var posts = posts
-
-    if posts.community == SavedListsRoute.overviewID {
+    switch posts.scope {
+    case .savedListsOverview:
       SavedListsOverviewScreen(
         mode: .manage,
-        onListSelected: { list in posts.community = SavedListsRoute.id(for: list.id) },
+        onListSelected: { list in posts.scope = .savedList(id: list.id) },
         onPostSelected: selectSavedPost,
         onCommentSelected: selectSavedComment
       )
       .diagnosticScreen("aurora.savedLists")
       .onAppear { posts.updateContentCanScrollToTop(false) }
-    } else if let listID = SavedListsRoute.listID(from: posts.community) {
+    case .savedList(let id):
       SavedListDetailScreen(
-        listID: listID,
+        listID: id,
         onPostSelected: selectSavedPost,
         onCommentSelected: selectSavedComment
       )
-      .diagnosticScreen("aurora.savedList.\(listID.uuidString)")
+      .diagnosticScreen("aurora.savedList.\(id.uuidString)")
       .onAppear { posts.updateContentCanScrollToTop(false) }
-    } else if model.subreddit.id == "saved" {
+    case .saved:
       AuroraSavedScreen(onPostSelected: selectSavedPost, onCommentSelected: selectSavedComment)
         .diagnosticScreen("aurora.saved")
         .onAppear { posts.updateContentCanScrollToTop(false) }
-    } else {
+    case .home, .popular, .subreddit:
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
                  selectedPostID: selectedPostID,
                  scrollPositionID: $posts.feedScrollPositionID,
@@ -247,17 +241,6 @@ struct AuroraRoot: View {
         posts.navigate(destination, from: .content)
       }
     }
-  }
-
-  private var detailColumn: some View {
-    @Bindable var posts = posts
-
-    return NavigationStack(path: $posts.detailPath) {
-      detailContent
-        .redditNavigation(posts, origin: .detail)
-        .redditDestinations(posts, origin: .detail)
-    }
-    .onAppear { posts.updateRenderedActiveColumn(.detail) }
   }
 
   @ViewBuilder private var detailContent: some View {
@@ -278,13 +261,40 @@ struct AuroraRoot: View {
   }
 
   private func detailSubreddit(for post: Post) -> Subreddit {
-    // Use the post's REAL subreddit, never the feed's pseudo-sub. Posts loaded from
-    // Popular/Home carry winstonData.subreddit == the feed ("popular"/"home"), which
-    // is wrong for the detail header, permalink, and avatar fetches.
+    // Use the post's REAL subreddit, never the feed's pseudo-sub.
     if let name = post.data?.subreddit, !name.isEmpty {
       return Subreddit(id: name)
     }
-    return post.winstonData?.subreddit ?? Subreddit(id: posts.community ?? "")
+    return post.winstonData?.subreddit ?? Subreddit(id: posts.scope.feedSubredditID ?? "")
+  }
+
+  // MARK: - Scope changes / account bridges
+
+  private func handleScopeChange() {
+    posts.resetContentAndDetail()
+    syncModelToScope()
+  }
+
+  /// Point the feed model at the current scope (no-op for the saved-lists screens, which
+  /// are not post feeds and render independently of the model).
+  private func syncModelToScope() {
+    guard posts.scope.isPostFeed else { return }
+    let sub = subreddit(for: posts.scope)
+    if sub.id != model.subreddit.id {
+      AppDiagnostics.asyncBreadcrumb("Aurora feed selected", metadata: ["scope": posts.scope.token, "sub": sub.id])
+      model.prepare(for: sub)
+    }
+  }
+
+  private func resetAccountScopedState() {
+    let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
+    posts.reset(to: launchFeed)
+    model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
+    sort = .hot
+  }
+
+  private func applyLayout(expanded: Bool) {
+    posts.updateInteractionLayout(expanded ? .regular : .compact)
   }
 
   private func selectSavedPost(_ post: Post) {
@@ -296,7 +306,30 @@ struct AuroraRoot: View {
     posts.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
   }
 
-  // MARK: - Sidebar
+  // MARK: - Scope title / icon
+
+  private func scopeTitle(_ scope: FeedScope) -> String {
+    switch scope {
+    case .home: return "Home"
+    case .popular: return "Popular"
+    case .saved: return "Saved"
+    case .savedListsOverview: return "Saved Lists"
+    case .savedList(let id): return savedListSummaries.first { $0.id == id }?.name ?? "List"
+    case .subreddit: return model.subreddit.displayTitle
+    }
+  }
+
+  private func scopeIcon(_ scope: FeedScope) -> String {
+    switch scope {
+    case .home: return "house.fill"
+    case .popular: return "chart.line.uptrend.xyaxis"
+    case .saved: return "bookmark.fill"
+    case .savedListsOverview, .savedList: return "list.bullet.rectangle"
+    case .subreddit: return "circle.grid.2x2.fill"
+    }
+  }
+
+  // MARK: - Communities
 
   private var subscribedCommunities: [CachedSub] {
     sortedSidebarCommunities(subs.filter { $0.user_is_subscriber && $0.uuid != nil })
@@ -306,27 +339,31 @@ struct AuroraRoot: View {
     subscribedCommunities.filter(\.user_has_favorited)
   }
 
-  private var sidebar: some View {
-    @Bindable var posts = posts
+  // MARK: - Wide sidebar
 
-    return List(selection: $posts.community) {
+  /// The selection binding ignores transient nil (the `CachedSub` `@FetchRequest` clears the
+  /// `List` selection when it re-syncs); only a real new pick changes the scope.
+  private var scopeSelection: Binding<FeedScope?> {
+    Binding(get: { posts.scope }, set: { if let scope = $0 { posts.scope = scope } })
+  }
+
+  private var scopeSidebar: some View {
+    List(selection: scopeSelection) {
       Section {
         Color.clear
           .frame(height: 44)
           .listRowInsets(EdgeInsets())
           .listRowBackground(Color.clear)
           .accessibilityHidden(true)
-        feedRow("Home", id: "home", systemImage: "house.fill")
-        feedRow("Popular", id: "popular", systemImage: "chart.line.uptrend.xyaxis")
-        feedRow("Saved", id: "saved", systemImage: "bookmark.fill")
-        feedRow("Saved Lists", id: SavedListsRoute.overviewID, systemImage: "list.bullet.rectangle")
-        // r/all is intentionally omitted: Reddit's feed GraphQL returns a server
-        // "internal error" for it (no SDUI feed exists), so there's nothing to show.
+        scopeRow("Home", scope: .home, systemImage: "house.fill")
+        scopeRow("Popular", scope: .popular, systemImage: "chart.line.uptrend.xyaxis")
+        scopeRow("Saved", scope: .saved, systemImage: "bookmark.fill")
+        scopeRow("Saved Lists", scope: .savedListsOverview, systemImage: "list.bullet.rectangle")
       }
       if !savedListSummaries.isEmpty {
         Section("Favorite Lists") {
           ForEach(savedListSummaries) { list in
-            savedListSidebarRow(list)
+            savedListScopeRow(list)
           }
         }
       }
@@ -334,7 +371,7 @@ struct AuroraRoot: View {
         Section("Favorites") {
           ForEach(favoriteCommunities, id: \.uuid) { sub in
             AuroraSidebarCommunityRow(cachedSub: sub)
-              .tag(sub.uuid ?? "")
+              .tag(FeedScope.subreddit(id: sub.uuid ?? ""))
               .listRowBackground(Color.clear)
           }
         }
@@ -342,7 +379,7 @@ struct AuroraRoot: View {
       Section("Communities") {
         ForEach(subscribedCommunities, id: \.uuid) { sub in
           AuroraSidebarCommunityRow(cachedSub: sub)
-            .tag(sub.uuid ?? "")
+            .tag(FeedScope.subreddit(id: sub.uuid ?? ""))
             .listRowBackground(Color.clear)
         }
       }
@@ -350,11 +387,102 @@ struct AuroraRoot: View {
     .listStyle(.sidebar)
     .scrollContentBackground(.hidden)
     .navigationTitle("Aurora")
-    .onAppear { posts.updateRenderedActiveColumn(.sidebar) }
     .refreshable {
       await refreshSubscriptions()
     }
   }
+
+  private func scopeRow(_ label: String, scope: FeedScope, systemImage: String) -> some View {
+    Label(label, systemImage: systemImage)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .contentShape(Rectangle())
+      .tag(scope)
+      .listRowBackground(Color.clear)
+  }
+
+  private func savedListScopeRow(_ list: SavedListSummary) -> some View {
+    Label {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(list.name).lineLimit(1)
+        Text("\(list.count) items").font(.caption).foregroundStyle(.secondary)
+      }
+    } icon: {
+      Image(systemName: "folder.fill")
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .contentShape(Rectangle())
+    .tag(FeedScope.savedList(id: list.id))
+    .listRowBackground(Color.clear)
+  }
+
+  // MARK: - Compact scope picker sheet
+
+  private var scopePickerSheet: some View {
+    NavigationStack {
+      List {
+        Section {
+          scopeSheetRow("Home", scope: .home, systemImage: "house.fill")
+          scopeSheetRow("Popular", scope: .popular, systemImage: "chart.line.uptrend.xyaxis")
+          scopeSheetRow("Saved", scope: .saved, systemImage: "bookmark.fill")
+          scopeSheetRow("Saved Lists", scope: .savedListsOverview, systemImage: "list.bullet.rectangle")
+        }
+        if !savedListSummaries.isEmpty {
+          Section("Favorite Lists") {
+            ForEach(savedListSummaries) { list in
+              Button { pickScope(.savedList(id: list.id)) } label: {
+                Label(list.name, systemImage: "folder.fill")
+              }
+              .buttonStyle(.plain)
+            }
+          }
+        }
+        if !favoriteCommunities.isEmpty {
+          Section("Favorites") {
+            ForEach(favoriteCommunities, id: \.uuid) { sub in communitySheetRow(sub) }
+          }
+        }
+        Section("Communities") {
+          ForEach(subscribedCommunities, id: \.uuid) { sub in communitySheetRow(sub) }
+        }
+      }
+      .navigationTitle("Browse")
+      .navigationBarTitleDisplayMode(.inline)
+      .toolbar {
+        ToolbarItem(placement: .topBarTrailing) {
+          Button("Done") { scopePickerShown = false }
+        }
+      }
+      .refreshable { await refreshSubscriptions() }
+    }
+    .auroraShellChrome(theme: theme)
+    .presentationDetents([.large, .medium])
+  }
+
+  private func scopeSheetRow(_ label: String, scope: FeedScope, systemImage: String) -> some View {
+    Button { pickScope(scope) } label: {
+      HStack {
+        Label(label, systemImage: systemImage)
+        Spacer()
+        if posts.scope == scope { Image(systemName: "checkmark").foregroundStyle(theme.accent) }
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func communitySheetRow(_ sub: CachedSub) -> some View {
+    Button { pickScope(.subreddit(id: sub.uuid ?? "")) } label: {
+      AuroraSidebarCommunityRow(cachedSub: sub)
+    }
+    .buttonStyle(.plain)
+  }
+
+  private func pickScope(_ scope: FeedScope) {
+    posts.scope = scope
+    scopePickerShown = false
+  }
+
+  // MARK: - Helpers
 
   private func sortedSidebarCommunities(_ communities: [CachedSub]) -> [CachedSub] {
     communities.sorted { lhs, rhs in
@@ -375,36 +503,9 @@ struct AuroraRoot: View {
     reloadSavedListSummaries()
   }
 
-  private func feedRow(_ label: String, id: String, systemImage: String) -> some View {
-    Label(label, systemImage: systemImage)
-      .frame(maxWidth: .infinity, alignment: .leading)
-      .contentShape(Rectangle())
-      .tag(id)
-      .listRowBackground(Color.clear)
-  }
-
-  private func savedListSidebarRow(_ list: SavedListSummary) -> some View {
-    Label {
-      VStack(alignment: .leading, spacing: 2) {
-        Text(list.name)
-          .lineLimit(1)
-        Text("\(list.count) items")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    } icon: {
-      Image(systemName: "folder.fill")
-    }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .contentShape(Rectangle())
-    .tag(SavedListsRoute.id(for: list.id))
-    .listRowBackground(Color.clear)
-  }
-
   private func reloadSavedListSummaries() {
     savedListSummaries = SavedListsStore.shared.favoriteLists()
   }
-
 }
 
 enum AuroraSidebarCommunitySort {
@@ -538,9 +639,8 @@ struct AuroraDetailPlaceholder: View {
   }
 }
 
-/// Standalone Aurora shell for the Design Lab preview (owns a throwaway router so deep
-/// navigation still works inside the full-screen cover; the rebuilt AuroraRoot owns its
-/// own PostsNav, so the preview is automatically isolated from the live Posts tab).
+/// Standalone Aurora shell for the Design Lab preview (owns a throwaway PostsNav so it is
+/// isolated from the live Posts tab).
 struct AuroraDesignLabPreview: View {
   let theme: AuroraTheme
   let onClose: () -> Void

@@ -135,7 +135,6 @@ struct PostsNavTests {
     #expect(nav.detailPost === post)
     #expect(nav.detailPath.isEmpty)
     #expect(nav.selectedPostID == nil)
-    #expect(nav.preferredColumn == .detail)
   }
 
   @Test("a user pushed from the detail column appends to detailPath")
@@ -147,7 +146,6 @@ struct PostsNavTests {
 
     #expect(nav.detailPath.count == 1)
     #expect(nav.contentPath.isEmpty)
-    #expect(nav.preferredColumn == .detail)
   }
 
   @Test("Post → User → Subreddit from the detail preserves order in detailPath")
@@ -176,31 +174,29 @@ struct PostsNavTests {
     #expect(nav.contentPath.count == 2)
     #expect(nav.detailPath.isEmpty)
     #expect(nav.detailPost == nil)
-    #expect(nav.preferredColumn == .content)
   }
 
-  @Test("back pops detailPath → detail root → contentPath → sidebar, in order")
+  @Test("back pops detailPath → open post → contentPath → feed root, in order")
   func backOrdering() {
     let nav = PostsNav()
-    nav.community = "popular"
+    nav.scope = .popular
     nav.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // contentPath = 1
-    nav.selectFeedPost(Post(id: "p1"))                                       // detail root
+    nav.selectFeedPost(Post(id: "p1"))                                       // open post
     nav.navigate(.reddit(.user(User(id: "alice"))), from: .detail)          // detailPath = 1
 
     #expect(nav.goBackOneStep())          // pop detailPath
     #expect(nav.detailPath.isEmpty)
     #expect(nav.detailPost != nil)
 
-    #expect(nav.goBackOneStep())          // clear detail root
+    #expect(nav.goBackOneStep())          // clear the open post
     #expect(nav.detailPost == nil)
-    #expect(nav.preferredColumn == .content)
     #expect(nav.contentPath.count == 1)
 
     #expect(nav.goBackOneStep())          // pop contentPath
     #expect(nav.contentPath.isEmpty)
 
-    #expect(nav.goBackOneStep())          // collapse to sidebar
-    #expect(nav.preferredColumn == .sidebar)
+    #expect(!nav.goBackOneStep())         // at the feed root — nothing left
+    #expect(nav.scope == .popular)        // the feed scope is preserved
   }
 
   @Test("openPostInDetail (deep link / saved) clears the feed-list selection")
@@ -214,7 +210,34 @@ struct PostsNavTests {
     #expect(nav.detailPost != nil)
     #expect(nav.detailHighlightID == "c1")
     #expect(nav.detailPath.isEmpty)
-    #expect(nav.preferredColumn == .detail)
+  }
+
+  @Test("compactPath projects content + open post + detail pushes, and decomposes on pop")
+  func compactPathProjectionRoundTrips() {
+    let nav = PostsNav()
+    nav.scope = .popular
+    nav.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // content push
+    nav.selectFeedPost(Post(id: "p1"))                                       // open post
+    nav.navigate(.reddit(.user(User(id: "alice"))), from: .detail)          // detail push
+
+    #expect(nav.compactPath.count == 3) // [sub, post, user]
+
+    // Pop the detail push (system back gesture shrinks the path).
+    nav.compactPath = Array(nav.compactPath.dropLast())
+    #expect(nav.detailPath.isEmpty)
+    #expect(nav.detailPost != nil)
+    #expect(nav.contentPath.count == 1)
+
+    // Pop the open post.
+    nav.compactPath = Array(nav.compactPath.dropLast())
+    #expect(nav.detailPost == nil)
+    #expect(nav.selectedPostID == nil)
+    #expect(nav.contentPath.count == 1)
+
+    // Pop the content push → back at the feed root.
+    nav.compactPath = []
+    #expect(nav.contentPath.isEmpty)
+    #expect(nav.scope == .popular)
   }
 }
 
@@ -348,11 +371,11 @@ struct StackNavTests {
 @Suite(.serialized)
 @MainActor
 struct AppNavBridgeTests {
-  @Test("Posts tab-root reset preserves selected feed and scroll position")
+  @Test("Posts tab-root reset preserves the feed scope and scroll position")
   func postsTabRootPreservesFeedContext() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.community = "swift"
+    appNav.posts.scope = .subreddit(id: "swift")
     appNav.posts.feedScrollPositionID = "post-near-top"
     appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
     appNav.posts.openPostInDetail(Post(id: "p1"))
@@ -360,30 +383,29 @@ struct AppNavBridgeTests {
 
     appNav.resetToTabRoot(.posts)
 
-    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.feedScrollPositionID == "post-near-top")
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailHighlightID == nil)
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
-    #expect(appNav.posts.preferredColumn == .content)
   }
 
-  @Test("Posts tab-root reset shows sidebar when no feed is selected")
-  func postsTabRootShowsSidebarWhenNoFeedSelected() {
+  @Test("Posts tab-root reset clears the open post but keeps the feed scope")
+  func postsTabRootClearsPostKeepsScope() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.community = nil
+    appNav.posts.scope = .home
     appNav.posts.openPostInDetail(Post(id: "p1"))
 
     appNav.resetToTabRoot(.posts)
 
-    #expect(appNav.posts.community == nil)
-    #expect(appNav.posts.preferredColumn == .sidebar)
+    #expect(appNav.posts.scope == .home)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
+    #expect(!appNav.canResetToTabRoot(.posts))
   }
 
   @Test("Column tab-root reset clears source and detail navigation")
@@ -414,8 +436,8 @@ struct AppNavBridgeTests {
     #expect(appNav.inbox.path.isEmpty)
   }
 
-  @Test("Settings tab-root reset returns to General")
-  func settingsTabRootReturnsToGeneral() {
+  @Test("Settings tab-root reset returns to the sidebar panel list (no selection)")
+  func settingsTabRootReturnsToSidebar() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.settings.select(.postSwipe)
@@ -423,7 +445,9 @@ struct AppNavBridgeTests {
 
     appNav.resetToTabRoot(.settings)
 
-    #expect(appNav.settings.selection == .general)
+    // nil selection (not .general) is what reliably collapses the compact split to the
+    // sidebar — a non-nil selection re-pushes the detail past the native reselect-pop.
+    #expect(appNav.settings.selection == nil)
     #expect(appNav.settings.contentPath.isEmpty)
     #expect(appNav.settings.detailPath.isEmpty)
     #expect(appNav.settings.preferredColumn == .sidebar)
@@ -518,7 +542,6 @@ struct AppNavBridgeTests {
     #expect(appNav.selectedTab == .posts)
     #expect(appNav.posts.detailPost?.id == "copiedpost123")
     #expect(appNav.posts.detailHighlightID == "copiedcomment456")
-    #expect(appNav.posts.preferredColumn == .detail)
     #expect(appNav.settings.selection == .behavior)
   }
 
@@ -529,7 +552,6 @@ struct AppNavBridgeTests {
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.tabInteractionState = PostsTabInteractionState(
       layout: .compact,
-      activeColumn: .detail,
       contentCanScrollToTop: false,
       detailCanScrollToTop: true
     )
@@ -543,41 +565,29 @@ struct AppNavBridgeTests {
     appNav.resetAll()
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
 
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.detail)))
   }
 
-  @Test("Posts compact feed root reveals the communities sidebar")
-  func postsCompactFeedRootRevealsSidebar() {
+  @Test("Posts compact feed root single-tap is a no-op (scope picker reaches the list)")
+  func postsCompactFeedRootIsNoop() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .content)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
 
-    #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.revealSubredditSelector))
-  }
-
-  @Test("Posts compact sidebar (home) reselect is a no-op")
-  func postsCompactSidebarReselectIsNoop() {
-    let appNav = AppNav.shared
-    appNav.resetAll()
-    // The communities sidebar is the visible collapsed column (the home root).
-    appNav.posts.revealSubredditSelector()
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .sidebar)
-
-    #expect(appNav.posts.preferredColumn == .sidebar)
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
   }
 
-  @Test("Posts compact single-tap peels detail → content → sidebar, one level per tap")
+  @Test("Posts compact single-tap peels detail → content → feed root, one level per tap")
   func postsCompactWalkBackPeelsOneLevelPerTap() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.community = "popular"
+    appNav.posts.scope = .popular
     appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) // contentPath = 1
-    appNav.posts.selectFeedPost(Post(id: "p1"))                                       // detail root
+    appNav.posts.selectFeedPost(Post(id: "p1"))                                       // open post
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)          // detailPath = 1
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
 
     // 1. pop the author off the detail stack
     var action = appNav.handleTabReselect(.posts, tap: .single)
@@ -586,13 +596,11 @@ struct AppNavBridgeTests {
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost != nil)
 
-    // 2. clear the open post → back to the content column (the pushed sub-feed)
+    // 2. clear the open post → back to the pushed sub-feed (still the content surface)
     action = appNav.handleTabReselect(.posts, tap: .single)
     #expect(action == .navigation(.backOneStep(.detail)))
     TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
     #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.preferredColumn == .content)
-    appNav.posts.updateRenderedActiveColumn(.content) // renderer follows the column change
 
     // 3. pop the pushed sub-feed → back to the Popular feed root
     action = appNav.handleTabReselect(.posts, tap: .single)
@@ -600,25 +608,18 @@ struct AppNavBridgeTests {
     TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
     #expect(appNav.posts.contentPath.isEmpty)
 
-    // 4. at the feed root → reveal the communities sidebar (the "Subreddit menu")
-    action = appNav.handleTabReselect(.posts, tap: .single)
-    #expect(action == .navigation(.revealSubredditSelector))
-    TabReselectActionExecutor.execute(action, for: .posts, appNav: appNav)
-    #expect(appNav.posts.preferredColumn == .sidebar)
-    appNav.posts.updateRenderedActiveColumn(.sidebar)
-
-    // 5. already home at the sidebar → nothing left to peel back
+    // 4. at the feed root → nothing left (the scope picker reaches the subreddit list)
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .none)
+    #expect(appNav.posts.scope == .popular)
   }
 
-  @Test("Posts compact scrolled feed scrolls to top before revealing the sidebar")
-  func postsCompactScrolledFeedScrollsBeforeSidebar() {
+  @Test("Posts compact scrolled feed scrolls to top before anything else")
+  func postsCompactScrolledFeedScrollsFirst() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.community = "popular"
+    appNav.posts.scope = .popular
     appNav.posts.tabInteractionState = PostsTabInteractionState(
       layout: .compact,
-      activeColumn: .content,
       contentCanScrollToTop: true
     )
 
@@ -633,7 +634,6 @@ struct AppNavBridgeTests {
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
     appNav.posts.tabInteractionState = PostsTabInteractionState(
       layout: .regular,
-      activeColumn: .detail,
       contentCanScrollToTop: true,
       detailCanScrollToTop: true
     )
@@ -649,7 +649,6 @@ struct AppNavBridgeTests {
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
     appNav.posts.tabInteractionState = PostsTabInteractionState(
       layout: .regular,
-      activeColumn: .detail,
       contentCanScrollToTop: false,
       detailCanScrollToTop: true
     )
@@ -664,7 +663,7 @@ struct AppNavBridgeTests {
     appNav.posts.contentPath = [.reddit(.user(User(id: "source")))]
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .regular, activeColumn: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .regular)
 
     let first = appNav.handleTabReselect(.posts, tap: .single)
     #expect(first == .navigation(.backOneStep(.detail)))
@@ -677,23 +676,23 @@ struct AppNavBridgeTests {
     #expect(appNav.handleTabReselect(.posts, tap: .single) == .navigation(.backOneStep(.content)))
   }
 
-  @Test("Posts double tap reveals selector")
-  func postsDoubleTapRevealsSelector() {
+  @Test("Posts double tap resets a dirty surface to the feed root")
+  func postsDoubleTapResetsToFeedRoot() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.posts.openPostInDetail(Post(id: "p1"))
 
-    #expect(appNav.handleTabReselect(.posts, tap: .double) == .navigation(.revealSubredditSelector))
+    #expect(appNav.handleTabReselect(.posts, tap: .double) == .resetToTabRoot)
   }
 
-  @Test("Double tap after immediate single still ends at selector")
-  func doubleTapAfterImmediateSingleStillEndsAtSelector() {
+  @Test("Double tap after an immediate single still ends at the feed root")
+  func doubleTapAfterImmediateSingleEndsAtFeedRoot() {
     let appNav = AppNav.shared
     appNav.resetAll()
-    appNav.posts.community = "swift"
+    appNav.posts.scope = .subreddit(id: "swift")
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
-    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact, activeColumn: .detail)
+    appNav.posts.tabInteractionState = PostsTabInteractionState(layout: .compact)
 
     let single = appNav.handleTabReselect(.posts, tap: .single)
     #expect(single == .navigation(.backOneStep(.detail)))
@@ -702,11 +701,11 @@ struct AppNavBridgeTests {
     #expect(appNav.posts.detailPost != nil)
 
     let double = appNav.handleTabReselect(.posts, tap: .double)
-    #expect(double == .navigation(.revealSubredditSelector))
+    #expect(double == .resetToTabRoot)
     TabReselectActionExecutor.execute(double, for: .posts, appNav: appNav)
 
-    #expect(appNav.posts.community == "swift")
-    #expect(appNav.posts.preferredColumn == .sidebar)
+    // Reset clears the open post but keeps the feed scope (the subreddit list is a tap away).
+    #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
   }
@@ -775,8 +774,7 @@ struct NavigationScenarioTests {
     appNav.selectedTab = .posts
 
     let popularPost = Post(id: "popular-post-4")
-    appNav.posts.community = "popular"
-    appNav.posts.preferredColumn = .content
+    appNav.posts.scope = .popular
     appNav.posts.feedScrollPositionID = "popular-post-8"
     appNav.posts.selectedPostID = popularPost.id
     appNav.posts.selectFeedPost(popularPost)
@@ -787,24 +785,23 @@ struct NavigationScenarioTests {
     appNav.resetSelectedSurfaceToTabRoot()
 
     #expect(appNav.selectedTab == .posts)
-    #expect(appNav.posts.community == "popular")
+    #expect(appNav.posts.scope == .popular)
     #expect(appNav.posts.feedScrollPositionID == "popular-post-8")
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.contentPath.isEmpty)
-    #expect(appNav.posts.preferredColumn == .content)
     #expect(!appNav.canResetSelectedSurfaceToTabRoot)
   }
 
-  @Test("Posts journey: community feed keeps subreddit root on same-tab reset")
+  @Test("Posts journey: community feed keeps its scope on same-tab reset")
   func postsCommunityJourneyReturnsToCurrentSubredditRoot() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.selectedTab = .posts
 
     let swiftPost = Post(id: "swift-post-2")
-    appNav.posts.community = "swift"
+    appNav.posts.scope = .subreddit(id: "swift")
     appNav.posts.feedScrollPositionID = "swift-post-12"
     appNav.posts.contentPath = [.reddit(.user(User(id: "source-profile")))]
     appNav.posts.selectedPostID = swiftPost.id
@@ -813,29 +810,26 @@ struct NavigationScenarioTests {
 
     appNav.resetToTabRoot(.posts)
 
-    #expect(appNav.posts.community == "swift")
+    #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.feedScrollPositionID == "swift-post-12")
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.preferredColumn == .content)
   }
 
-  @Test("Posts journey: selector root remains selector when no feed is selected")
-  func postsSelectorRootStaysSidebarWhenNoFeedIsSelected() {
+  @Test("Posts journey: a deep-linked post resets to the feed root, keeping scope")
+  func postsDeepLinkedPostResetsToFeedRoot() {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.selectedTab = .posts
 
-    appNav.posts.community = nil
-    appNav.posts.preferredColumn = .detail
+    appNav.posts.scope = .home
     appNav.posts.openPostInDetail(Post(id: "deep-linked-post"))
 
     appNav.resetSelectedSurfaceToTabRoot()
 
-    #expect(appNav.posts.community == nil)
+    #expect(appNav.posts.scope == .home)
     #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.preferredColumn == .sidebar)
     #expect(!appNav.canResetSelectedSurfaceToTabRoot)
   }
 
@@ -845,7 +839,7 @@ struct NavigationScenarioTests {
     appNav.resetAll()
     appNav.selectedTab = .posts
 
-    appNav.posts.community = "popular"
+    appNav.posts.scope = .popular
     appNav.posts.contentPath = [.reddit(.subFeed(Subreddit(id: "swift")))]
     appNav.posts.openPostInDetail(Post(id: "popular-post-1"))
     appNav.posts.detailPath = [
@@ -858,14 +852,14 @@ struct NavigationScenarioTests {
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.preferredColumn == .content)
+    #expect(appNav.posts.scope == .popular)
 
     appNav.resetSelectedSurfaceToTabRoot()
 
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)
-    #expect(appNav.posts.preferredColumn == .content)
+    #expect(appNav.posts.scope == .popular)
   }
 
   @Test("Switching tabs preserves each tab stack until that tab is explicitly rooted")
@@ -938,7 +932,7 @@ struct NavigationScenarioTests {
     appNav.settings.select(.commentSwipe)
     appNav.settings.pushDetail(.reddit(.subFeed(Subreddit(id: "winstonapp"))))
     appNav.resetSelectedSurfaceToTabRoot()
-    #expect(appNav.settings.selection == .general)
+    #expect(appNav.settings.selection == nil)
     #expect(appNav.settings.detailPath.isEmpty)
     #expect(appNav.settings.preferredColumn == .sidebar)
   }

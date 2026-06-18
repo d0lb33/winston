@@ -148,132 +148,84 @@ struct NavigationE2EHarnessView: View {
     executeTabReselect(tab, tap: tap, source: source)
   }
 
-  @discardableResult
-  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) -> Bool {
+  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) {
     let action = appNav.handleTabReselect(tab, tap: tap)
     lastRootedTab = tab.rawValue
     lastAction = "\(tap == .double ? "double" : "single").\(action.diagnosticsName)"
-    TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
-    return action.suppressesNativeReselect
+    if tab == .posts {
+      TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+    } else {
+      // Match Tabber: the split-based tabs need the native pop-to-root to collapse, so defer
+      // our mutation a runloop to avoid interrupting it.
+      DispatchQueue.main.async {
+        TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+      }
+    }
   }
 }
 
+/// Compact Posts harness: a single `NavigationStack` bound to `posts.compactPath` (the same
+/// projection the live compact shell uses), with synthetic destinations so the UI tests
+/// drive the real model + reselect wiring without live Reddit.
 private struct NavigationE2EPostsSurface: View {
   let appNav: AppNav
 
   var body: some View {
     @Bindable var posts = appNav.posts
 
-    NavigationSplitView(preferredCompactColumn: $posts.preferredColumn) {
+    NavigationStack(path: $posts.compactPath) {
       List {
-        Text(verbatim: "Subreddit Selector")
-          .accessibilityIdentifier("navE2E.posts.selector")
+        Text(verbatim: "Popular Feed Root")
+          .accessibilityIdentifier("navE2E.posts.feedRoot")
+        Text(verbatim: "Scope: \(posts.scope.token)")
+          .accessibilityIdentifier("navE2E.posts.scope")
+        Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
+          .accessibilityIdentifier("navE2E.posts.scrollPosition")
+        Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
+          .accessibilityIdentifier("navE2E.posts.interactionState")
+        Text(verbatim: "Content Scroll Request: \(posts.contentScrollToTopRequest)")
+          .accessibilityIdentifier("navE2E.posts.contentScrollRequest")
+        Button { posts.updateInteractionLayout(.compact) } label: {
+          Text(verbatim: "Set Compact Layout")
+        }
+        .accessibilityIdentifier("navE2E.posts.compactLayout")
+        Button { posts.updateInteractionLayout(.regular) } label: {
+          Text(verbatim: "Set Regular Layout")
+        }
+        .accessibilityIdentifier("navE2E.posts.regularLayout")
+        Button { posts.updateContentCanScrollToTop(true) } label: {
+          Text(verbatim: "Mark Feed Scrolled")
+        }
+        .accessibilityIdentifier("navE2E.posts.markFeedScrolled")
+        Button { posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .content) } label: {
+          Text(verbatim: "Push Subreddit")
+        }
+        .accessibilityIdentifier("navE2E.posts.pushSub")
+        Button { posts.scope = .home } label: {
+          Text(verbatim: "Pick Home Scope")
+        }
+        .accessibilityIdentifier("navE2E.posts.pickHome")
         Button {
-          posts.updateInteractionLayout(.compact)
-          posts.updateRenderedActiveColumn(.sidebar)
+          posts.scope = .popular
+          posts.feedScrollPositionID = "popular-post-8"
+          let post = Post(id: "popular-post-1")
+          posts.selectedPostID = post.id
+          posts.selectFeedPost(post)
         } label: {
-          Text(verbatim: "Set Active Sidebar")
+          Text(verbatim: "Open Popular Post")
         }
-        .accessibilityIdentifier("navE2E.posts.activeSidebar")
+        .accessibilityIdentifier("navE2E.posts.openPost")
       }
-      .navigationTitle(Text(verbatim: "Posts"))
-      .onAppear { posts.updateRenderedActiveColumn(.sidebar) }
-    } content: {
-      NavigationStack(path: $posts.contentPath) {
-        List {
-          Text(verbatim: "Popular Feed Root")
-            .accessibilityIdentifier("navE2E.posts.feedRoot")
-          Text(verbatim: "Scroll Position: \(posts.feedScrollPositionID ?? "none")")
-            .accessibilityIdentifier("navE2E.posts.scrollPosition")
-          Text(verbatim: "Interaction: \(interactionStateLabel(posts.tabInteractionState))")
-            .accessibilityIdentifier("navE2E.posts.interactionState")
-          Text(verbatim: "Content Scroll Request: \(posts.contentScrollToTopRequest)")
-            .accessibilityIdentifier("navE2E.posts.contentScrollRequest")
-          Button {
-            posts.updateInteractionLayout(.compact)
-            posts.updateRenderedActiveColumn(.content)
-          } label: {
-            Text(verbatim: "Set Compact Content")
-          }
-          .accessibilityIdentifier("navE2E.posts.compactContent")
-          Button {
-            posts.updateInteractionLayout(.regular)
-          } label: {
-            Text(verbatim: "Set Regular Layout")
-          }
-          .accessibilityIdentifier("navE2E.posts.regularLayout")
-          Button {
-            posts.updateContentCanScrollToTop(true)
-          } label: {
-            Text(verbatim: "Mark Feed Scrolled")
-          }
-          .accessibilityIdentifier("navE2E.posts.markFeedScrolled")
-          Button {
-            let post = Post(id: "popular-post-1")
-            posts.community = "popular"
-            posts.feedScrollPositionID = "popular-post-8"
-            posts.selectedPostID = post.id
-            posts.selectFeedPost(post)
-          } label: {
-            Text(verbatim: "Open Popular Post")
-          }
-          .accessibilityIdentifier("navE2E.posts.openPost")
-        }
-        .navigationTitle(Text(verbatim: "Popular"))
-        .navigationDestination(for: NavDest.self) { destination in
+      .navigationTitle(Text(verbatim: "Popular"))
+      .navigationDestination(for: NavDest.self) { destination in
+        if PostsNav.postDetail(from: destination) != nil {
+          NavigationE2EPostDetail(posts: posts)
+        } else {
           NavigationE2EDestinationView(destination: destination)
         }
       }
-      .onAppear { posts.updateRenderedActiveColumn(.content) }
-    } detail: {
-      NavigationStack(path: $posts.detailPath) {
-        if posts.detailPost != nil {
-          VStack(spacing: 16) {
-            Text(verbatim: "Post Detail")
-              .accessibilityIdentifier("navE2E.posts.detailRoot")
-            Text(verbatim: "Detail Post: \(posts.detailPost?.id ?? posts.selectedPostID ?? "none")")
-              .accessibilityIdentifier("navE2E.posts.detailPostID")
-            Text(verbatim: "Detail Highlight: \(posts.detailHighlightID ?? "none")")
-              .accessibilityIdentifier("navE2E.posts.detailHighlightID")
-            Text(verbatim: "Posts Column: \(columnName(posts.preferredColumn))")
-              .accessibilityIdentifier("navE2E.posts.preferredColumn")
-            Text(verbatim: "Detail Scroll Request: \(posts.detailScrollToTopRequest)")
-              .accessibilityIdentifier("navE2E.posts.detailScrollRequest")
-            Button {
-              posts.updateInteractionLayout(.compact)
-              posts.updateRenderedActiveColumn(.detail)
-            } label: {
-              Text(verbatim: "Set Compact Detail")
-            }
-            .accessibilityIdentifier("navE2E.posts.compactDetail")
-            Button {
-              posts.updateDetailCanScrollToTop(true)
-            } label: {
-              Text(verbatim: "Mark Detail Scrolled")
-            }
-            .accessibilityIdentifier("navE2E.posts.markDetailScrolled")
-            Button {
-              posts.navigate(.reddit(.user(User(id: "author"))), from: .detail)
-            } label: {
-              Text(verbatim: "Open Author")
-            }
-            .accessibilityIdentifier("navE2E.posts.openAuthor")
-          }
-          .navigationTitle(Text(verbatim: "Post"))
-          .navigationDestination(for: NavDest.self) { destination in
-            NavigationE2EDestinationView(destination: destination)
-          }
-        } else {
-          Text(verbatim: "No Post Selected")
-            .accessibilityIdentifier("navE2E.posts.emptyDetail")
-        }
-      }
-      .onAppear { posts.updateRenderedActiveColumn(.detail) }
     }
-    .onAppear {
-      posts.updateInteractionLayout(.compact)
-      posts.updateRenderedActiveColumn(.content)
-    }
+    .onAppear { posts.updateInteractionLayout(.compact) }
     .onChange(of: posts.contentScrollToTopRequest) { _, _ in
       posts.updateContentCanScrollToTop(false)
     }
@@ -283,16 +235,37 @@ private struct NavigationE2EPostsSurface: View {
   }
 }
 
-private func columnName(_ column: NavigationSplitViewColumn) -> String {
-  if column == .sidebar { return "sidebar" }
-  if column == .content { return "content" }
-  if column == .detail { return "detail" }
-  return "unknown"
+private struct NavigationE2EPostDetail: View {
+  let posts: PostsNav
+
+  var body: some View {
+    @Bindable var posts = posts
+
+    VStack(spacing: 16) {
+      Text(verbatim: "Post Detail")
+        .accessibilityIdentifier("navE2E.posts.detailRoot")
+      Text(verbatim: "Detail Post: \(posts.detailPost?.id ?? posts.selectedPostID ?? "none")")
+        .accessibilityIdentifier("navE2E.posts.detailPostID")
+      Text(verbatim: "Detail Highlight: \(posts.detailHighlightID ?? "none")")
+        .accessibilityIdentifier("navE2E.posts.detailHighlightID")
+      Text(verbatim: "Detail Scroll Request: \(posts.detailScrollToTopRequest)")
+        .accessibilityIdentifier("navE2E.posts.detailScrollRequest")
+      Button { posts.updateDetailCanScrollToTop(true) } label: {
+        Text(verbatim: "Mark Detail Scrolled")
+      }
+      .accessibilityIdentifier("navE2E.posts.markDetailScrolled")
+      Button { posts.navigate(.reddit(.user(User(id: "author"))), from: .detail) } label: {
+        Text(verbatim: "Open Author")
+      }
+      .accessibilityIdentifier("navE2E.posts.openAuthor")
+    }
+    .navigationTitle(Text(verbatim: "Post"))
+  }
 }
 
 private func interactionStateLabel(_ state: PostsTabInteractionState) -> String {
   let layout = state.layout == .compact ? "compact" : "regular"
-  return "\(layout).\(state.activeColumn.diagnosticsName).contentScroll=\(state.contentCanScrollToTop).detailScroll=\(state.detailCanScrollToTop)"
+  return "\(layout).contentScroll=\(state.contentCanScrollToTop).detailScroll=\(state.detailCanScrollToTop)"
 }
 
 private struct NavigationE2EColumnSurface: View {

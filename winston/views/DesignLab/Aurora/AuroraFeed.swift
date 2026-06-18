@@ -245,12 +245,14 @@ struct AuroraFeed: View {
       await model.loadInitialIfNeeded(sort: sort, contentWidth: contentWidth)
     }
     .onAppear {
+      AppDiagnostics.asyncBreadcrumb("TMPSCROLL feed appeared", metadata: ["scrollPosition": scrollPositionID ?? "nil", "visiblePosts": "\(model.visiblePosts.count)"])
       ScrollPerfDiagnostics.event(
         "Aurora feed appeared",
         metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPositionID ?? "nil"]
       )
     }
     .onDisappear {
+      AppDiagnostics.asyncBreadcrumb("TMPSCROLL feed disappeared", metadata: ["scrollPosition": scrollPositionID ?? "nil", "visiblePosts": "\(model.visiblePosts.count)"])
       onScrollStateChanged(false)
       ScrollPerfDiagnostics.event(
         "Aurora feed disappeared",

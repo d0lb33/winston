@@ -19,6 +19,65 @@
 
 import Foundation
 import SwiftUI
+import Defaults
+
+/// The source a Posts feed is showing. Home, Popular, Saved, a subreddit, and the
+/// saved-lists screens are all the same kind of thing — a feed scope — selected from a
+/// picker (compact) or a sidebar (wide). Replaces the old stringly `community` token so the
+/// compact shell never depends on `NavigationSplitView`'s collapsed-column choreography.
+enum FeedScope: Hashable, Codable {
+  case home
+  case popular
+  case saved
+  case subreddit(id: String)
+  case savedList(id: UUID)
+  case savedListsOverview
+
+  /// The legacy string token (sidebar selection / deep-link feed / saved-list route id).
+  init?(token: String?) {
+    guard let token else { return nil }
+    switch token {
+    case "home": self = .home
+    case "popular", "all": self = .popular
+    case "saved": self = .saved
+    case SavedListsRoute.overviewID: self = .savedListsOverview
+    default:
+      if let listID = SavedListsRoute.listID(from: token) { self = .savedList(id: listID) }
+      else { self = .subreddit(id: token) }
+    }
+  }
+
+  var token: String {
+    switch self {
+    case .home: return "home"
+    case .popular: return "popular"
+    case .saved: return "saved"
+    case .subreddit(let id): return id
+    case .savedList(let id): return SavedListsRoute.id(for: id)
+    case .savedListsOverview: return SavedListsRoute.overviewID
+    }
+  }
+
+  /// True for scopes the `AuroraFeedModel` can load as a normal post feed.
+  var isPostFeed: Bool {
+    switch self {
+    case .home, .popular, .subreddit: return true
+    case .saved, .savedList, .savedListsOverview: return false
+    }
+  }
+
+  /// The feed token an `AuroraFeedModel` should load for this scope (nil for the
+  /// special saved-lists screens, which are not post feeds).
+  var feedSubredditID: String? {
+    switch self {
+    case .home: return "home"
+    case .popular: return "popular"
+    case .saved: return "saved"
+    case .subreddit(let id): return id
+    case .savedList, .savedListsOverview: return nil
+    }
+  }
+}
 
 enum TabTapKind: Equatable {
   case single
@@ -38,7 +97,6 @@ enum PostsTabColumn: Equatable {
 
 struct PostsTabInteractionState: Equatable {
   var layout: PostsTabLayoutMode = .regular
-  var activeColumn: PostsTabColumn = .content
   var contentCanScrollToTop = false
   var detailCanScrollToTop = false
 }
@@ -50,7 +108,6 @@ enum PostsSurfaceCommand: Equatable {
 
 enum PostsNavigationAction: Equatable {
   case backOneStep(PostsTabColumn)
-  case revealSubredditSelector
 }
 
 enum TabReselectAction: Equatable {
@@ -64,25 +121,8 @@ enum TabReselectAction: Equatable {
     case .surface(.scrollContentToTop): return "surface.scrollContentToTop"
     case .surface(.scrollDetailToTop): return "surface.scrollDetailToTop"
     case .navigation(.backOneStep(let column)): return "navigation.backOneStep.\(column.diagnosticsName)"
-    case .navigation(.revealSubredditSelector): return "navigation.revealSubredditSelector"
     case .resetToTabRoot: return "resetToTabRoot"
     case .none: return "none"
-    }
-  }
-
-  /// Whether our handler fully owns this reselect and UIKit's native pop-to-root must be
-  /// suppressed. Granular actions (scroll-to-top, single-step back) suppress native so it
-  /// doesn't jump the whole NavigationSplitView to its root. Jump-to-root actions
-  /// (reveal-sidebar / reset) intentionally let native run, because its pop-to-root
-  /// reliably collapses all the way to the sidebar — something programmatic
-  /// `preferredCompactColumn = .sidebar` does NOT do from a deep detail state.
-  var suppressesNativeReselect: Bool {
-    switch self {
-    case .surface: return true
-    case .navigation(.backOneStep): return true
-    case .navigation(.revealSubredditSelector): return false
-    case .resetToTabRoot: return false
-    case .none: return false
     }
   }
 }
@@ -159,9 +199,6 @@ enum TabReselectActionExecutor {
       case .content: _ = appNav.posts.goBackContentOneStepForTabReselect()
       case .sidebar: break
       }
-    case .navigation(.revealSubredditSelector):
-      guard tab == .posts else { return }
-      appNav.posts.revealSubredditSelector()
     case .resetToTabRoot:
       appNav.resetToTabRoot(tab)
     case .none:
@@ -191,22 +228,21 @@ enum DefaultLaunchFeed: Equatable {
     }
   }
 
-  var selection: String? {
+  /// The feed scope to launch into. There is no "show the subreddit list" scope — the
+  /// scope picker (compact) / scopes sidebar (wide) is always one tap away — so a
+  /// `subscriptionList` preference launches into the Home (subscriptions) feed.
+  var scope: FeedScope {
     switch self {
-    case .home: return "home"
-    case .popular: return "popular"
-    case .saved: return "saved"
-    case .subscriptionList: return nil
+    case .home: return .home
+    case .popular: return .popular
+    case .saved: return .saved
+    case .subscriptionList: return .home
     }
   }
 
   @MainActor
   var initialSubreddit: Subreddit {
-    Subreddit(id: selection ?? "popular")
-  }
-
-  var preferredColumn: NavigationSplitViewColumn {
-    selection == nil ? .sidebar : .content
+    Subreddit(id: scope.feedSubredditID ?? "popular")
   }
 }
 
@@ -227,7 +263,7 @@ final class AppNav {
   }
 
   /// Per-surface navigation state. Each is the single source of truth for its tab.
-  let posts = PostsNav()
+  let posts = PostsNav(launchFeed: DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed))
   let me = ColumnNav()
   let search = ColumnNav()
   let inbox = StackNav()
@@ -341,8 +377,10 @@ final class AppNav {
   func handleTabReselect(_ tab: Tab, tap: TabTapKind) -> TabReselectAction {
     switch tab {
     case .posts:
+      // Double tap: jump straight back to the bare feed root (clears any open post / pushes,
+      // keeps the feed scope + scroll). The subreddit list lives behind the scope picker.
       if tap == .double {
-        return .navigation(.revealSubredditSelector)
+        return canResetToTabRoot(.posts) ? .resetToTabRoot : .none
       }
       return posts.tabReselectAction()
     case .inbox, .me, .search, .settings:
@@ -393,47 +431,75 @@ final class AppNav {
 @Observable
 @MainActor
 final class PostsNav: RedditNavigator {
-  /// Sidebar selection: a community uuid, a feed token ("home"/"popular"/"saved"), or a
-  /// saved-list route id. Stable string token — never derived from `CachedSub` identity,
-  /// which churns when the `@FetchRequest` re-syncs (see AuroraRoot.swift).
-  var community: String? = "popular"
+  /// The feed the Posts surface is showing. Replaces the old stringly `community` token; a
+  /// feed source picked from the scope picker (compact) or the scopes sidebar (wide).
+  var scope: FeedScope = .popular
 
-  /// Feed-list selection — the post highlighted in the content column. Used for the
-  /// iPad row highlight and, when it maps to a feed post, the detail root.
+  /// Feed-list selection — the post highlighted in the WIDE feed column. (The compact shell
+  /// pushes the post instead, but still routes through this via the feed `List(selection:)`.)
   var selectedPostID: String?
 
-  /// The feed row nearest the top of the content column. `NavigationSplitView` can
-  /// temporarily remove the compact content column while detail is visible; keeping this
-  /// outside the feed view lets the list restore after an interactive back gesture.
+  /// The feed row nearest the top of the feed, preserved across shell swaps / rotation.
   var feedScrollPositionID: String?
 
-  /// Explicit post for the detail root when it did not come from the feed list (a link
-  /// tap, a deep link, a saved item).
+  /// The open post (a feed tap, a link, a deep link, or a saved item).
   var detailPost: Post?
   var detailHighlightID: String?
 
-  /// Pushes that stay in the content column (a sub/user opened from a card while the
-  /// feed remains visible).
+  /// Pushes that live alongside the feed (a sub/user opened from a feed card before any
+  /// post is open). Wide: the content column's stack. Compact: the stack entries between
+  /// the feed root and the open post.
   var contentPath: [NavDest] = []
 
-  /// The open post's detail navigation stack (comment-author profile, crosspost, etc.).
-  /// Owned here — this is what replaces the external `Router.fullPath`.
+  /// The open post's navigation stack (comment-author profile, crosspost, etc.).
   var detailPath: [NavDest] = []
 
-  /// Which column the collapsed (compact) layout shows. Derived from state, never from a
-  /// history stack.
-  var preferredColumn: NavigationSplitViewColumn = .content
-  /// Column visibility for the EXPANDED (regular-width) layout. Driven by the available
-  /// width in `AuroraRoot`: `.all` when there is room for the full three-pane spread,
-  /// `.automatic` otherwise. Ignored while collapsed (compact uses `preferredColumn`).
-  var columnVisibility: NavigationSplitViewVisibility = .automatic
   var tabInteractionState = PostsTabInteractionState()
   var contentScrollToTopRequest = 0
   var detailScrollToTopRequest = 0
 
   init(launchFeed: DefaultLaunchFeed = .popular) {
-    community = launchFeed.selection
-    preferredColumn = launchFeed.preferredColumn
+    scope = launchFeed.scope
+  }
+
+  // MARK: Compact stack projection
+
+  /// The compact shell renders ONE `NavigationStack` whose path is a projection of this
+  /// model: `[content pushes] + (open post) + [detail pushes]`. Reading rebuilds the path;
+  /// writing (a system back gesture / programmatic pop) decomposes the shorter path back
+  /// into `contentPath` / `detailPost` / `detailPath`. There is no second source of truth —
+  /// the same state drives compact and wide, so fold/unfold preserves it.
+  var compactPath: [NavDest] {
+    get {
+      var path = contentPath
+      if let detailPost {
+        path.append(Self.navDest(for: detailPost, highlightID: detailHighlightID))
+        path.append(contentsOf: detailPath)
+      }
+      return path
+    }
+    set {
+      let postIndex = contentPath.count
+      if detailPost != nil {
+        if newValue.count <= postIndex {
+          // The open post (and anything pushed onto it) was popped.
+          detailPost = nil
+          detailHighlightID = nil
+          selectedPostID = nil
+          detailPath = []
+          contentPath = Array(newValue.prefix(postIndex))
+        } else {
+          // Post still on the stack; everything above it is the detail path.
+          detailPath = Array(newValue.dropFirst(postIndex + 1))
+        }
+      } else {
+        contentPath = newValue
+      }
+    }
+  }
+
+  static func navDest(for post: Post, highlightID: String?) -> NavDest {
+    .reddit(highlightID.map { .postHighlighted(post, $0) } ?? .post(post))
   }
 
   // MARK: RedditNavigator
@@ -445,35 +511,31 @@ final class PostsNav: RedditNavigator {
         openPostInDetail(detail.post, highlightID: detail.highlightID)
       } else {
         contentPath.append(destination)
-        preferredColumn = .content
       }
     case .detail:
       detailPath.append(destination)
-      preferredColumn = .detail
     }
   }
 
   // MARK: Intents
 
-  /// Open a post in the detail column from a non-feed source (link/deep link/saved).
+  /// Open a post from a non-feed source (link / deep link / saved item).
   func openPostInDetail(_ post: Post, highlightID: String? = nil) {
     selectedPostID = nil
     detailPost = post
     detailHighlightID = highlightID
     detailPath = []
-    preferredColumn = .detail
   }
 
-  /// Promote a feed-list selection to the detail column. Keeps `selectedPostID` for the
-  /// row highlight.
+  /// Promote a feed-list selection to the open post. Keeps `selectedPostID` for the wide
+  /// feed row highlight.
   func selectFeedPost(_ post: Post) {
     detailPost = post
     detailHighlightID = nil
     detailPath = []
-    preferredColumn = .detail
   }
 
-  /// Clear the detail and any in-column pushes (e.g. when the sidebar feed changes).
+  /// Clear the open post and any in-feed pushes (e.g. when the feed scope changes).
   func resetContentAndDetail() {
     selectedPostID = nil
     feedScrollPositionID = nil
@@ -481,63 +543,33 @@ final class PostsNav: RedditNavigator {
     detailHighlightID = nil
     contentPath = []
     detailPath = []
-    preferredColumn = .content
     updateContentCanScrollToTop(false)
     updateDetailCanScrollToTop(false)
   }
 
   func goBackOneStep() -> Bool {
-    if !detailPath.isEmpty {
-      detailPath.removeLast()
-      preferredColumn = .detail
-      return true
-    }
-
-    if selectedPostID != nil || detailPost != nil || detailHighlightID != nil {
+    if !detailPath.isEmpty { detailPath.removeLast(); return true }
+    if hasOpenPost {
       selectedPostID = nil
       detailPost = nil
       detailHighlightID = nil
-      preferredColumn = .content
       return true
     }
-
-    if !contentPath.isEmpty {
-      contentPath.removeLast()
-      preferredColumn = .content
-      return true
-    }
-
-    if community != nil || preferredColumn != .sidebar {
-      preferredColumn = .sidebar
-      return true
-    }
-
+    if !contentPath.isEmpty { contentPath.removeLast(); return true }
     return false
   }
 
   func reset(to launchFeed: DefaultLaunchFeed = .popular) {
-    community = launchFeed.selection
+    scope = launchFeed.scope
     resetContentAndDetail()
-    preferredColumn = launchFeed.preferredColumn
-    updateRenderedActiveColumn(launchFeed.preferredColumn == .sidebar ? .sidebar : .content)
-  }
-
-  func resetToSidebarRoot() {
-    community = nil
-    resetContentAndDetail()
-    preferredColumn = .sidebar
   }
 
   var canResetToTabRoot: Bool {
-    !detailPath.isEmpty ||
-    selectedPostID != nil ||
-    detailPost != nil ||
-    detailHighlightID != nil ||
-    !contentPath.isEmpty ||
-    (community != nil && preferredColumn != .content) ||
-    (community == nil && preferredColumn != .sidebar)
+    !detailPath.isEmpty || selectedPostID != nil || detailPost != nil ||
+    detailHighlightID != nil || !contentPath.isEmpty
   }
 
+  /// Clear everything back to the bare feed root (keeps the feed scope + scroll position).
   func resetToTabRoot() {
     let feedScrollPositionID = feedScrollPositionID
     selectedPostID = nil
@@ -546,18 +578,6 @@ final class PostsNav: RedditNavigator {
     contentPath = []
     detailPath = []
     self.feedScrollPositionID = feedScrollPositionID
-    preferredColumn = community == nil ? .sidebar : .content
-  }
-
-  func revealSubredditSelector() {
-    let feedScrollPositionID = feedScrollPositionID
-    selectedPostID = nil
-    detailPost = nil
-    detailHighlightID = nil
-    contentPath = []
-    detailPath = []
-    self.feedScrollPositionID = feedScrollPositionID
-    preferredColumn = .sidebar
   }
 
   func tabReselectAction() -> TabReselectAction {
@@ -583,11 +603,6 @@ final class PostsNav: RedditNavigator {
     tabInteractionState.layout = layout
   }
 
-  func updateRenderedActiveColumn(_ column: PostsTabColumn) {
-    guard tabInteractionState.activeColumn != column else { return }
-    tabInteractionState.activeColumn = column
-  }
-
   func updateContentCanScrollToTop(_ canScroll: Bool) {
     guard tabInteractionState.contentCanScrollToTop != canScroll else { return }
     tabInteractionState.contentCanScrollToTop = canScroll
@@ -598,90 +613,48 @@ final class PostsNav: RedditNavigator {
     tabInteractionState.detailCanScrollToTop = canScroll
   }
 
-  var canGoBackDetailOneStepForTabReselect: Bool {
-    !detailPath.isEmpty || selectedPostID != nil || detailPost != nil || detailHighlightID != nil
-  }
-
-  var canGoBackContentOneStepForTabReselect: Bool {
-    !contentPath.isEmpty
+  /// A post is open and on top of the stack (the detail surface).
+  var hasOpenPost: Bool {
+    detailPost != nil || selectedPostID != nil || detailHighlightID != nil
   }
 
   func goBackDetailOneStepForTabReselect() -> Bool {
-    if !detailPath.isEmpty {
-      detailPath.removeLast()
-      preferredColumn = .detail
-      return true
-    }
-
-    if selectedPostID != nil || detailPost != nil || detailHighlightID != nil {
+    if !detailPath.isEmpty { detailPath.removeLast(); return true }
+    if hasOpenPost {
       selectedPostID = nil
       detailPost = nil
       detailHighlightID = nil
-      preferredColumn = community == nil ? .sidebar : .content
       return true
     }
-
     return false
   }
 
   func goBackContentOneStepForTabReselect() -> Bool {
     guard !contentPath.isEmpty else { return false }
     contentPath.removeLast()
-    preferredColumn = .content
     return true
   }
 
+  // Compact single tap: peel back ONE layer — scroll the active surface to the top, then
+  // pop one navigation level, then remain at the feed root. The active surface is DERIVED
+  // from the model (a post open → the detail surface; otherwise the feed), not from any
+  // collapsed-column inference. Reaching the subreddit list is the scope picker's job, not
+  // the tab reselect's, so there is no "reveal subreddit selector" navigation here.
   private func compactTabReselectAction() -> TabReselectAction {
-    // iPhone (and the folded/compact iPad) single-tap behavior: peel back exactly ONE
-    // layer per tap — first scroll the active surface to the top, then pop one
-    // navigation level, and once at the feed root, reveal the communities sidebar (the
-    // "Subreddit menu"). The big jump straight to the sidebar is reserved for double-tap.
-    //
-    // The "which column is showing" decision uses `preferredColumn` (the framework-blessed
-    // collapsed-column knob, which the system keeps in sync on the native back button) and
-    // NOT `tabInteractionState.activeColumn` — the latter is tracked via per-column
-    // `.onAppear`, which fires unreliably in a collapsed NavigationSplitView (it reported
-    // `.sidebar` while the feed was actually on screen).
-    if preferredColumn == .detail {
-      if tabInteractionState.detailCanScrollToTop {
-        return .surface(.scrollDetailToTop)
-      }
-      if canGoBackDetailOneStepForTabReselect {
-        return .navigation(.backOneStep(.detail))
-      }
-      // Detail with nothing left to scroll/pop (e.g. the empty placeholder) → home.
-      return .navigation(.revealSubredditSelector)
+    if hasOpenPost {
+      if tabInteractionState.detailCanScrollToTop { return .surface(.scrollDetailToTop) }
+      return .navigation(.backOneStep(.detail))
     }
-
-    if preferredColumn == .sidebar {
-      // Already home at the communities sidebar — nothing further to peel back.
-      return .none
-    }
-
-    // Content column (the feed, or a sub/user pushed onto it).
-    if tabInteractionState.contentCanScrollToTop {
-      return .surface(.scrollContentToTop)
-    }
-    if canGoBackContentOneStepForTabReselect {
-      return .navigation(.backOneStep(.content))
-    }
-    // At the feed root, already scrolled to top → reveal the communities sidebar.
-    return .navigation(.revealSubredditSelector)
+    if tabInteractionState.contentCanScrollToTop { return .surface(.scrollContentToTop) }
+    if !contentPath.isEmpty { return .navigation(.backOneStep(.content)) }
+    return .none
   }
 
   private func regularTabReselectAction() -> TabReselectAction {
-    if tabInteractionState.contentCanScrollToTop {
-      return .surface(.scrollContentToTop)
-    }
-    if tabInteractionState.detailCanScrollToTop {
-      return .surface(.scrollDetailToTop)
-    }
-    if canGoBackDetailOneStepForTabReselect {
-      return .navigation(.backOneStep(.detail))
-    }
-    if canGoBackContentOneStepForTabReselect {
-      return .navigation(.backOneStep(.content))
-    }
+    if tabInteractionState.contentCanScrollToTop { return .surface(.scrollContentToTop) }
+    if tabInteractionState.detailCanScrollToTop { return .surface(.scrollDetailToTop) }
+    if !detailPath.isEmpty || hasOpenPost { return .navigation(.backOneStep(.detail)) }
+    if !contentPath.isEmpty { return .navigation(.backOneStep(.content)) }
     return canResetToTabRoot ? .resetToTabRoot : .none
   }
 
@@ -868,14 +841,19 @@ final class SettingsNav: RedditNavigator {
   }
 
   var canResetToTabRoot: Bool {
-    selection != .general ||
+    selection != nil ||
     !contentPath.isEmpty ||
     !detailPath.isEmpty ||
     preferredColumn != .sidebar
   }
 
+  /// Reset to the Settings tab root: the sidebar panel list with nothing selected. Clearing
+  /// `selection` to nil (not `.general`) is what actually makes a compact split collapse to
+  /// the sidebar — a non-nil selection re-pushes the detail the instant the native
+  /// reselect-pop tries to collapse it. The wide split just shows the empty-detail state,
+  /// which is the correct "no panel chosen" root there too.
   func resetToTabRoot() {
-    selection = .general
+    selection = nil
     contentPath = []
     detailPath = []
     preferredColumn = .sidebar

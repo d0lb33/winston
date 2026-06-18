@@ -137,20 +137,35 @@ struct Tabber: View, Equatable {
     executeTabReselect(tab, tap: tap, source: source)
   }
 
-  @discardableResult
-  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) -> Bool {
+  private func executeTabReselect(_ tab: AppNav.Tab, tap: TabTapKind, source: String) {
     let action = appNav.handleTabReselect(tab, tap: tap)
+    let st = appNav.posts.tabInteractionState
     AppDiagnostics.asyncBreadcrumb(
       "Tab reselected",
       metadata: [
         "tab": tab.rawValue,
         "tap": tap == .double ? "double" : "single",
         "action": action.diagnosticsName,
-        "source": source
+        "source": source,
+        "scope": appNav.posts.scope.token,
+        "layout": st.layout == .compact ? "compact" : "regular",
+        "contentCanScroll": "\(st.contentCanScrollToTop)",
+        "detailCanScroll": "\(st.detailCanScrollToTop)"
       ]
     )
-    TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
-    return action.suppressesNativeReselect
+    if tab == .posts {
+      // Posts is binding-driven (compact NavigationStack via `compactPath`, wide split with
+      // columns always shown), so our handler owns the reselect — the delegate suppresses
+      // the native pop-to-root (see shouldSelectTab) and we apply immediately.
+      TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+    } else {
+      // The other tabs are still `NavigationSplitView`s that rely on the system's native
+      // pop-to-root to collapse to their sidebar root; defer our model mutation one runloop
+      // so its re-render doesn't interrupt that native collapse.
+      DispatchQueue.main.async {
+        TabReselectActionExecutor.execute(action, for: tab, appNav: appNav)
+      }
+    }
   }
 }
 
@@ -162,7 +177,7 @@ enum TabReselectDelegateInstaller {
     on tabBarController: UITabBarController,
     tabOrder: [AppNav.Tab],
     classifier: TabTapClassifierBox,
-    onReselect: @escaping (AppNav.Tab, TabTapKind) -> Bool
+    onReselect: @escaping (AppNav.Tab, TabTapKind) -> Void
   ) {
     let delegate: TabReselectDelegate
     if let existing = objc_getAssociatedObject(tabBarController, &associationKey) as? TabReselectDelegate {
@@ -182,7 +197,7 @@ enum TabReselectDelegateInstaller {
 private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   var tabOrder: [AppNav.Tab] = []
   var classifier: TabTapClassifierBox?
-  var onReselect: ((AppNav.Tab, TabTapKind) -> Bool)?
+  var onReselect: ((AppNav.Tab, TabTapKind) -> Void)?
   private weak var previousDelegate: UITabBarControllerDelegate?
   private var lastSelectedIndex: Int?
   private var lastSelectedTabIdentifier: String?
@@ -201,7 +216,8 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
   func tabBarController(_ tabBarController: UITabBarController, shouldSelect viewController: UIViewController) -> Bool {
     if viewController === tabBarController.selectedViewController,
        let tab = tab(for: viewController, in: tabBarController) {
-      return !emitReselect(tab)
+      emitReselect(tab)
+      return tab != .posts
     }
 
     if let previousDelegate,
@@ -239,9 +255,10 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
     // straight to its sidebar root and clobbers the one-level-at-a-time peel-back.
     if tab.identifier == tabBarController.selectedTab?.identifier,
        let appTab = appTab(for: tab, in: tabBarController) {
-      // Suppress native (return false) only for granular actions; allow it (return true)
-      // for jump-to-root actions so native fully collapses to the sidebar.
-      return !emitReselect(appTab)
+      emitReselect(appTab)
+      // Posts owns its reselect (binding-driven) → suppress the native pop-to-root. The
+      // other tabs are still NavigationSplitViews that need the native pop to collapse.
+      return appTab != .posts
     }
 
     if let previousDelegate,
@@ -267,16 +284,13 @@ private final class TabReselectDelegate: NSObject, UITabBarControllerDelegate {
     emitReselect(tab)
   }
 
-  /// Returns whether the native pop-to-root must be suppressed (true) so our handler owns
-  /// the reselect, or allowed (false) so native collapses fully to the sidebar root.
-  @discardableResult
-  private func emitReselect(_ tab: AppNav.Tab) -> Bool {
+  private func emitReselect(_ tab: AppNav.Tab) {
     guard let tap = classifier?.classify(
       tab: tab,
       eventID: nil,
       time: ProcessInfo.processInfo.systemUptime
-    ) else { return false }
-    return onReselect?(tab, tap) ?? false
+    ) else { return }
+    onReselect?(tab, tap)
   }
 
   private func updateLastSelectedIndex(in tabBarController: UITabBarController) {
