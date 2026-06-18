@@ -46,6 +46,12 @@ struct CommentBodyNative: View {
   let diagnosticContext: String
   var onTextTap: (() -> Void)? = nil
 
+  /// Margin reserved around inline media. The media's open-fullscreen gesture only covers its
+  /// (inset) frame, so this surrounding strip falls through to the comment row's collapse tap —
+  /// making it much harder to hit media when you meant to collapse the comment.
+  static let mediaTapInset: CGFloat = 14
+  static let mediaTapInsetVertical: CGFloat = 6
+
   @State private var showSpoiler = false
   @State private var postDimensions = PostDimensions.zero
 
@@ -64,9 +70,12 @@ struct CommentBodyNative: View {
         case .text(let text):
           tappableMarkdownText(text)
         case .media(let url):
+          // Render media narrower than the row and pad the gap, so the inset margin around it
+          // collapses the comment instead of opening the media (see `mediaTapInset`).
+          let mediaWidth = max(1, availableWidth - Self.mediaTapInset * 2)
           if availableWidth >= 1 {
             let media = ScrollPerfDiagnostics.measure("commentBody.mediaExtractor", slowThresholdMs: 4, slowMessage: "Comment inline media extraction was slow", metadata: ["context": diagnosticContext, "urlHost": url.host ?? "nil"]) {
-              mediaExtractor(url: url, compact: false, contentWidth: availableWidth, diagnosticContext: diagnosticContext)
+              mediaExtractor(url: url, compact: false, contentWidth: mediaWidth, diagnosticContext: diagnosticContext)
             }
             if let media {
               MediaPresenter(
@@ -80,13 +89,16 @@ struct CommentBodyNative: View {
                 blurPostLinkNSFW: false,
                 media: media,
                 compact: false,
-                contentWidth: availableWidth,
+                contentWidth: mediaWidth,
                 maxMediaHeightScreenPercentage: maxMediaHeightScreenPercentage,
                 resetVideo: { _ in },
                 diagnosticContext: diagnosticContext
               )
               .contentShape(Rectangle())
               .diagnosticTapTarget("comment media", color: .purple)
+              .padding(.horizontal, Self.mediaTapInset)
+              .padding(.vertical, Self.mediaTapInsetVertical)
+              .frame(maxWidth: .infinity, alignment: .leading)
             }
           }
         }

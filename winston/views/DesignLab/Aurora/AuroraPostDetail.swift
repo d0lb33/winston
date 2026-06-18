@@ -95,21 +95,43 @@ struct AuroraPostDetail: View {
             .accessibilityHidden(true)
 
           Section {
-            if let winstonData = post.winstonData {
-              if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
-                AuroraPostHeader(
-                  post: post,
-                  repost: repost,
-                  subreddit: subreddit,
-                  contentWidth: max(1, contentWidth - 32)
-                )
+            // The scrolling post body sits in a translucent Aurora card (cardFill, NOT live
+            // glass — re-blurring against the animating mesh every scroll frame hangs the
+            // render server). The card is inset 16 from the edges and pads its content 16, so
+            // the header gets `contentWidth - 64` for its media width.
+            Group {
+              if let winstonData = post.winstonData {
+                if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
+                  AuroraPostHeader(
+                    post: post,
+                    repost: repost,
+                    subreddit: subreddit,
+                    contentWidth: max(1, contentWidth - 64)
+                  )
+                } else {
+                  PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit, availableWidth: max(1, contentWidth - 64))
+                }
               } else {
-                PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit, availableWidth: max(1, contentWidth - 32))
+                ProgressView().frame(maxWidth: .infinity, minHeight: 200)
               }
-            } else {
-              ProgressView().frame(maxWidth: .infinity, minHeight: 200)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+            .overlay(
+              RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+                .stroke(theme.hairline, lineWidth: 0.7)
+            )
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .listRowInsets(EdgeInsets())
+
+            // The action bar stays OUTSIDE the card — live-glass pills floating over the mesh
+            // as distinct chrome. The contrast against the cardFill body is what reads as
+            // intentional rather than bare.
             auroraActionBar
+              .padding(.horizontal, 16)
+              .listRowInsets(EdgeInsets())
           }
           .listRowBackground(Color.clear)
           .listRowSeparator(.hidden)
@@ -135,6 +157,9 @@ struct AuroraPostDetail: View {
           .listRowBackground(Color.clear)
         }
         .listStyle(.plain)
+        // Tighten the gap between the post section and the comments section (the plain
+        // default is ~15-20pt; combined with the comments-header inset it left a big void).
+        .listSectionSpacing(8)
         // Collapse the zero-height top anchor row (SwiftUI's ~44pt default minimum
         // row height would otherwise leave a large gap under the nav bar).
         .environment(\.defaultMinListRowHeight, 1)
@@ -196,63 +221,78 @@ struct AuroraPostDetail: View {
       .font(.headline)
       .foregroundStyle(.primary)
       .frame(maxWidth: .infinity, alignment: .leading)
-      .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 8, trailing: 16))
+      .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
       .listRowSeparator(.hidden)
       .listRowBackground(Color.clear)
   }
 
   // MARK: - Glass action bar (chrome — live glass is fine, it never scrolls inside the list)
 
+  // Two grouped glass pills — [vote · comments] and [save · reply · share] — each a SINGLE
+  // non-interactive `.glassEffect` background with PLAIN buttons inside. Per-button
+  // `.interactive()` glass (the earlier approach) displaced the hit regions so taps landed on
+  // the wrong control (the comment count opened the share sheet, reply opened save). Plain
+  // buttons over one glass surface hit-test by their own frames, like the native controls.
   @ViewBuilder private var auroraActionBar: some View {
     if let data = post.data {
-      GlassEffectContainer(spacing: 12) {
-        HStack(spacing: 12) {
-          GlassVotePill(
-            likes: data.likes,
-            score: data.ups,
-            onUp: { _ = await post.vote(.up) },
-            onDown: { _ = await post.vote(.down) }
-          )
-
+      HStack(spacing: 12) {
+        HStack(spacing: 14) {
+          voteControls(data)
+          Capsule().fill(theme.hairline).frame(width: 1, height: 16)
           Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
             .font(.subheadline.weight(.semibold))
-            .padding(.horizontal, 14).padding(.vertical, 9)
-            .glassEffect(.regular, in: .capsule)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .glassEffect(.regular, in: .capsule)
 
-          Spacer()
+        Spacer(minLength: 8)
 
-          glassCircleButton(data.saved ? "bookmark.fill" : "bookmark", tint: data.saved ? theme.accent : .secondary) {
-            SaveChooserInstance.shared.enable(.post(post))
+        HStack(spacing: 20) {
+          Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
+            Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
+              .foregroundStyle(data.saved ? theme.accent : .secondary)
           }
-          glassCircleButton("arrowshape.turn.up.left", tint: .secondary) {
-            ReplyModalInstance.shared.enable(.post(post))
+          .accessibilityLabel(data.saved ? "Unsave" : "Save")
+          Button { ReplyModalInstance.shared.enable(.post(post)) } label: {
+            Image(systemName: "arrowshape.turn.up.left").foregroundStyle(.secondary)
           }
+          .accessibilityLabel("Reply")
           if let permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)") {
             ShareLink(item: permaURL) {
-              Image(systemName: "square.and.arrow.up")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .padding(11)
-                .glassEffect(.regular.interactive(), in: .circle)
+              Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
             }
             .simultaneousGesture(TapGesture().onEnded {
               Task { await post.markInteractedAsRead() }
             })
+            .accessibilityLabel("Share")
           }
         }
+        .font(.system(size: 16, weight: .semibold))
+        .buttonStyle(.plain)
+        .padding(.horizontal, 16).padding(.vertical, 10)
+        .glassEffect(.regular, in: .capsule)
       }
-      .padding(.vertical, 4)
+      .padding(.top, 4)
     }
   }
 
-  private func glassCircleButton(_ symbol: String, tint: Color, _ action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-      Image(systemName: symbol)
-        .font(.system(size: 15, weight: .semibold))
-        .foregroundStyle(tint)
-        .padding(11)
-        .glassEffect(.regular.interactive(), in: .circle)
+  private func voteControls(_ data: PostData) -> some View {
+    HStack(spacing: 10) {
+      Button { Task { _ = await post.vote(.up) } } label: {
+        Image(systemName: "arrow.up")
+          .foregroundStyle(data.likes == true ? theme.accent : .secondary)
+      }
+      Text(formatBigNumber(data.ups))
+        .font(.subheadline.weight(.semibold)).monospacedDigit()
+        .foregroundStyle(data.likes == true ? theme.accent : data.likes == false ? theme.downvote : .primary)
+        .contentTransition(.numericText())
+      Button { Task { _ = await post.vote(.down) } } label: {
+        Image(systemName: "arrow.down")
+          .foregroundStyle(data.likes == false ? theme.downvote : .secondary)
+      }
     }
+    .font(.system(size: 15, weight: .bold))
     .buttonStyle(.plain)
   }
 
@@ -416,6 +456,7 @@ private struct AuroraPostHeader: View {
   var subreddit: Subreddit
   let contentWidth: CGFloat
   @State private var bodyCollapsed = false
+  @State private var showingSelectText = false
 
   var body: some View {
     let data = post.data ?? emptyPostData
@@ -452,7 +493,16 @@ private struct AuroraPostHeader: View {
       PostHeaderAuthorRow(data: data, avatarRequest: post.winstonData?.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 8)
+    .contextMenu {
+      if !data.selftext.isEmpty {
+        Button {
+          showingSelectText = true
+        } label: {
+          Label("Select Text", systemImage: "text.cursor")
+        }
+      }
+    }
+    .selectableTextSheet(isPresented: $showingSelectText, markdown: data.selftext, title: post.data?.title ?? "Select Text")
     .onAppear { Task { await post.toggleSeen(true) } }
   }
 }

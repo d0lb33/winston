@@ -1057,6 +1057,9 @@
         }
       }
     },
+    "Copy All" : {
+
+    },
     "Copy Link" : {
 
     },
@@ -3679,6 +3682,9 @@
           }
         }
       }
+    },
+    "Select Text" : {
+
     },
     "SELECTING" : {
       "extractionState" : "stale",

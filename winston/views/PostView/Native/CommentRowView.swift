@@ -28,6 +28,7 @@ struct CommentRowView: View {
 
   @State private var swipePresented = false
   @State private var loadingMore = false
+  @State private var showingSelectText = false
   @Environment(\.redditNavigationModel) private var redditNavigationModel
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.auroraTheme) private var theme
@@ -55,6 +56,7 @@ struct CommentRowView: View {
       actionsArePresented: $swipePresented
     )
     .contextMenu { if row.kind == .comment { contextMenuContent } }
+    .selectableTextSheet(isPresented: $showingSelectText, markdown: comment.data?.body ?? "")
   }
 
   @ViewBuilder private var decoratedContent: some View {
@@ -346,6 +348,13 @@ struct CommentRowView: View {
   // MARK: - Context menu
 
   @ViewBuilder private var contextMenuContent: some View {
+    if comment.data?.body?.isEmpty == false {
+      Button {
+        showingSelectText = true
+      } label: {
+        Label("Select Text", systemImage: "text.cursor")
+      }
+    }
     ForEach(allCommentSwipeActions) { action in
       if action.enabled(comment) {
         let active = action.active(comment)

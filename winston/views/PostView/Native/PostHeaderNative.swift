@@ -24,6 +24,7 @@ struct PostHeaderNative: View {
   @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
   @Environment(\.contentWidth) private var contentWidth
   @State private var bodyCollapsed = false
+  @State private var showingSelectText = false
 
   private var mediaContentWidth: CGFloat {
     availableWidth.map { max(1, $0) } ?? max(1, CGFloat(contentWidth) - 32)
@@ -49,18 +50,11 @@ struct PostHeaderNative: View {
         // render that as an inline crosspost card.
         if case .repost(let repost) = extractedMedia, let repostWinstonData = repost.winstonData {
           CrosspostCardNative(repost: repost, winstonData: repostWinstonData, contentWidth: mediaContentWidth)
-        } else if case .link(let previewModel) = extractedMedia, let img = redditPreviewLinkImage(data) {
-          LinkImageCardNative(
-            imageURL: img.url,
-            sourceSize: img.size,
-            displayURL: previewModel.previewURL ?? img.url,
-            columnWidth: mediaContentWidth,
-            maxMediaHeightPct: maxMediaHeightPct,
-            cornerRadius: 12
-          )
-          .equatable()
-          .diagnosticTapTarget("post link media", color: .purple)
         } else {
+          // Links flow through MediaPresenter → PreviewLinkContent (the same rich hero
+          // card the feed renders: banner + title + description + domain). Previously a
+          // `.link` special case rendered LinkImageCardNative (image + domain only), which
+          // dropped the article description in the detail view.
           PostMediaNative(
             postID: post.id,
             postTitle: data.title,
@@ -96,8 +90,14 @@ struct PostHeaderNative: View {
       PostHeaderAuthorRow(data: data, avatarRequest: winstonData.avatarImageRequest, hasBody: !data.selftext.isEmpty, bodyCollapsed: $bodyCollapsed)
     }
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.vertical, 8)
     .contextMenu {
+      if !data.selftext.isEmpty {
+        Button {
+          showingSelectText = true
+        } label: {
+          Label("Select Text", systemImage: "text.cursor")
+        }
+      }
       Button {
         let layout = RenderingReportLayoutContext(
           surface: "native-post-detail-header",
@@ -114,6 +114,7 @@ struct PostHeaderNative: View {
         Label("Report Rendering Issue", systemImage: "exclamationmark.bubble")
       }
     }
+    .selectableTextSheet(isPresented: $showingSelectText, markdown: data.selftext, title: post.data?.title ?? "Select Text")
     .onAppear { Task { await post.toggleSeen(true) } }
   }
 }

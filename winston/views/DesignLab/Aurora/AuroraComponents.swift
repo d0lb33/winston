@@ -642,6 +642,11 @@ private struct AuroraPostCardSurface: View {
     presentation.isEmbeddedCrosspost ? 12 : 16
   }
 
+  /// Margin reserved around feed media. The media's open-fullscreen gesture only covers its
+  /// (inset) frame, so this surrounding strip falls through to the card's open-post tap —
+  /// making it harder to hit media when you meant to open the post.
+  static let mediaTapInset: CGFloat = 12
+
   private var cardCornerRadius: CGFloat {
     presentation.isEmbeddedCrosspost ? min(theme.cornerRadius, 12) : theme.cornerRadius
   }
@@ -855,6 +860,9 @@ private struct AuroraPostCardSurface: View {
         )
       } else {
         let _ = ScrollPerfDiagnostics.bump("auroraCard.media.native")
+        // Render media narrower than the card and pad the gap, so the inset margin around it
+        // opens the post instead of media (see `mediaTapInset`).
+        let mediaWidth = max(1, contentWidth - Self.mediaTapInset * 2)
         PostRowMediaNative(
           postID: post.id,
           postTitle: data.title,
@@ -865,7 +873,7 @@ private struct AuroraPostCardSurface: View {
           blurNSFW: cardSettings.blurNSFW,
           isMediaTappable: cardSettings.isMediaTappable,
           compact: false,
-          columnWidth: contentWidth,
+          columnWidth: mediaWidth,
           compactThumbnailSize: cardSettings.compactThumbnailSize,
           maxMediaHeightPct: cardSettings.maxMediaHeightPct,
           cornerRadius: theme.mediaRadius,
@@ -876,6 +884,8 @@ private struct AuroraPostCardSurface: View {
           resetVideo: nil
         )
         .equatable()
+        .padding(.horizontal, Self.mediaTapInset)
+        .frame(maxWidth: .infinity, alignment: .leading)
       }
     }
   }
