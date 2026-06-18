@@ -242,6 +242,9 @@
     "%@ members" : {
 
     },
+    "%@ points" : {
+
+    },
     "%@ subscribers" : {
       "localizations" : {
         "de" : {
@@ -309,6 +312,9 @@
           }
         }
       }
+    },
+    "%lld Comments" : {
+
     },
     "%lld hitches/min" : {
 
@@ -507,6 +513,9 @@
     "Add Manual Marker" : {
 
     },
+    "Adjust backdrop blur" : {
+
+    },
     "Advanced" : {
       "localizations" : {
         "de" : {
@@ -633,6 +642,9 @@
 
     },
     "Back to login" : {
+
+    },
+    "Backdrop blur" : {
 
     },
     "Backup" : {
@@ -888,6 +900,9 @@
 
     },
     "Close media viewer" : {
+
+    },
+    "Close preview" : {
 
     },
     "Collapse AutoModerator comments" : {
@@ -2062,6 +2077,9 @@
         }
       }
     },
+    "Immersive · Liquid Glass" : {
+
+    },
     "Import Apollo Read History" : {
 
     },
@@ -2984,6 +3002,9 @@
         }
       }
     },
+    "OP" : {
+
+    },
     "Open" : {
 
     },
@@ -3289,6 +3310,9 @@
           }
         }
       }
+    },
+    "Post type" : {
+
     },
     "Posts" : {
       "localizations" : {
@@ -3979,6 +4003,9 @@
         }
       }
     },
+    "Sort" : {
+
+    },
     "Start duplicating the" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -4426,6 +4453,9 @@
         }
       }
     },
+    "Three glassier takes on the Immersive post detail — switch post type (text · photo · gallery · link) inside each, scroll hundreds of nested comments, tap Close in the bar to return." : {
+
+    },
     "Thumbnail Position" : {
       "localizations" : {
         "de" : {
@@ -4543,6 +4573,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "u/%@"
+          }
+        }
+      }
+    },
+    "u/%@ · %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "u/%1$@ · %2$@"
           }
         }
       }

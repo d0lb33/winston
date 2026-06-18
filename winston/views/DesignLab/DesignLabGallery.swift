@@ -23,6 +23,10 @@ struct DesignLabGallery: View {
           }
           .buttonStyle(.plain)
         }
+
+        Divider().padding(.vertical, 4)
+
+        PostDetailConceptSection()
       }
       .padding(20)
     }

@@ -29,6 +29,7 @@
 		0A5302562FDF21A100CAC6F2 /* AuroraComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */; };
 		0A5302582FDF21CC00CAC6F2 /* AuroraFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */; };
 		0A53025A2FDF222200CAC6F2 /* AuroraPostDetail.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */; };
+		0AD17A0100000000000000B2 /* AuroraPostDetailConcepts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AD17A0100000000000000A1 /* AuroraPostDetailConcepts.swift */; };
 		0A53025C2FDF228A00CAC6F2 /* AuroraRoot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */; };
 		0A53025E2FDF238900CAC6F2 /* DesignLabGallery.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */; };
 		0A5302722FDF2B2E00CAC6F2 /* AuroraTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */; };
@@ -490,6 +491,7 @@
 		0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraComponents.swift; sourceTree = "<group>"; };
 		0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraFeed.swift; sourceTree = "<group>"; };
 		0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraPostDetail.swift; sourceTree = "<group>"; };
+		0AD17A0100000000000000A1 /* AuroraPostDetailConcepts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraPostDetailConcepts.swift; sourceTree = "<group>"; };
 		0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraRoot.swift; sourceTree = "<group>"; };
 		0A53025D2FDF238900CAC6F2 /* DesignLabGallery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DesignLabGallery.swift; sourceTree = "<group>"; };
 		0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraTheme.swift; sourceTree = "<group>"; };
@@ -989,6 +991,7 @@
 				0A5302552FDF21A100CAC6F2 /* AuroraComponents.swift */,
 				0A5302572FDF21CC00CAC6F2 /* AuroraFeed.swift */,
 				0A5302592FDF222200CAC6F2 /* AuroraPostDetail.swift */,
+				0AD17A0100000000000000A1 /* AuroraPostDetailConcepts.swift */,
 				0A53025B2FDF228A00CAC6F2 /* AuroraRoot.swift */,
 				0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */,
 				0A5302732FDF34C600CAC6F2 /* AuroraFeedModel.swift */,
@@ -2467,6 +2470,7 @@
 				653E2DA52A8E278800833556 /* GeneralPanel.swift in Sources */,
 				BEEF0101000000000000000F /* AccountsPanel.swift in Sources */,
 				0A53025A2FDF222200CAC6F2 /* AuroraPostDetail.swift in Sources */,
+				0AD17A0100000000000000B2 /* AuroraPostDetailConcepts.swift in Sources */,
 				BEEF02010000000000000004 /* DiagnosticsPanel.swift in Sources */,
 				EC620EEE2B0CD59700206A66 /* ThemeBG.swift in Sources */,
 				EC8B77A42AB4D89A00875C98 /* Dividers.swift in Sources */,

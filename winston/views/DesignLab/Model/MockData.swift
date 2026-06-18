@@ -241,3 +241,133 @@ enum MockData {
     )
   }
 }
+
+// MARK: - Post-type showcase + large comment forest (for the post-detail concepts)
+
+extension MockData {
+  /// One post per kind, for the Design Lab post-type switcher: text · image · gallery · link.
+  static var showcasePosts: [MockPost] {
+    [
+      feed.first { $0.id == "swift-observable" } ?? feed[0],   // text
+      feed.first { $0.id == "earth-dolomites" } ?? feed[0],    // image
+      feed.first { $0.id == "fold-gallery" } ?? feed[0],       // gallery
+      feed.first { $0.id == "apple-foldiphone" } ?? feed[0],   // link
+    ]
+  }
+
+  static let commentAuthors: [MockUser] = [uAva, uMax, uLena, uKenji, uNina, uTheo, uRosa, uWinston]
+
+  private static let commentBodies: [String] = [
+    "This is the kind of thing I open the app for. Genuinely impressive work.",
+    "Saving this for later — thanks for taking the time to write it all out.",
+    "Okay, this is way better than I expected going in.",
+    "Counterpoint, said with love: the framing could be a touch tighter. Still great.",
+    "How long did this take you start to finish? Asking for, uh, science.",
+    "I was skeptical from the title but you completely won me over.",
+    "Underrated thread. People sleep on how much work this actually takes.",
+    "Commenting so I can find this again. No notes.",
+    "The big-screen layout is the part nobody talks about and it's the whole game.",
+    "Tried this myself last weekend and bounced off hard. Any tips for getting started?",
+    "This belongs on the front page. Take my upvote.",
+    "Respectfully I think the second approach ages better, but I get the appeal of the first.",
+    "Wait, this actually works offline? That changes everything for me.",
+    "My slab phone feels like a peephole now, no exaggeration.",
+    "Bookmarked. This is the reference I've been looking for.",
+    "Hard disagree, and that's exactly why I love this place.",
+    "The restraint here is what makes it. Easy to overdo — you didn't.",
+    "I've read this three times now and I keep noticing new details.",
+    "Genuinely useful. Most posts like this are fluff; this isn't.",
+    "Took me a second to get it, then it clicked and I can't unsee it.",
+    "Sending this to my whole team tomorrow morning.",
+    "Not all heroes wear capes. Some of them post comparison shots.",
+    "This is the comment section I come back for — civil and actually informative.",
+    "Curious how this holds up after a few months of real use.",
+    "Instantly better than the thing it's replacing. No contest.",
+    "The amount of polish in the small interactions is unreal.",
+    "I came to argue and left agreeing. Well done.",
+    "If you write up the full process I will read every single word.",
+    "Honestly this should be the default. Why isn't it the default?",
+    "Small thing, but the typography choices here are chef's kiss.",
+    "Been lurking for years and this is what finally made me comment.",
+    "The before/after sold me completely. Numbers don't lie.",
+    "I have so many questions but mostly I'm just impressed.",
+    "Came for the title, stayed for this exact comment chain.",
+    "Most reasonable take I've seen on the topic all week.",
+    "Plot twist: I actually learned something from a comment section today.",
+  ]
+
+  private static let opBodies: [String] = [
+    "Thank you! Took way more attempts than I'd like to admit. Happy to share the settings.",
+    "Appreciate it — I'll write up the full process this weekend and link it here.",
+    "Ha, that's the exact reaction I was hoping for. Thanks for reading.",
+    "Great question. Short version: patience, and a lot of trial and error.",
+    "You're right, and I went back and forth on that for a while. Good eye.",
+    "Glad it landed! Let me know if anything's unclear and I'll expand.",
+    "Yep, fully offline — that was the whole reason I built it this way.",
+    "Honestly your reply is better than my post. Thank you for this.",
+    "Updating the top post with everyone's suggestions as they come in.",
+    "That means a lot, genuinely. This community is the best part of the project.",
+  ]
+
+  /// A large, deep, deterministic comment forest (hundreds of nested comments) for
+  /// stress-testing the post-detail concepts. Stable per post id (seeded), no network.
+  static func largeComments(for post: MockPost, minimumCount: Int = 240) -> [MockComment] {
+    var rng = MockRNG(seed: MockMediaPalette.hash(post.id) ^ 0xA5A5_5A5A)
+    var counter = 0
+
+    func build(depth: Int) -> MockComment {
+      counter += 1
+      let id = "\(post.id)-L\(counter)"
+      let isOP = depth > 0 && rng.chance(12)
+      let author = isOP ? post.author : rng.pick(commentAuthors)
+      let body = isOP ? rng.pick(opBodies) : rng.pick(commentBodies)
+      let score = max(-48, Int(Double(rng.int(0..<2600)) * pow(0.62, Double(depth))) - rng.int(0..<28))
+      let ago = hours(Double(rng.int(1..<47))) + mins(Double(rng.int(0..<60)))
+
+      let branch: Int
+      switch depth {
+      case 0: branch = rng.int(1..<6)
+      case 1: branch = rng.int(0..<4)
+      case 2: branch = rng.int(0..<3)
+      case 3: branch = rng.int(0..<2)
+      default: branch = rng.chance(28) ? 1 : 0
+      }
+
+      var kids: [MockComment] = []
+      if depth < 7 {
+        for _ in 0..<branch { kids.append(build(depth: depth + 1)) }
+      }
+      return MockComment(id: id, author: author, body: body, score: score, createdOffset: ago, isOP: isOP, replies: kids)
+    }
+
+    var roots: [MockComment] = []
+    var safety = 0
+    while roots.reduce(0, { $0 + 1 + $1.descendantCount }) < minimumCount, safety < 80 {
+      roots.append(build(depth: 0))
+      safety += 1
+    }
+    return roots
+  }
+}
+
+/// Tiny deterministic xorshift RNG so the mock forest is stable across launches
+/// (Design Lab must be reproducible — no `Int.random`).
+struct MockRNG {
+  private var state: UInt64
+  init(seed: UInt64) { state = seed == 0 ? 0x9E3779B97F4A7C15 : seed }
+
+  mutating func next() -> UInt64 {
+    state ^= state << 13
+    state ^= state >> 7
+    state ^= state << 17
+    return state
+  }
+
+  mutating func int(_ range: Range<Int>) -> Int {
+    guard range.count > 0 else { return range.lowerBound }
+    return range.lowerBound + Int(next() % UInt64(range.count))
+  }
+
+  mutating func chance(_ percent: Int) -> Bool { int(0..<100) < percent }
+  mutating func pick<T>(_ array: [T]) -> T { array[int(0..<array.count)] }
+}
