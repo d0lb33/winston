@@ -15,8 +15,8 @@
 //    it always shows its columns regardless of the device's reported size class.
 //
 //  Both shells bind to the same `PostsNav`, so fold/unfold preserves the feed scope, the
-//  open post, the detail path, and (by row id) the feed scroll position. The feed
-//  `AuroraFeedModel` is owned here, above the shell switch, so it survives the swap.
+//  open post, and the detail path. Feed model + scroll runtime are owned here, above the
+//  shell switch, so they survive the swap without writing scroll frames into observed nav.
 //
 
 import SwiftUI
@@ -37,6 +37,7 @@ struct AuroraRoot: View {
 
   @State private var sort: SubListingSortOption = .hot
   @State private var model = AuroraFeedModel(subreddit: Subreddit(id: "popular"))
+  @State private var feedScrollState = AuroraFeedScrollStateStore()
   @State private var savedListSummaries: [SavedListSummary] = []
   /// The shell's measured width, used to pick the compact vs wide layout.
   @State private var measuredWidth: CGFloat = 0
@@ -121,6 +122,7 @@ struct AuroraRoot: View {
       }
       .onChange(of: expanded) { _, isExpanded in applyLayout(expanded: isExpanded) }
       .onChange(of: posts.scope) { _, _ in handleScopeChange() }
+      .onChange(of: posts.feedScrollResetRequest) { _, _ in feedScrollState.reset() }
       .onChange(of: accountID) { _, _ in
         resetAccountScopedState()
         reloadSavedListSummaries()
@@ -222,8 +224,8 @@ struct AuroraRoot: View {
         .onAppear { posts.updateContentCanScrollToTop(false) }
     case .home, .popular, .subreddit:
       AuroraFeed(model: model, title: feedTitle, community: currentCommunity,
+                 scrollState: feedScrollState,
                  selectedPostID: selectedPostID,
-                 scrollPosition: $posts.feedScrollPosition,
                  sort: $sort,
                  scrollToTopRequest: posts.contentScrollToTopRequest,
                  onScrollStateChanged: { canScroll in posts.updateContentCanScrollToTop(canScroll) }) { destination in
@@ -261,6 +263,7 @@ struct AuroraRoot: View {
 
   private func handleScopeChange() {
     posts.resetContentAndDetail()
+    feedScrollState.reset()
     syncModelToScope()
   }
 
@@ -278,6 +281,7 @@ struct AuroraRoot: View {
   private func resetAccountScopedState() {
     let launchFeed = DefaultLaunchFeed(settingsValue: Defaults[.BehaviorDefSettings].preferenceDefaultFeed)
     posts.reset(to: launchFeed)
+    feedScrollState.reset()
     model.prepareForAccountSwitch(defaultSubreddit: launchFeed.initialSubreddit)
     sort = .hot
   }

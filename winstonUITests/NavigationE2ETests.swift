@@ -52,7 +52,6 @@ final class NavigationE2ETests: XCTestCase {
     waitPastDoubleTapInterval()
     selectTab("Posts")
     XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
-    XCTAssertTrue(text("navE2E.posts.scrollPosition").label.contains("popular-post-8"))
     XCTAssertFalse(text("navE2E.posts.detailUser").exists)
 
     // At the feed root, the next reselect pops the feed back to the root scope list.

@@ -84,11 +84,43 @@ private struct AuroraReadFrame: Equatable {
 }
 
 struct AuroraFeedScrollPosition: Equatable {
+  static let topID = "aurora-feed-top"
+  static let top = AuroraFeedScrollPosition(id: topID, anchorY: 0)
+
   let id: String
   let anchorY: CGFloat
 
   var unitPoint: UnitPoint {
     UnitPoint(x: 0.5, y: min(1, max(0, anchorY)))
+  }
+}
+
+@MainActor
+final class AuroraFeedScrollStateStore {
+  private(set) var lastContentOffsetY: CGFloat = 0
+  private(set) var position: AuroraFeedScrollPosition?
+
+  func updateOffset(_ offsetY: CGFloat) {
+    lastContentOffsetY = offsetY
+  }
+
+  func updatePosition(_ newPosition: AuroraFeedScrollPosition) {
+    guard position != newPosition else { return }
+    position = newPosition
+  }
+
+  func setTop() {
+    lastContentOffsetY = 0
+    position = .top
+  }
+
+  func markRestoredAwayFromTop() {
+    lastContentOffsetY = max(lastContentOffsetY, 9)
+  }
+
+  func reset() {
+    lastContentOffsetY = 0
+    position = nil
   }
 }
 
@@ -131,12 +163,13 @@ private final class AuroraVisibleRowsBox {
 }
 
 struct AuroraFeed: View {
-  private static let topID = "aurora-feed-top"
+  private static let topID = AuroraFeedScrollPosition.topID
 
   let model: AuroraFeedModel
   let title: String
   /// The real community backing this feed (for the header + join). nil for Popular/Home/All.
   let community: Subreddit?
+  let scrollState: AuroraFeedScrollStateStore
   @Binding private var selectedPostID: String?
   @Binding private var sort: SubListingSortOption
   let scrollToTopRequest: Int
@@ -146,22 +179,16 @@ struct AuroraFeed: View {
   @Environment(\.horizontalSizeClass) private var hSize
   @Default(.PostLinkDefSettings) private var postLinkDefSettings
 
-  @Binding private var scrollPosition: AuroraFeedScrollPosition?
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
   @State private var handledInitialAppear = false
-  /// Last observed content offset. Mirrors the live scroll geometry so reselect's
-  /// "can scroll to top" can be re-derived on every appearance (see `.onAppear`),
-  /// rather than depending on `onScrollGeometryChange` — a *change* handler that does
-  /// not re-fire for a preserved offset when this feed re-appears after a pushed post.
-  @State private var lastContentOffsetY: CGFloat = 0
 
   init(
     model: AuroraFeedModel,
     title: String,
     community: Subreddit?,
+    scrollState: AuroraFeedScrollStateStore,
     selectedPostID: Binding<String?>,
-    scrollPosition: Binding<AuroraFeedScrollPosition?>,
     sort: Binding<SubListingSortOption>,
     scrollToTopRequest: Int = 0,
     onScrollStateChanged: @escaping (Bool) -> Void = { _ in },
@@ -170,8 +197,8 @@ struct AuroraFeed: View {
     self.model = model
     self.title = title
     self.community = community
+    self.scrollState = scrollState
     self._selectedPostID = selectedPostID
-    self._scrollPosition = scrollPosition
     self._sort = sort
     self.scrollToTopRequest = scrollToTopRequest
     self.onScrollStateChanged = onScrollStateChanged
@@ -274,15 +301,15 @@ struct AuroraFeed: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.contentOffset.y
         } action: { _, offsetY in
-          lastContentOffsetY = offsetY
+          scrollState.updateOffset(offsetY)
           onScrollStateChanged(offsetY > 8)
           // Persist where we are (the focused on-screen post) so a fold/unfold that recreates
           // this List can land back here instead of jumping to the top. Only record while
           // genuinely scrolled down (> 8pt): rotation tears the List down by collapsing its
           // offset toward 0, and writing the top sentinel there would clobber the saved post.
           // The top sentinel is recorded only by the explicit scroll-to-top action below.
-          if offsetY > 8, let focusedPosition = visibleRows.focusedPosition(), focusedPosition != scrollPosition {
-            scrollPosition = focusedPosition
+          if offsetY > 8, let focusedPosition = visibleRows.focusedPosition(), focusedPosition != scrollState.position {
+            scrollState.updatePosition(focusedPosition)
           }
           ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
             readOnScrollTracker.markCrossedPostsIfNeeded(offsetY: offsetY, visiblePosts: visiblePosts, readOnScroll: cardSettings.readOnScroll)
@@ -292,7 +319,7 @@ struct AuroraFeed: View {
           withAnimation(.snappy) {
             proxy.scrollTo(Self.topID, anchor: .top)
           }
-          scrollPosition = AuroraFeedScrollPosition(id: Self.topID, anchorY: 0)
+          scrollState.setTop()
           onScrollStateChanged(false)
         }
         .onAppear {
@@ -301,7 +328,7 @@ struct AuroraFeed: View {
           // preserved, but our onDisappear forced the flag false — so a scrolled feed looked
           // "already at top" and a tab reselect popped instead of scrolling up. onScrollGeometry-
           // Change is a *change* handler and won't re-fire for the preserved offset, so re-derive.
-          onScrollStateChanged(lastContentOffsetY > 8)
+          onScrollStateChanged(scrollState.lastContentOffsetY > 8)
 
           guard !handledInitialAppear else { return }
           handledInitialAppear = true
@@ -311,11 +338,11 @@ struct AuroraFeed: View {
           // scroll) so the fresh List lands where we left off instead of jumping to the top. Do
           // this only for this feed view's initial appearance; returning from a pushed post can
           // also trigger onAppear, and reapplying the saved anchor there moves the feed.
-          if let scrollPosition, scrollPosition.id != Self.topID {
+          if let scrollPosition = scrollState.position, scrollPosition.id != Self.topID {
             proxy.scrollTo(scrollPosition.id, anchor: scrollPosition.unitPoint)
             // The recreated List starts at offset 0, so the geometry handler hasn't run yet —
             // mark us scrolled-down to match the restored anchor so reselect scrolls to top first.
-            lastContentOffsetY = max(lastContentOffsetY, 9)
+            scrollState.markRestoredAwayFromTop()
             onScrollStateChanged(true)
           }
         }
@@ -346,7 +373,7 @@ struct AuroraFeed: View {
     .onAppear {
       ScrollPerfDiagnostics.event(
         "Aurora feed appeared",
-        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPosition?.id ?? "nil", "scrollAnchorY": scrollPosition.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollState.position?.id ?? "nil", "scrollAnchorY": scrollState.position.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
       )
       // Belt-and-suspenders recovery: if a previous load was cancelled or settled empty and
       // the `.task(id:)` doesn't re-fire on this re-appearance, re-attempt here. The model's
@@ -358,7 +385,7 @@ struct AuroraFeed: View {
       onScrollStateChanged(false)
       ScrollPerfDiagnostics.event(
         "Aurora feed disappeared",
-        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollPosition?.id ?? "nil", "scrollAnchorY": scrollPosition.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
+        metadata: ["feedIdentity": model.feedIdentity, "visiblePosts": "\(model.visiblePosts.count)", "scrollPosition": scrollState.position?.id ?? "nil", "scrollAnchorY": scrollState.position.map { String(format: "%.3f", $0.anchorY) } ?? "nil"]
       )
     }
     .onChange(of: sort) { _, newSort in

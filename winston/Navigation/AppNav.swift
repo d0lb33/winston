@@ -454,8 +454,11 @@ final class PostsNav: RedditNavigator {
   /// pushes the post instead, but still routes through this via the feed `List(selection:)`.)
   var selectedPostID: String?
 
-  /// The feed row near the user's reading line, preserved across shell swaps / rotation.
+  /// Legacy external scroll slot. `AuroraFeed` keeps live restoration state in
+  /// `AuroraFeedScrollStateStore` so scroll frames do not write into this observed model.
   var feedScrollPosition: AuroraFeedScrollPosition?
+  /// Low-frequency signal for non-observed feed scroll runtime state to clear restoration.
+  var feedScrollResetRequest = 0
 
   /// Compact only: whether the scope's feed is PUSHED on top of the root scope list. `false`
   /// == showing the root list (the Apollo-style home). The wide split ignores this — it always
@@ -507,11 +510,7 @@ final class PostsNav: RedditNavigator {
       // Popped past the feed (empty, or somehow not led by `.feed`) → back at the root list.
       guard case .feed? = newValue.first else {
         compactFeedPresented = false
-        selectedPostID = nil
-        detailPost = nil
-        detailHighlightID = nil
-        contentPath = []
-        detailPath = []
+        resetContentAndDetail()
         return
       }
       compactFeedPresented = true
@@ -600,7 +599,7 @@ final class PostsNav: RedditNavigator {
   /// Clear the open post and any in-feed pushes (e.g. when the feed scope changes).
   func resetContentAndDetail() {
     selectedPostID = nil
-    feedScrollPosition = nil
+    requestFeedScrollReset()
     detailPost = nil
     detailHighlightID = nil
     contentPath = []
@@ -646,7 +645,12 @@ final class PostsNav: RedditNavigator {
     detailHighlightID = nil
     contentPath = []
     detailPath = []
+    requestFeedScrollReset()
+  }
+
+  func requestFeedScrollReset() {
     feedScrollPosition = nil
+    feedScrollResetRequest += 1
   }
 
   func tabReselectAction() -> TabReselectAction {

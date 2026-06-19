@@ -307,8 +307,10 @@ struct PostsNavTests {
     #expect(nav.scope == .popular)
 
     // Pop the feed itself → back at the root scope list.
+    let resetRequestBeforeFeedPop = nav.feedScrollResetRequest
     nav.compactPath = []
     #expect(nav.compactFeedPresented == false)
+    #expect(nav.feedScrollResetRequest == resetRequestBeforeFeedPop + 1)
     #expect(nav.scope == .popular) // scope is remembered; the list highlights it
   }
 
@@ -480,17 +482,17 @@ struct AppNavBridgeTests {
     let appNav = AppNav.shared
     appNav.resetAll()
     appNav.posts.presentScopeFeed(.subreddit(id: "swift"))
-    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "post-near-top", anchorY: 0)
     appNav.posts.contentPath = [.reddit(.user(User(id: "alice")))]
     appNav.posts.openPostInDetail(Post(id: "p1"))
     appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "ios"))), from: .detail)
+    let resetRequestBeforeRootReset = appNav.posts.feedScrollResetRequest
 
     appNav.resetToTabRoot(.posts)
 
     // Reset drops the feed (→ root list) and its scroll, but remembers the scope.
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.compactFeedPresented == false)
-    #expect(appNav.posts.feedScrollPosition == nil)
+    #expect(appNav.posts.feedScrollResetRequest == resetRequestBeforeRootReset + 1)
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailHighlightID == nil)
@@ -920,19 +922,19 @@ struct NavigationScenarioTests {
 
     let popularPost = Post(id: "popular-post-4")
     appNav.posts.scope = .popular
-    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "popular-post-8", anchorY: 0)
     appNav.posts.selectedPostID = popularPost.id
     appNav.posts.selectFeedPost(popularPost)
 
     appNav.posts.navigate(.reddit(.subFeed(Subreddit(id: "swift"))), from: .detail)
     appNav.posts.navigate(.reddit(.user(User(id: "alice"))), from: .detail)
+    let resetRequestBeforeRootReset = appNav.posts.feedScrollResetRequest
 
     appNav.resetSelectedSurfaceToTabRoot()
 
     #expect(appNav.selectedTab == .posts)
     #expect(appNav.posts.scope == .popular)
     #expect(appNav.posts.compactFeedPresented == false) // returned to the root list
-    #expect(appNav.posts.feedScrollPosition == nil)     // the feed scroll is dropped with it
+    #expect(appNav.posts.feedScrollResetRequest == resetRequestBeforeRootReset + 1)
     #expect(appNav.posts.selectedPostID == nil)
     #expect(appNav.posts.detailPost == nil)
     #expect(appNav.posts.detailPath.isEmpty)
@@ -948,17 +950,17 @@ struct NavigationScenarioTests {
 
     let swiftPost = Post(id: "swift-post-2")
     appNav.posts.scope = .subreddit(id: "swift")
-    appNav.posts.feedScrollPosition = AuroraFeedScrollPosition(id: "swift-post-12", anchorY: 0)
     appNav.posts.contentPath = [.reddit(.user(User(id: "source-profile")))]
     appNav.posts.selectedPostID = swiftPost.id
     appNav.posts.selectFeedPost(swiftPost)
     appNav.posts.navigate(.reddit(.user(User(id: "post-author"))), from: .detail)
+    let resetRequestBeforeRootReset = appNav.posts.feedScrollResetRequest
 
     appNav.resetToTabRoot(.posts)
 
     #expect(appNav.posts.scope == .subreddit(id: "swift"))
     #expect(appNav.posts.compactFeedPresented == false)
-    #expect(appNav.posts.feedScrollPosition == nil)
+    #expect(appNav.posts.feedScrollResetRequest == resetRequestBeforeRootReset + 1)
     #expect(appNav.posts.contentPath.isEmpty)
     #expect(appNav.posts.detailPath.isEmpty)
     #expect(appNav.posts.detailPost == nil)
