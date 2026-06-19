@@ -122,20 +122,40 @@ private struct ImageMediaSinglePreview: View {
   let namespace: Namespace.ID
   let open: () -> Void
 
-  private var width: CGFloat {
-    compact ? scaledCompactModeThumbSize(compact: compact) : max(contentWidth, 1)
+  /// The inline media frame. For images that fit, width fills the column and height is the
+  /// proportional height. For images taller than the screen-height cap, the WIDTH shrinks to keep
+  /// the aspect ratio intact — so the whole image stays visible (no crop, readable inline) while
+  /// never growing past the available screen space. The parent centers any narrower result.
+  private var displaySize: CGSize {
+    if compact {
+      let side = scaledCompactModeThumbSize(compact: compact)
+      return CGSize(width: side, height: side)
+    }
+    let availableWidth = max(contentWidth, 1)
+    // Unknown source dimensions: height -1 signals "self-size to the loaded aspect ratio" so a
+    // tall image isn't forced into a square that center-crops it (cutting off the text).
+    guard image.size.width > 0, image.size.height > 0 else {
+      return CGSize(width: availableWidth, height: -1)
+    }
+    let proportionalHeight = (availableWidth * image.size.height) / image.size.width
+    // 110 is the "Original" sentinel: no cap, show the full proportional height.
+    guard maxMediaHeightScreenPercentage != 110 else {
+      return CGSize(width: availableWidth, height: proportionalHeight)
+    }
+    let maxHeight = (maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth)
+    guard proportionalHeight > maxHeight else {
+      return CGSize(width: availableWidth, height: proportionalHeight)
+    }
+    // Too tall: cap the height and narrow the width to preserve the aspect ratio (fit, not crop).
+    let cappedWidth = maxHeight * image.size.width / image.size.height
+    return CGSize(width: max(1, cappedWidth), height: maxHeight)
   }
 
+  private var width: CGFloat { displaySize.width }
+
   private var height: CGFloat? {
-    if compact { return scaledCompactModeThumbSize(compact: compact) }
-    let availableWidth = max(contentWidth, 1)
-    // Unknown source dimensions: return nil so GalleryThumb fixes the width and lets the image
-    // self-size to its loaded aspect ratio, instead of forcing a square that center-crops tall
-    // memes (cutting off the text). The full image stays visible inline.
-    guard image.size.width > 0, image.size.height > 0 else { return nil }
-    let proportionalHeight = (availableWidth * image.size.height) / image.size.width
-    guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
-    return min((maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth), proportionalHeight)
+    let value = displaySize.height
+    return value < 0 ? nil : value
   }
 
   private var mediaSizeWorkKey: String {

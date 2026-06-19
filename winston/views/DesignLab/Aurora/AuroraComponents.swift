@@ -855,10 +855,10 @@ private struct AuroraPostCardSurface: View {
         )
       } else {
         let _ = ScrollPerfDiagnostics.bump("auroraCard.media.native")
-        // Full-bleed: media spans the entire card width, escaping the card's content padding via
-        // a negative horizontal inset so images / video reach the card edges. Header, title, and
-        // footer stay padded. Square corners (radius 0) keep the media band flush to the card's
-        // vertical edges instead of leaving card-fill slivers at the corners.
+        // Media fills the card's content column and stays rounded (theme.mediaRadius). Images
+        // taller than the screen-height cap are shrunk in width to preserve their aspect ratio and
+        // centered — the whole image stays readable inline instead of being cropped (see
+        // ImageMediaSinglePreview). `.frame(maxWidth: .infinity)` centers any such narrower media.
         PostRowMediaNative(
           postID: post.id,
           postTitle: data.title,
@@ -869,10 +869,10 @@ private struct AuroraPostCardSurface: View {
           blurNSFW: cardSettings.blurNSFW,
           isMediaTappable: cardSettings.isMediaTappable,
           compact: false,
-          columnWidth: cardWidth,
+          columnWidth: contentWidth,
           compactThumbnailSize: cardSettings.compactThumbnailSize,
           maxMediaHeightPct: cardSettings.maxMediaHeightPct,
-          cornerRadius: 0,
+          cornerRadius: theme.mediaRadius,
           marksSeenOnPreview: cardSettings.lightboxReadsPost,
           markAsSeen: markAsRead,
           dimsTheme: AuroraPostPresentation.mediaTheme,
@@ -880,8 +880,7 @@ private struct AuroraPostCardSurface: View {
           resetVideo: nil
         )
         .equatable()
-        .frame(width: cardWidth, alignment: .leading)
-        .padding(.horizontal, -cardPadding)
+        .frame(maxWidth: .infinity)
       }
     }
   }
