@@ -36,7 +36,13 @@ struct GalleryThumb: View, Equatable {
   }
 
   var body: some View {
-    URLImage(url: image.url, imgRequest: image.request, processors: resizeProcessors, size: CGSize(width: width, height: height ?? 0), diagnosticContext: diagnosticContext)
+    // `requestImageScaledToFill` makes URLImage render the image `.resizable()`. Without it the
+    // image is rigid at the processor's (aspectFill) bitmap size — which is LARGER than this
+    // frame — so the `.frame().clipped()` below would center-crop all four edges (a landscape
+    // screenshot loses its left/right content; the `.scaledToFill()` can't scale a rigid image).
+    // Resizable + a frame sized to the true aspect ratio (see ImageMediaSinglePreview) scales the
+    // whole image into the frame instead of cropping it.
+    URLImage(url: image.url, imgRequest: image.request, processors: resizeProcessors, size: CGSize(width: width, height: height ?? 0), diagnosticContext: diagnosticContext, requestImageScaledToFill: true)
       .scaledToFill()
       .zIndex(1)
       .fixedSize(horizontal: false, vertical: height == nil)
