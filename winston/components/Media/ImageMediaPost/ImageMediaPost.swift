@@ -126,14 +126,13 @@ private struct ImageMediaSinglePreview: View {
     compact ? scaledCompactModeThumbSize(compact: compact) : max(contentWidth, 1)
   }
 
-  private var height: CGFloat {
+  private var height: CGFloat? {
     if compact { return scaledCompactModeThumbSize(compact: compact) }
     let availableWidth = max(contentWidth, 1)
-    guard image.size.width > 0, image.size.height > 0 else {
-      let configuredMaxHeight = (maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth)
-      let maxHeight = maxMediaHeightScreenPercentage == 110 || configuredMaxHeight <= 0 ? availableWidth : configuredMaxHeight
-      return min(maxHeight, availableWidth)
-    }
+    // Unknown source dimensions: return nil so GalleryThumb fixes the width and lets the image
+    // self-size to its loaded aspect ratio, instead of forcing a square that center-crops tall
+    // memes (cutting off the text). The full image stays visible inline.
+    guard image.size.width > 0, image.size.height > 0 else { return nil }
     let proportionalHeight = (availableWidth * image.size.height) / image.size.width
     guard maxMediaHeightScreenPercentage != 110 else { return proportionalHeight }
     return min((maxMediaHeightScreenPercentage / 100) * max(ScreenMetrics.bounds.height, availableWidth), proportionalHeight)

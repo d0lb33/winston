@@ -509,7 +509,7 @@ struct AuroraPostCardRow: View {
 
   private var cardWidth: CGFloat {
     if let rowWidth {
-      return max(1, rowWidth - 28)
+      return max(1, rowWidth - 20)
     }
     return measuredCardWidth
   }
@@ -545,8 +545,8 @@ struct AuroraPostCardRow: View {
         .frame(width: cardWidth, alignment: .leading)
       }
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 7)
+    .padding(.horizontal, 10)
+    .padding(.vertical, 5)
     .frame(width: rowWidth, alignment: .leading)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
@@ -639,13 +639,8 @@ private struct AuroraPostCardSurface: View {
   }
 
   private var cardPadding: CGFloat {
-    presentation.isEmbeddedCrosspost ? 12 : 16
+    presentation.isEmbeddedCrosspost ? 12 : 14
   }
-
-  /// Margin reserved around feed media. The media's open-fullscreen gesture only covers its
-  /// (inset) frame, so this surrounding strip falls through to the card's open-post tap —
-  /// making it harder to hit media when you meant to open the post.
-  static let mediaTapInset: CGFloat = 12
 
   private var cardCornerRadius: CGFloat {
     presentation.isEmbeddedCrosspost ? min(theme.cornerRadius, 12) : theme.cornerRadius
@@ -860,9 +855,10 @@ private struct AuroraPostCardSurface: View {
         )
       } else {
         let _ = ScrollPerfDiagnostics.bump("auroraCard.media.native")
-        // Render media narrower than the card and pad the gap, so the inset margin around it
-        // opens the post instead of media (see `mediaTapInset`).
-        let mediaWidth = max(1, contentWidth - Self.mediaTapInset * 2)
+        // Full-bleed: media spans the entire card width, escaping the card's content padding via
+        // a negative horizontal inset so images / video reach the card edges. Header, title, and
+        // footer stay padded. Square corners (radius 0) keep the media band flush to the card's
+        // vertical edges instead of leaving card-fill slivers at the corners.
         PostRowMediaNative(
           postID: post.id,
           postTitle: data.title,
@@ -873,10 +869,10 @@ private struct AuroraPostCardSurface: View {
           blurNSFW: cardSettings.blurNSFW,
           isMediaTappable: cardSettings.isMediaTappable,
           compact: false,
-          columnWidth: mediaWidth,
+          columnWidth: cardWidth,
           compactThumbnailSize: cardSettings.compactThumbnailSize,
           maxMediaHeightPct: cardSettings.maxMediaHeightPct,
-          cornerRadius: theme.mediaRadius,
+          cornerRadius: 0,
           marksSeenOnPreview: cardSettings.lightboxReadsPost,
           markAsSeen: markAsRead,
           dimsTheme: AuroraPostPresentation.mediaTheme,
@@ -884,8 +880,8 @@ private struct AuroraPostCardSurface: View {
           resetVideo: nil
         )
         .equatable()
-        .padding(.horizontal, Self.mediaTapInset)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: cardWidth, alignment: .leading)
+        .padding(.horizontal, -cardPadding)
       }
     }
   }

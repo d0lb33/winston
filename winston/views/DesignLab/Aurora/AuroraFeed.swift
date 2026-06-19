@@ -202,7 +202,7 @@ struct AuroraFeed: View {
             AuroraCommunityHeader(sub: community)
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
-              .listRowInsets(EdgeInsets(top: 10, leading: 14, bottom: 2, trailing: 14))
+              .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 2, trailing: 10))
           }
           ForEach(visiblePosts) { post in
             AuroraPostCardRow(post: post, availableRowWidth: rowWidth, isSelected: post.id == selectedPostID && hSize == .regular, onCompactNavigate: onCompactNavigate, settings: cardSettings)
