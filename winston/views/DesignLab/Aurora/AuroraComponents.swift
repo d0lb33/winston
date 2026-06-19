@@ -389,6 +389,79 @@ struct GlassVotePill: View {
   }
 }
 
+// MARK: - Glass action bar (shared by feed rows and post detail)
+
+/// Two grouped glass pills — [▲ score ▼ · 💬] and [save · reply · share]. Each group is a
+/// SINGLE `.glassEffect` surface with PLAIN buttons inside: per-button `.interactive()` glass
+/// displaces the hit regions so taps land on the wrong control, whereas plain buttons over one
+/// glass surface hit-test by their own frames (matching the native controls). Real glass is fine
+/// here even in scrolling feed rows because the Aurora backdrop is a static system color now (the
+/// old hang came from re-blurring against an *animating* mesh every frame).
+struct AuroraActionBar: View {
+  @ObservedObject var post: Post
+  var prominent: Bool = false
+  @Environment(\.auroraTheme) private var theme
+
+  private var symbolFont: Font { .system(size: prominent ? 16 : 14, weight: .semibold) }
+  private var hPad: CGFloat { prominent ? 16 : 13 }
+  private var vPad: CGFloat { prominent ? 10 : 8 }
+
+  var body: some View {
+    if let data = post.data {
+      HStack(spacing: 10) {
+        HStack(spacing: prominent ? 14 : 12) {
+          Button { Task { _ = await post.vote(.up) } } label: {
+            Image(systemName: "arrow.up").foregroundStyle(data.likes == true ? theme.accent : .secondary)
+          }
+          .symbolEffect(.bounce, value: data.likes == true)
+          .accessibilityLabel("Upvote")
+          Text(formatBigNumber(data.ups))
+            .font(.subheadline.weight(.semibold)).monospacedDigit()
+            .foregroundStyle(data.likes == true ? theme.accent : data.likes == false ? theme.downvote : .primary)
+            .contentTransition(.numericText())
+          Button { Task { _ = await post.vote(.down) } } label: {
+            Image(systemName: "arrow.down").foregroundStyle(data.likes == false ? theme.downvote : .secondary)
+          }
+          .symbolEffect(.bounce, value: data.likes == false)
+          .accessibilityLabel("Downvote")
+          Capsule().fill(theme.hairline).frame(width: 1, height: 16)
+          Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
+            .font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
+        }
+        .font(symbolFont)
+        .buttonStyle(.plain)
+        .padding(.horizontal, hPad).padding(.vertical, vPad)
+        .glassEffect(.regular, in: .capsule)
+
+        Spacer(minLength: 8)
+
+        HStack(spacing: prominent ? 20 : 18) {
+          Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
+            Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
+              .foregroundStyle(data.saved ? theme.accent : .secondary)
+          }
+          .accessibilityLabel(data.saved ? "Unsave" : "Save")
+          Button { ReplyModalInstance.shared.enable(.post(post)) } label: {
+            Image(systemName: "arrowshape.turn.up.left").foregroundStyle(.secondary)
+          }
+          .accessibilityLabel("Reply")
+          if let permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)") {
+            ShareLink(item: permaURL) {
+              Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
+            }
+            .simultaneousGesture(TapGesture().onEnded { Task { await post.markInteractedAsRead() } })
+            .accessibilityLabel("Share")
+          }
+        }
+        .font(symbolFont)
+        .buttonStyle(.plain)
+        .padding(.horizontal, hPad).padding(.vertical, vPad)
+        .glassEffect(.regular, in: .capsule)
+      }
+    }
+  }
+}
+
 // MARK: - Link chip
 
 struct AuroraLinkChip: View {
@@ -509,7 +582,7 @@ struct AuroraPostCardRow: View {
 
   private var cardWidth: CGFloat {
     if let rowWidth {
-      return max(1, rowWidth - 20)
+      return max(1, rowWidth)
     }
     return measuredCardWidth
   }
@@ -545,8 +618,6 @@ struct AuroraPostCardRow: View {
         .frame(width: cardWidth, alignment: .leading)
       }
     }
-    .padding(.horizontal, 10)
-    .padding(.vertical, 5)
     .frame(width: rowWidth, alignment: .leading)
     .frame(maxWidth: .infinity, alignment: .leading)
     .contentShape(Rectangle())
@@ -639,7 +710,7 @@ private struct AuroraPostCardSurface: View {
   }
 
   private var cardPadding: CGFloat {
-    presentation.isEmbeddedCrosspost ? 12 : 14
+    presentation.isEmbeddedCrosspost ? 12 : 16
   }
 
   private var cardCornerRadius: CGFloat {
@@ -666,28 +737,14 @@ private struct AuroraPostCardSurface: View {
     let _ = ScrollPerfProbe.shared.bump("auroraCardContentBody")
     if let data = post.data {
       let readOpacity = data.winstonSeen == true ? 0.6 : 1
-      VStack(alignment: .leading, spacing: 11) {
-        HStack(spacing: 8) {
-          Button { openSubreddit(data.subreddit) } label: {
-            HStack(spacing: 8) {
-              AuroraSubIcon(name: data.subreddit, iconKit: winstonData.subreddit?.data?.subredditIconKit, size: 24)
-              Text("r/\(data.subreddit)").font(.caption.weight(.semibold)).foregroundStyle(.primary)
-            }
-          }
-          .buttonStyle(.borderless)
-          .diagnosticTapTarget("post subreddit", color: .blue)
-          Text("· \(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))")
-            .font(.caption).foregroundStyle(.secondary)
-          Spacer()
-          if data.stickied == true {
-            Image(systemName: "pin.fill").font(.caption2).foregroundStyle(theme.accent)
-          }
-        }
-        .opacity(readOpacity)
-        .zIndex(2)
+      let isFeed = !presentation.isEmbeddedCrosspost
+      let content = VStack(alignment: .leading, spacing: isFeed ? 10 : 9) {
+        headerRow(data)
+          .opacity(readOpacity)
+          .zIndex(2)
 
         Text(data.title)
-          .font(.headline)
+          .font(isFeed ? .headline : .subheadline.weight(.semibold))
           .foregroundStyle(.primary)
           .fixedSize(horizontal: false, vertical: true)
           .opacity(readOpacity)
@@ -716,44 +773,103 @@ private struct AuroraPostCardSurface: View {
             .zIndex(2)
         }
 
-        HStack(spacing: 12) {
+        if isFeed {
+          AuroraActionBar(post: post)
+            .padding(.top, 2)
+            .opacity(readOpacity)
+            .zIndex(2)
+        } else {
+          embeddedFooter(data)
+            .opacity(readOpacity)
+            .zIndex(2)
+        }
+      }
+      .padding(.horizontal, cardPadding)
+      .padding(.vertical, isFeed ? 14 : cardPadding)
+      .frame(width: cardWidth, alignment: .leading)
+
+      if isFeed {
+        // Edge-to-edge row: no card chrome, just a full-width hairline divider between posts and a
+        // subtle accent wash when this row is the selected detail (wide split layout).
+        VStack(alignment: .leading, spacing: 0) {
+          content
+          Rectangle()
+            .fill(theme.hairline.opacity(0.7))
+            .frame(maxWidth: .infinity)
+            .frame(height: 0.5)
+        }
+        .frame(width: cardWidth, alignment: .leading)
+        .background(presentation.isSelected ? theme.accent.opacity(0.10) : Color.clear)
+        .contentShape(Rectangle())
+        .diagnosticTapTarget("post card", color: .pink)
+        .modifier(AuroraConditionalContextMenu(isEnabled: presentation.showsContextMenu) {
+          contextMenuItems(data)
+        })
+      } else {
+        content
+          .background(theme.cardFill, in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+          .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
+          .overlay(
+            RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
+              .stroke(theme.hairline, lineWidth: 0.7)
+          )
+          .contentShape(Rectangle())
+          .modifier(AuroraPostCardRowTapModifier(onSelect: openPost))
+          .diagnosticTapTarget("embedded post open", color: .pink)
+      }
+    }
+  }
+
+  // MARK: - Row pieces
+
+  /// Two-line identity header: subreddit icon + r/sub on top, u/author · time below. Both the
+  /// subreddit and the author keep their own tap targets; everything else falls through to the
+  /// row-open / collapse gesture.
+  @ViewBuilder private func headerRow(_ data: PostData) -> some View {
+    let isFeed = !presentation.isEmbeddedCrosspost
+    HStack(spacing: 10) {
+      Button { openSubreddit(data.subreddit) } label: {
+        AuroraSubIcon(name: data.subreddit, iconKit: winstonData.subreddit?.data?.subredditIconKit, size: isFeed ? 30 : 22)
+      }
+      .buttonStyle(.borderless)
+      .diagnosticTapTarget("post subreddit icon", color: .blue)
+
+      VStack(alignment: .leading, spacing: 1) {
+        Button { openSubreddit(data.subreddit) } label: {
+          Text("r/\(data.subreddit)")
+            .font(.subheadline.weight(.semibold)).foregroundStyle(.primary).lineLimit(1)
+        }
+        .buttonStyle(.borderless)
+        .diagnosticTapTarget("post subreddit", color: .blue)
+
+        HStack(spacing: 4) {
           Button { openAuthor(data.author) } label: {
-            HStack(spacing: 6) {
-              AuroraAvatar(name: data.author, avatarRequest: winstonData.avatarImageRequest, size: 20)
-              Text("u/\(data.author)").font(.caption.weight(.medium)).foregroundStyle(.secondary).lineLimit(1)
-            }
+            Text("u/\(data.author)").font(.caption).foregroundStyle(.secondary).lineLimit(1)
           }
           .buttonStyle(.borderless)
           .diagnosticTapTarget("post author", color: .blue)
-          Spacer(minLength: 8)
-          Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
-            .font(.caption.weight(.medium)).foregroundStyle(.secondary)
-          NativeVoteControl(
-            likes: data.likes,
-            score: data.ups,
-            onUp: { _ = await post.vote(.up) },
-            onDown: { _ = await post.vote(.down) }
-          )
-          .buttonStyle(.borderless)
+          Text("· \(Date(timeIntervalSince1970: data.created), format: .relative(presentation: .numeric, unitsStyle: .abbreviated))")
+            .font(.caption).foregroundStyle(.tertiary).lineLimit(1)
         }
-        .opacity(readOpacity)
-        .zIndex(2)
       }
-      .padding(cardPadding)
-      .frame(width: cardWidth, alignment: .leading)
-      .background(theme.cardFill, in: RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-      .clipShape(RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: cardCornerRadius, style: .continuous)
-          .stroke(presentation.isSelected ? theme.accent.opacity(0.9) : theme.hairline,
-                  lineWidth: presentation.isSelected ? 1.8 : 0.7)
-      )
-      .contentShape(Rectangle())
-      .modifier(AuroraPostCardRowTapModifier(onSelect: presentation.isEmbeddedCrosspost ? openPost : nil))
-      .diagnosticTapTarget(presentation.isEmbeddedCrosspost ? "embedded post open" : "post card", color: .pink)
-      .modifier(AuroraConditionalContextMenu(isEnabled: presentation.showsContextMenu) {
-        contextMenuItems(data)
-      })
+
+      Spacer(minLength: 4)
+
+      if data.stickied == true {
+        Image(systemName: "pin.fill").font(.caption2).foregroundStyle(theme.accent)
+      }
+    }
+  }
+
+  /// Static metadata strip for the embedded crosspost preview (the original post the outer card
+  /// links to) — no interactive controls; tapping the card opens the original.
+  private func embeddedFooter(_ data: PostData) -> some View {
+    HStack(spacing: 14) {
+      Label(formatBigNumber(data.ups), systemImage: "arrow.up")
+        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+      Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
+        .font(.caption.weight(.medium)).foregroundStyle(.secondary)
+      Spacer(minLength: 0)
     }
   }
 

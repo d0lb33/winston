@@ -31,8 +31,8 @@ struct ThreadRails: View {
       HStack(spacing: 0) {
         ForEach(0..<depth, id: \.self) { level in
           Capsule()
-            .fill(Self.color(level, palette: palette).opacity(0.55))
-            .frame(width: 2)
+            .fill(Self.color(level, palette: palette).opacity(0.6))
+            .frame(width: 2.5)
             .frame(maxWidth: Self.step, alignment: .leading)
         }
       }

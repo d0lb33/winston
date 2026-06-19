@@ -95,10 +95,8 @@ struct AuroraPostDetail: View {
             .accessibilityHidden(true)
 
           Section {
-            // The scrolling post body sits in a translucent Aurora card (cardFill, NOT live
-            // glass — re-blurring against the animating mesh every scroll frame hangs the
-            // render server). The card is inset 16 from the edges and pads its content 16, so
-            // the header gets `contentWidth - 64` for its media width.
+            // Edge-to-edge post body: no card chrome — the header is inset 16 from the screen
+            // edges (matching the feed rows), so it gets `contentWidth - 32` for its media width.
             Group {
               if let winstonData = post.winstonData {
                 if let media = winstonData.extractedMediaForcedNormal, case .repost(let repost) = media {
@@ -106,31 +104,25 @@ struct AuroraPostDetail: View {
                     post: post,
                     repost: repost,
                     subreddit: subreddit,
-                    contentWidth: max(1, contentWidth - 64)
+                    contentWidth: max(1, contentWidth - 32)
                   )
                 } else {
-                  PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit, availableWidth: max(1, contentWidth - 64))
+                  PostHeaderNative(post: post, winstonData: winstonData, sub: subreddit, availableWidth: max(1, contentWidth - 32))
                 }
               } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 200)
               }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
-            .overlay(
-              RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
-                .stroke(theme.hairline, lineWidth: 0.7)
-            )
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .listRowInsets(EdgeInsets())
 
-            // The action bar stays OUTSIDE the card — live-glass pills floating over the mesh
-            // as distinct chrome. The contrast against the cardFill body is what reads as
-            // intentional rather than bare.
-            auroraActionBar
+            // The shared glass action bar — the same [▲ score ▼ · 💬] / [save · reply · share]
+            // pills the feed rows use, in their prominent size.
+            AuroraActionBar(post: post, prominent: true)
               .padding(.horizontal, 16)
+              .padding(.top, 6)
               .listRowInsets(EdgeInsets())
           }
           .listRowBackground(Color.clear)
@@ -224,76 +216,6 @@ struct AuroraPostDetail: View {
       .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 8, trailing: 16))
       .listRowSeparator(.hidden)
       .listRowBackground(Color.clear)
-  }
-
-  // MARK: - Glass action bar (chrome — live glass is fine, it never scrolls inside the list)
-
-  // Two grouped glass pills — [vote · comments] and [save · reply · share] — each a SINGLE
-  // non-interactive `.glassEffect` background with PLAIN buttons inside. Per-button
-  // `.interactive()` glass (the earlier approach) displaced the hit regions so taps landed on
-  // the wrong control (the comment count opened the share sheet, reply opened save). Plain
-  // buttons over one glass surface hit-test by their own frames, like the native controls.
-  @ViewBuilder private var auroraActionBar: some View {
-    if let data = post.data {
-      HStack(spacing: 12) {
-        HStack(spacing: 14) {
-          voteControls(data)
-          Capsule().fill(theme.hairline).frame(width: 1, height: 16)
-          Label(formatBigNumber(data.num_comments), systemImage: "bubble.left.fill")
-            .font(.subheadline.weight(.semibold))
-            .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
-
-        Spacer(minLength: 8)
-
-        HStack(spacing: 20) {
-          Button { SaveChooserInstance.shared.enable(.post(post)) } label: {
-            Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
-              .foregroundStyle(data.saved ? theme.accent : .secondary)
-          }
-          .accessibilityLabel(data.saved ? "Unsave" : "Save")
-          Button { ReplyModalInstance.shared.enable(.post(post)) } label: {
-            Image(systemName: "arrowshape.turn.up.left").foregroundStyle(.secondary)
-          }
-          .accessibilityLabel("Reply")
-          if let permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)") {
-            ShareLink(item: permaURL) {
-              Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
-            }
-            .simultaneousGesture(TapGesture().onEnded {
-              Task { await post.markInteractedAsRead() }
-            })
-            .accessibilityLabel("Share")
-          }
-        }
-        .font(.system(size: 16, weight: .semibold))
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16).padding(.vertical, 10)
-        .glassEffect(.regular, in: .capsule)
-      }
-      .padding(.top, 4)
-    }
-  }
-
-  private func voteControls(_ data: PostData) -> some View {
-    HStack(spacing: 10) {
-      Button { Task { _ = await post.vote(.up) } } label: {
-        Image(systemName: "arrow.up")
-          .foregroundStyle(data.likes == true ? theme.accent : .secondary)
-      }
-      Text(formatBigNumber(data.ups))
-        .font(.subheadline.weight(.semibold)).monospacedDigit()
-        .foregroundStyle(data.likes == true ? theme.accent : data.likes == false ? theme.downvote : .primary)
-        .contentTransition(.numericText())
-      Button { Task { _ = await post.vote(.down) } } label: {
-        Image(systemName: "arrow.down")
-          .foregroundStyle(data.likes == false ? theme.downvote : .secondary)
-      }
-    }
-    .font(.system(size: 15, weight: .bold))
-    .buttonStyle(.plain)
   }
 
   // MARK: - Glass composer
