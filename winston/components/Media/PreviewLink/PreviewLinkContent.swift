@@ -19,6 +19,7 @@ struct PreviewLinkContent: View {
   var compact: Bool
   @ObservedObject var viewModel: PreviewModel
   var url: URL
+  var tapTarget: PreviewLinkTapTarget = .full
   static let height: CGFloat = 88
   @Environment(\.openURL) private var openURL
   var body: some View {
@@ -31,15 +32,35 @@ struct PreviewLinkContent: View {
       loading: state.loading,
       url: url,
       displayURL: cleanURL(url: url),
-      openURL: openURL
+      openURL: openURL,
+      tapTarget: tapTarget
     )
+  }
+}
+
+enum PreviewLinkTapTarget: Equatable {
+  case full
+  case sourceStrip
+}
+
+private struct PreviewLinkTapShape: Shape {
+  let target: PreviewLinkTapTarget
+
+  func path(in rect: CGRect) -> Path {
+    switch target {
+    case .full:
+      return Rectangle().path(in: rect)
+    case .sourceStrip:
+      let height = min(CGFloat(34), rect.height)
+      return Rectangle().path(in: CGRect(x: rect.minX, y: rect.maxY - height, width: rect.width, height: height))
+    }
   }
 }
 
 
 struct PreviewLinkContentRaw: View, Equatable {
   static func == (lhs: PreviewLinkContentRaw, rhs: PreviewLinkContentRaw) -> Bool {
-    lhs.image == rhs.image && lhs.title == rhs.title && lhs.compact == rhs.compact && lhs.description == rhs.description && lhs.loading == rhs.loading && lhs.url == rhs.url && lhs.displayURL == rhs.displayURL
+    lhs.image == rhs.image && lhs.title == rhs.title && lhs.compact == rhs.compact && lhs.description == rhs.description && lhs.loading == rhs.loading && lhs.url == rhs.url && lhs.displayURL == rhs.displayURL && lhs.tapTarget == rhs.tapTarget
   }
   
   static let height: CGFloat = 88
@@ -70,6 +91,7 @@ struct PreviewLinkContentRaw: View, Equatable {
   var url: URL
   var displayURL: String
   var openURL: OpenURLAction
+  var tapTarget: PreviewLinkTapTarget = .full
 
   /// OpenGraph metadata isn't always reachable: paywalled / bot-hostile sites
   /// (e.g. wsj.com) reject the crawler with a 401/403, so `title`/`description`
@@ -107,11 +129,16 @@ struct PreviewLinkContentRaw: View, Equatable {
         Label("Copy URL", systemImage: "link")
       }
     }
+    .contentShape(PreviewLinkTapShape(target: tapTarget))
     .highPriorityGesture(TapGesture().onEnded {
-      if let newURL = URL(string: url.absoluteString.replacingOccurrences(of: "https://reddit.com/", with: "winstonapp://")) {
-        openURL(newURL)
-      }
+      open()
     })
+  }
+
+  private func open() {
+    if let newURL = URL(string: url.absoluteString.replacingOccurrences(of: "https://reddit.com/", with: "winstonapp://")) {
+      openURL(newURL)
+    }
   }
 
   // MARK: - Compact (dense feed): unchanged square thumbnail.
@@ -140,8 +167,8 @@ struct PreviewLinkContentRaw: View, Equatable {
             .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        if hasDescription {
-          Text(description ?? "")
+        if hasDescription, let description {
+          Text(description)
             .fontSize(14)
             .lineLimit(2)
             .opacity(0.75)
@@ -208,8 +235,8 @@ struct PreviewLinkContentRaw: View, Equatable {
         .truncationMode(.tail)
         .multilineTextAlignment(.leading)
         .frame(maxWidth: .infinity, alignment: .leading)
-      if hasDescription {
-        Text(description ?? "")
+      if hasDescription, let description {
+        Text(description)
           .fontSize(13)
           .opacity(0.7)
           .lineLimit(2)

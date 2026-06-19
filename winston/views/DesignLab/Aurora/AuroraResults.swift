@@ -437,6 +437,7 @@ struct AuroraSavedScreen: View {
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
+      .driveInlineVideoCoordinator(coordinateSpace: "savedFeed", posts: model.posts)
       .refreshable { await model.reload(contentWidth: contentWidth) }
       .overlay { emptyState }
     }

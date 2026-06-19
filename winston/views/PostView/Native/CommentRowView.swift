@@ -35,6 +35,12 @@ struct CommentRowView: View {
 
   private var indent: CGFloat { CGFloat(row.depth) * ThreadRails.step }
   private var bodyWidth: CGFloat { max(1, contentWidth - 32 - indent) }
+  private var tapCoordinateSpace: String { "comment-row-tap-\(row.id)" }
+  private var authorTapMinX: CGFloat { 16 + indent }
+  private var authorTapMaxX: CGFloat { authorTapMinX + AuthorTapTarget.avatarSize + AuthorTapTarget.spacing + displayAuthorTapWidth }
+  private var authorTapMidY: CGFloat { (row.isCollapsed ? 8 : 10) + AuthorTapTarget.avatarSize / 2 }
+  private var authorTapMinY: CGFloat { authorTapMidY - AuthorTapTarget.height / 2 }
+  private var authorTapMaxY: CGFloat { authorTapMidY + AuthorTapTarget.height / 2 }
 
   var body: some View {
     let _ = ScrollPerfDiagnostics.bump(row.kind.bodyDiagnosticsCategory)
@@ -61,13 +67,11 @@ struct CommentRowView: View {
 
   @ViewBuilder private var decoratedContent: some View {
     // Indent + thread rails first (rails stay aligned to the indent), THEN the 16pt horizontal
-    // inset (was `listRowInsets`). For comment rows the WHOLE row is one collapse tap target
-    // (`contentShape` + `onTapGesture`): a tap anywhere — the left gutter, the padding, empty
-    // header space, or plain body text — collapses/expands, because those areas have no inner
-    // gesture and fall to this one. The real controls (author, votes, media, links, spoiler)
-    // are deeper child gestures and win their own taps. This is the single collapse hit layer
-    // (replaces the old header tap + inner clear background + on-text overlay) and keeps the
-    // "never a gesture inside CommentBodyNative" performance property.
+    // inset (was `listRowInsets`). For comment rows the whole row is one collapse tap target
+    // (`contentShape` + `SpatialTapGesture`): a tap anywhere in the gutter, padding, empty
+    // header space, or plain body text collapses/expands. Real controls (votes, media, links,
+    // spoiler) are foreground children and win their own taps. The author/profile target is a
+    // small fixed band over the visible avatar/name; space below it remains collapse.
     let base = rowContent
       .padding(.leading, indent)
       .frame(maxWidth: .infinity, alignment: .leading)
@@ -79,8 +83,12 @@ struct CommentRowView: View {
       .background(highlightTint)
     if row.kind == .comment {
       base
+        .coordinateSpace(name: tapCoordinateSpace)
         .contentShape(Rectangle())
-        .onTapGesture { toggleCollapse() }
+        .gesture(
+          SpatialTapGesture(coordinateSpace: .named(tapCoordinateSpace))
+            .onEnded { handleRowTap(at: $0.location) }
+        )
         .diagnosticTapTarget("comment collapse (row)", color: .orange)
     } else {
       base
@@ -120,16 +128,31 @@ struct CommentRowView: View {
     model.toggleCollapse(row.id)
   }
 
+  private func handleRowTap(at location: CGPoint) {
+    guard !swipePresented else { return }
+    if profileAuthor != nil && isAuthorProfileTap(location) {
+      openAuthorProfile()
+    } else {
+      model.toggleCollapse(row.id)
+    }
+  }
+
+  private func isAuthorProfileTap(_ location: CGPoint) -> Bool {
+    location.x >= authorTapMinX
+      && location.x <= authorTapMaxX
+      && location.y >= authorTapMinY
+      && location.y <= authorTapMaxY
+  }
+
   @ViewBuilder private var commentRow: some View {
     let _ = ScrollPerfDiagnostics.bump("commentRow.commentBody")
     if let data = comment.data {
       let collapsed = row.isCollapsed
       let hasBody = data.body?.isEmpty == false
-      // Collapse is handled by ONE full-width clear layer in `decoratedContent` (behind this
-      // content). The author name's own tap (open profile), inline media's tap (fullscreen),
-      // links, votes, and the spoiler button are foreground children, so they win their taps;
-      // everything else — empty header space, padding, the indent gutter, plain body text —
-      // falls through to that collapse layer. No gesture is attached to the body/text view.
+      // Collapse is handled by ONE full-width clear layer in `decoratedContent`. The visible
+      // avatar/name, inline media, links, votes, and spoiler button are foreground controls
+      // that win their own taps; everything else falls through to collapse. No gesture is
+      // attached to the body/text view.
       VStack(alignment: .leading, spacing: 0) {
         header(data, isCollapsed: collapsed)
           .padding(.bottom, !collapsed && hasBody ? 6 : 0)
@@ -168,29 +191,18 @@ struct CommentRowView: View {
     ScrollPerfDiagnostics.bump("commentRow.header")
     let isOP = (data.is_submitter ?? false) || (opAuthor != nil && data.author == opAuthor)
     return HStack(spacing: 6) {
-      // Avatar + author share a single tap target (open profile / expand-when-collapsed). The avatar
-      // always renders — AuroraAvatar falls back to a monogram when the request is nil — so the header
-      // stays structurally data-independent (no per-comment generic specialization → no scroll hitch).
-      HStack(spacing: 6) {
-        AuroraAvatar(name: displayAuthor, avatarRequest: comment.winstonData?.avatarImageRequest, size: 22)
+      // Avatar and author are intentionally tiny profile targets. Header whitespace around
+      // them falls through to the row-wide collapse target.
+      HStack(spacing: AuthorTapTarget.spacing) {
+        AuroraAvatar(name: displayAuthor, avatarRequest: comment.winstonData?.avatarImageRequest, size: AuthorTapTarget.avatarSize)
+          .diagnosticTapTarget("comment author avatar profile", color: .blue)
         Text(displayAuthor)
           .font(.subheadline.weight(.semibold))
           .foregroundStyle(isOP ? Color.accentColor : (isCollapsed ? Color.secondary : Color.primary))
           .lineLimit(1)
           .truncationMode(.tail)
+          .diagnosticTapTarget("comment author name profile", color: .blue)
       }
-      .contentShape(Rectangle())
-      .onTapGesture {
-        // Collapsed: behave like the rest of the header (expand). Expanded: open profile.
-        if isCollapsed {
-          toggleCollapse()
-        } else if let author = comment.data?.author, !author.isEmpty, author != "[deleted]" {
-          navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
-        }
-      }
-      .accessibilityAddTraits(.isButton)
-      .accessibilityHint(isCollapsed ? "" : "Opens profile")
-      .diagnosticTapTarget(isCollapsed ? "comment expand author" : "comment author profile", color: .blue)
 
       ForEach(headerChips(data, isOP: isOP, isCollapsed: isCollapsed)) { chip in
         chipView(chip)
@@ -274,6 +286,28 @@ struct CommentRowView: View {
   private var displayAuthor: String {
     if let author = comment.data?.author, !author.isEmpty { return author }
     return "[deleted]"
+  }
+
+  private var profileAuthor: String? {
+    guard let author = comment.data?.author, !author.isEmpty, author != "[deleted]" else { return nil }
+    return author
+  }
+
+  private var displayAuthorTapWidth: CGFloat {
+    min(CGFloat(displayAuthor.count) * AuthorTapTarget.characterWidth, max(1, contentWidth - authorTapMinX - AuthorTapTarget.trailingAllowance))
+  }
+
+  private func openAuthorProfile() {
+    guard let author = profileAuthor else { return }
+    navigateRedditDestination(.reddit(.user(User(id: author))), model: redditNavigationModel, origin: redditNavigationOrigin)
+  }
+
+  private enum AuthorTapTarget {
+    static let avatarSize: CGFloat = 22
+    static let spacing: CGFloat = 6
+    static let height: CGFloat = 16
+    static let characterWidth: CGFloat = 8.5
+    static let trailingAllowance: CGFloat = 64
   }
 
   // MARK: - Load more

@@ -993,7 +993,8 @@ private struct AuroraPostCardSurface: View {
           markAsSeen: markAsRead,
           dimsTheme: AuroraPostPresentation.mediaTheme,
           feedItemKey: inlineVideoFeedKey,
-          resetVideo: nil
+          resetVideo: nil,
+          feedLinkTapTarget: .sourceStrip
         )
         .equatable()
         .frame(maxWidth: .infinity)

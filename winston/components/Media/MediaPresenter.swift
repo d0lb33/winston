@@ -37,7 +37,7 @@ struct OnlyURL: View {
 
 struct MediaPresenter: View, Equatable {
   static func == (lhs: MediaPresenter, rhs: MediaPresenter) -> Bool {
-    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.blurPostLinkNSFW == rhs.blurPostLinkNSFW && lhs.over18 == rhs.over18 && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedItemKey == rhs.feedItemKey
+    lhs.compact == rhs.compact && lhs.contentWidth == rhs.contentWidth && lhs.badgeKit == rhs.badgeKit && lhs.cornerRadius == rhs.cornerRadius && lhs.blurPostLinkNSFW == rhs.blurPostLinkNSFW && lhs.over18 == rhs.over18 && lhs.media == rhs.media && lhs.diagnosticContext == rhs.diagnosticContext && lhs.feedLinkTapTarget == rhs.feedLinkTapTarget && lhs.feedItemKey == rhs.feedItemKey
   }
   
   @Binding var postDimensions: PostDimensions
@@ -56,6 +56,7 @@ struct MediaPresenter: View, Equatable {
   let maxMediaHeightScreenPercentage: CGFloat
   let resetVideo: ((SharedVideo) -> ())?
   var diagnosticContext: String? = nil
+  var feedLinkTapTarget: PreviewLinkTapTarget = .full
   /// Stable feed-item key (post id) used to gate inline video autoplay so only the
   /// centered video plays. nil when not presented in a gated feed (preserves old behavior).
   var feedItemKey: String? = nil
@@ -101,7 +102,7 @@ struct MediaPresenter: View, Equatable {
       let _ = ScrollPerfDiagnostics.bump("mediaPresenter.link")
       if let previewURL = previewModel.previewURL {
         if !showURLInstead {
-          PreviewLinkContent(compact: compact, viewModel: previewModel, url: previewURL)
+          PreviewLinkContent(compact: compact, viewModel: previewModel, url: previewURL, tapTarget: feedLinkTapTarget)
         } else {
           OnlyURL(url: previewURL)
         }

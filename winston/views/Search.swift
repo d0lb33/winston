@@ -877,12 +877,13 @@ struct Search: View {
     }
     .scrollContentBackground(.hidden)
     .listStyle(.plain)
-      .loader(model.loadingInitial, model.showEmpty)
-      .scrollDismissesKeyboard(.automatic)
-      .searchable(text: $searchQuery.text, isPresented: $isSearchPresented, placement: .toolbar)
-      .autocorrectionDisabled(true)
-      .textInputAutocapitalization(.none)
-      .onChange(of: nav.searchFieldFocusRequest) { _, _ in
+    .driveInlineVideoCoordinator(coordinateSpace: "searchFeed", posts: model.visiblePosts)
+    .loader(model.loadingInitial, model.showEmpty)
+    .scrollDismissesKeyboard(.automatic)
+    .searchable(text: $searchQuery.text, isPresented: $isSearchPresented, placement: .toolbar)
+    .autocorrectionDisabled(true)
+    .textInputAutocapitalization(.none)
+    .onChange(of: nav.searchFieldFocusRequest) { _, _ in
         // Reselecting the Search tab presents + focuses the field (opens the keyboard).
         // Already focused & typing → leave it alone. Presented but unfocused (keyboard
         // dismissed by scrolling) → re-assert so the keyboard comes back. Otherwise present.

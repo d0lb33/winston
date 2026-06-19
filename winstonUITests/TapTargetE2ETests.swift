@@ -44,6 +44,10 @@ final class TapTargetE2ETests: XCTestCase {
   /// Tap an absolute window point at `x`, aligned vertically with `anchor`'s center.
   private func tapRow(x: CGFloat, alignedWith anchor: XCUIElement) {
     let y = anchor.frame.midY
+    tapAbsolute(x: x, y: y)
+  }
+
+  private func tapAbsolute(x: CGFloat, y: CGFloat) {
     app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: x, dy: y)).tap()
   }
 
@@ -76,8 +80,10 @@ final class TapTargetE2ETests: XCTestCase {
     XCTAssertTrue(body(betaBody).waitForExistence(timeout: 8))
     body(alphaBody).tap()
     XCTAssertTrue(body(betaBody).waitForNonExistence(timeout: 3))
-    // When collapsed the body is hidden; the author row is still there — tap it to expand.
-    app.buttons["RootAlpha"].firstMatch.tap()
+    // When collapsed the body is hidden; non-control row space should expand it.
+    let author = app.staticTexts["RootAlpha"].firstMatch
+    XCTAssertTrue(author.waitForExistence(timeout: 5))
+    tapRow(x: screenWidth - 40, alignedWith: author)
     XCTAssertTrue(body(betaBody).waitForExistence(timeout: 3))
   }
 
@@ -85,10 +91,29 @@ final class TapTargetE2ETests: XCTestCase {
 
   func testTapAuthorDoesNotCollapse() {
     XCTAssertTrue(body(betaBody).waitForExistence(timeout: 8))
-    XCTAssertTrue(app.buttons["RootAlpha"].firstMatch.waitForExistence(timeout: 5))
-    app.buttons["RootAlpha"].firstMatch.tap()
+    let author = app.staticTexts["RootAlpha"].firstMatch
+    XCTAssertTrue(author.waitForExistence(timeout: 5))
+    author.tap()
     XCTAssertTrue(body(betaBody).exists)                   // no collapse
     XCTAssertTrue(lastActionContains("author"))           // author navigation fired
+  }
+
+  func testTapNearAuthorWhitespaceCollapses() {
+    XCTAssertTrue(body(betaBody).waitForExistence(timeout: 8))
+    let author = app.staticTexts["RootAlpha"].firstMatch
+    XCTAssertTrue(author.waitForExistence(timeout: 5))
+    tapAbsolute(x: author.frame.maxX + 14, y: author.frame.midY)
+    XCTAssertTrue(body(betaBody).waitForNonExistence(timeout: 3))
+    XCTAssertFalse(lastActionContains("author"))
+  }
+
+  func testTapBelowAuthorNameCollapses() {
+    XCTAssertTrue(body(betaBody).waitForExistence(timeout: 8))
+    let author = app.staticTexts["RootAlpha"].firstMatch
+    XCTAssertTrue(author.waitForExistence(timeout: 5))
+    tapAbsolute(x: author.frame.midX, y: author.frame.maxY + 3)
+    XCTAssertTrue(body(betaBody).waitForNonExistence(timeout: 3))
+    XCTAssertFalse(lastActionContains("author"))
   }
 
   func testTapVoteDoesNotCollapse() {

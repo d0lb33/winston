@@ -228,6 +228,7 @@ struct SavedListDetailScreen: View {
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
+      .driveInlineVideoCoordinator(coordinateSpace: "savedListFeed", posts: hydratedPostsForInlineVideo)
       .overlay {
         if items.isEmpty {
           ContentUnavailableView("No saved items", systemImage: "bookmark")
@@ -239,6 +240,13 @@ struct SavedListDetailScreen: View {
     .onAppear { reload() }
     .onReceive(NotificationCenter.default.publisher(for: .savedListsDidChange)) { _ in
       reload()
+    }
+  }
+
+  private var hydratedPostsForInlineVideo: [Post] {
+    items.compactMap { item in
+      guard item.kind == .post else { return nil }
+      return hydratedPost(for: item)
     }
   }
 

@@ -122,6 +122,15 @@ struct UserView: View {
 
   private func feed(_ tab: ProfileTab) -> ProfileFeedState { feeds[tab] ?? ProfileFeedState() }
 
+  private var selectedFeedPosts: [Post] {
+    feed(selectedTab).items.compactMap { item -> Post? in
+      if case .first(let post) = item {
+        return post
+      }
+      return nil
+    }
+  }
+
   /// The mixed overview is a single non-paged batch; every other feed paginates
   /// by cursor.
   private func canPage(_ tab: ProfileTab) -> Bool {
@@ -314,6 +323,7 @@ struct UserView: View {
     }
     .loader(user.data == nil)
     .auroraListChrome()
+    .driveInlineVideoCoordinator(coordinateSpace: "userProfileFeed", posts: selectedFeedPosts)
     .refreshable {
       await refreshProfile()
     }

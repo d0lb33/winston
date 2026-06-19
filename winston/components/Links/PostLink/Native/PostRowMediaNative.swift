@@ -27,6 +27,7 @@ struct PostRowMediaNative: View, Equatable {
       && lhs.widthBucket == rhs.widthBucket
       && lhs.mediaIdentity == rhs.mediaIdentity
       && lhs.marksSeenOnPreview == rhs.marksSeenOnPreview
+      && lhs.feedLinkTapTarget == rhs.feedLinkTapTarget
   }
 
   let postID: String
@@ -49,6 +50,7 @@ struct PostRowMediaNative: View, Equatable {
   /// Stable feed key (the outer post id) for inline-video center election.
   let feedItemKey: String?
   let resetVideo: ((SharedVideo) -> ())?
+  let feedLinkTapTarget: PreviewLinkTapTarget
 
   /// Throwaway dimensions: the image subview writes its measured size back here for
   /// the NSFW-overlay sizing; the native row self-sizes, so we never read `.size`.
@@ -73,7 +75,8 @@ struct PostRowMediaNative: View, Equatable {
     markAsSeen: (() async -> ())?,
     dimsTheme: PostLinkTheme,
     feedItemKey: String?,
-    resetVideo: ((SharedVideo) -> ())?
+    resetVideo: ((SharedVideo) -> ())?,
+    feedLinkTapTarget: PreviewLinkTapTarget = .full
   ) {
     self.postID = postID
     self.postTitle = postTitle
@@ -92,6 +95,7 @@ struct PostRowMediaNative: View, Equatable {
     self.markAsSeen = markAsSeen
     self.feedItemKey = feedItemKey
     self.resetVideo = resetVideo
+    self.feedLinkTapTarget = feedLinkTapTarget
     _dims = State(initialValue: PostDimensions(contentWidth: 0, compact: compact, theme: dimsTheme, titleSize: .zero, badgeSize: .zero, spacingHeight: 0))
   }
 
@@ -154,6 +158,7 @@ struct PostRowMediaNative: View, Equatable {
       maxMediaHeightScreenPercentage: maxMediaHeightPct,
       resetVideo: resetVideo,
       diagnosticContext: "postRowNative:\(postID)",
+      feedLinkTapTarget: feedLinkTapTarget,
       feedItemKey: feedItemKey
     )
     .allowsHitTesting(isMediaTappable || media.alwaysAllowsInlineNavigation)
