@@ -343,6 +343,56 @@ final class AppNav {
     selectedTab = tab
   }
 
+  func navigateRedditURLDestination(_ destination: NavDest) {
+    AppDiagnostics.asyncBreadcrumb(
+      "AppNav.navigateRedditURLDestination",
+      metadata: [
+        "destination": destination.diagnosticsName,
+        "selectedTab": selectedTab.rawValue,
+        "selectedSurfaceHadDetail": "\(selectedSurfaceHasOpenDetail)"
+      ]
+    )
+
+    if pushIntoSelectedDetailStack(destination) {
+      return
+    }
+
+    navigate(to: .posts, destination)
+  }
+
+  private var selectedSurfaceHasOpenDetail: Bool {
+    switch selectedTab {
+    case .posts:
+      return posts.hasOpenPost
+    case .me:
+      return me.hasOpenDetailRoot
+    case .search:
+      return search.hasOpenDetailRoot
+    case .inbox, .settings:
+      return false
+    }
+  }
+
+  @discardableResult
+  private func pushIntoSelectedDetailStack(_ destination: NavDest) -> Bool {
+    switch selectedTab {
+    case .posts:
+      guard posts.hasOpenPost else { return false }
+      posts.navigate(destination, from: .detail)
+      return true
+    case .me:
+      guard me.hasOpenDetailRoot else { return false }
+      me.navigate(destination, from: .detail)
+      return true
+    case .search:
+      guard search.hasOpenDetailRoot else { return false }
+      search.navigate(destination, from: .detail)
+      return true
+    case .inbox, .settings:
+      return false
+    }
+  }
+
   @discardableResult
   func goBackOneStep() -> Bool {
     switch selectedTab {

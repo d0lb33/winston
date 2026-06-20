@@ -11,28 +11,31 @@ import Defaults
 @discardableResult
 @MainActor
 func openParsedRedditURL(_ parsed: RedditURLType) -> Bool {
-  switch parsed {
-  case .post(let postID, let subID):
-    openRedditDestination(.reddit(.post(Post(id: postID, subID: subID))))
-  case .postID(let postID):
-    openRedditDestination(.reddit(.post(Post(id: postID))))
-  case .comment(let commentID, let postID, let subID):
-    openRedditDestination(.reddit(.postHighlighted(Post(id: postID, subID: subID), commentID)))
-  case .commentID(let commentID, let postID):
-    openRedditDestination(.reddit(.postHighlighted(Post(id: postID), commentID)))
-  case .subreddit(let name):
-    openRedditDestination(.reddit(.subFeed(Subreddit(id: name))))
-  case .user(let username):
-    openRedditDestination(.reddit(.user(User(id: username))))
-  default:
-    return false
-  }
+  guard let destination = parsed.navDestination else { return false }
+  AppNav.shared.navigateRedditURLDestination(destination)
   return true
 }
 
-@MainActor
-private func openRedditDestination(_ destination: NavDest) {
-  AppNav.shared.navigate(to: .posts, destination)
+extension RedditURLType {
+  @MainActor
+  var navDestination: NavDest? {
+    switch self {
+    case .post(let postID, let subID):
+      return .reddit(.post(Post(id: postID, subID: subID)))
+    case .postID(let postID):
+      return .reddit(.post(Post(id: postID)))
+    case .comment(let commentID, let postID, let subID):
+      return .reddit(.postHighlighted(Post(id: postID, subID: subID), commentID))
+    case .commentID(let commentID, let postID):
+      return .reddit(.postHighlighted(Post(id: postID), commentID))
+    case .subreddit(let name):
+      return .reddit(.subFeed(Subreddit(id: name)))
+    case .user(let username):
+      return .reddit(.user(User(id: username)))
+    default:
+      return nil
+    }
+  }
 }
 
 private let redditClipboardURLDetector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue)

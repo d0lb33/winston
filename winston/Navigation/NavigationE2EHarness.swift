@@ -18,6 +18,11 @@ enum NavigationE2ELaunch {
   }
 }
 
+private enum NavigationE2EURLs {
+  static let copiedComment = "https://www.reddit.com/r/swift/comments/copiedpost123/navigation_regression/copiedcomment456/"
+  static let nestedPost = "https://www.reddit.com/r/swift/comments/nestedpost123/navigation_regression/"
+}
+
 struct NavigationE2EHarnessView: View {
   private static let tabOrder: [AppNav.Tab] = [.posts, .inbox, .me, .search, .settings]
 
@@ -114,7 +119,7 @@ struct NavigationE2EHarnessView: View {
     .safeAreaInset(edge: .top) {
       HStack(spacing: 8) {
         Button {
-          _ = openParsedRedditURL(parseRedditURL(Self.copiedCommentURL))
+          _ = openParsedRedditURL(parseRedditURL(NavigationE2EURLs.copiedComment))
         } label: {
           Text(verbatim: "Open Copied Comment Link")
         }
@@ -136,8 +141,6 @@ struct NavigationE2EHarnessView: View {
       acceptsSwiftUISameSelection = true
     }
   }
-
-  private static let copiedCommentURL = "https://www.reddit.com/r/swift/comments/copiedpost123/navigation_regression/copiedcomment456/"
 
   private func handleTabReselect(_ tab: AppNav.Tab, source: String) {
     guard let tap = tabTapClassifier.classify(
@@ -193,8 +196,8 @@ private struct NavigationE2EPostsSurface: View {
         case .feed:
           NavigationE2EFeedSurface(posts: posts)
         case .dest(let destination):
-          if PostsNav.postDetail(from: destination) != nil {
-            NavigationE2EPostDetail(posts: posts)
+          if let detail = PostsNav.postDetail(from: destination) {
+            NavigationE2EPostDetail(posts: posts, visiblePostID: detail.post.id)
           } else {
             NavigationE2EDestinationView(destination: destination)
           }
@@ -260,6 +263,7 @@ private struct NavigationE2EFeedSurface: View {
 
 private struct NavigationE2EPostDetail: View {
   let posts: PostsNav
+  let visiblePostID: String
 
   var body: some View {
     @Bindable var posts = posts
@@ -267,6 +271,12 @@ private struct NavigationE2EPostDetail: View {
     VStack(spacing: 16) {
       Text(verbatim: "Post Detail")
         .accessibilityIdentifier("navE2E.posts.detailRoot")
+      Text(verbatim: "Visible Post: \(visiblePostID)")
+        .accessibilityIdentifier("navE2E.posts.visiblePostID")
+      if visiblePostID != posts.detailPost?.id {
+        Text(verbatim: "Nested URL Post")
+          .accessibilityIdentifier("navE2E.posts.nestedURLPost")
+      }
       Text(verbatim: "Detail Post: \(posts.detailPost?.id ?? posts.selectedPostID ?? "none")")
         .accessibilityIdentifier("navE2E.posts.detailPostID")
       Text(verbatim: "Detail Highlight: \(posts.detailHighlightID ?? "none")")
@@ -281,6 +291,10 @@ private struct NavigationE2EPostDetail: View {
         Text(verbatim: "Open Author")
       }
       .accessibilityIdentifier("navE2E.posts.openAuthor")
+      Button { _ = openParsedRedditURL(parseRedditURL(NavigationE2EURLs.nestedPost)) } label: {
+        Text(verbatim: "Open Nested Post URL")
+      }
+      .accessibilityIdentifier("navE2E.posts.openNestedPostURL")
     }
     .navigationTitle(Text(verbatim: "Post"))
   }

@@ -144,6 +144,24 @@ final class NavigationE2ETests: XCTestCase {
     assertCopiedCommentIsOpen()
   }
 
+  func testRedditURLOpenedFromPostsDetailPushesNestedPost() {
+    XCTAssertTrue(text("navE2E.posts.rootList").waitForExistence(timeout: 5))
+
+    button("navE2E.posts.pickPopular").tap()
+    XCTAssertTrue(text("navE2E.posts.feedRoot").waitForExistence(timeout: 5))
+
+    button("navE2E.posts.openPost").tap()
+    XCTAssertTrue(text("navE2E.posts.detailRoot").waitForExistence(timeout: 5))
+    XCTAssertTrue(text("navE2E.posts.visiblePostID").label.contains("popular-post-1"))
+
+    button("navE2E.posts.openNestedPostURL").tap()
+
+    XCTAssertTrue(text("navE2E.posts.nestedURLPost").waitForExistence(timeout: 5))
+    XCTAssertTrue(text("navE2E.posts.visiblePostID").waitForExistence(timeout: 5))
+    XCTAssertTrue(text("navE2E.posts.visiblePostID").label.contains("nestedpost123"))
+    XCTAssertTrue(text("navE2E.posts.detailPostID").label.contains("popular-post-1"))
+  }
+
   private func assertColumnTabRoots(tab: String, rootID: String, pushID: String, detailID: String) {
     selectTab(tab)
     XCTAssertTrue(text(rootID).waitForExistence(timeout: 5))

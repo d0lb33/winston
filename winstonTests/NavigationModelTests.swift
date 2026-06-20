@@ -653,6 +653,95 @@ struct AppNavBridgeTests {
     #expect(appNav.settings.selection == .behavior)
   }
 
+  @Test("Reddit post URL opened from an existing Posts detail pushes onto detailPath")
+  func redditPostURLFromPostsDetailPushes() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+    appNav.posts.openPostInDetail(Post(id: "rootpost"))
+
+    let opened = openParsedRedditURL(
+      parseRedditURL("https://www.reddit.com/r/swift/comments/nestedpost/navigation_regression/")
+    )
+
+    #expect(opened)
+    #expect(appNav.selectedTab == .posts)
+    #expect(appNav.posts.detailPost?.id == "rootpost")
+    #expect(appNav.posts.detailPath.count == 1)
+    guard case .reddit(.post(let post)) = appNav.posts.detailPath.first else {
+      Issue.record("expected nested post in Posts detailPath")
+      return
+    }
+    #expect(post.id == "nestedpost")
+  }
+
+  @Test("Reddit comment URL opened from an existing Posts detail pushes highlighted post")
+  func redditCommentURLFromPostsDetailPushes() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+    appNav.posts.openPostInDetail(Post(id: "rootpost"))
+
+    let opened = openParsedRedditURL(
+      parseRedditURL("https://www.reddit.com/r/swift/comments/nestedpost/navigation_regression/nestedcomment/")
+    )
+
+    #expect(opened)
+    #expect(appNav.selectedTab == .posts)
+    #expect(appNav.posts.detailPost?.id == "rootpost")
+    #expect(appNav.posts.detailPath.count == 1)
+    guard case .reddit(.postHighlighted(let post, let highlightID)) = appNav.posts.detailPath.first else {
+      Issue.record("expected highlighted nested post in Posts detailPath")
+      return
+    }
+    #expect(post.id == "nestedpost")
+    #expect(highlightID == "nestedcomment")
+  }
+
+  @Test("Reddit post URL opened from Search detail stays in Search detail stack")
+  func redditPostURLFromSearchDetailPushesInSearch() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .search
+    appNav.search.openPostInDetail(Post(id: "searchroot"))
+
+    let opened = openParsedRedditURL(
+      parseRedditURL("https://www.reddit.com/r/swift/comments/searchnested/navigation_regression/")
+    )
+
+    #expect(opened)
+    #expect(appNav.selectedTab == .search)
+    #expect(appNav.search.detailPost?.id == "searchroot")
+    #expect(appNav.search.detailPath.count == 1)
+    guard case .reddit(.post(let post)) = appNav.search.detailPath.first else {
+      Issue.record("expected nested post in Search detailPath")
+      return
+    }
+    #expect(post.id == "searchnested")
+  }
+
+  @Test("Reddit post URL opened from Me detail stays in Me detail stack")
+  func redditPostURLFromMeDetailPushesInMe() {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .me
+    appNav.me.openPostInDetail(Post(id: "meroot"))
+
+    let opened = openParsedRedditURL(
+      parseRedditURL("https://www.reddit.com/r/swift/comments/menested/navigation_regression/")
+    )
+
+    #expect(opened)
+    #expect(appNav.selectedTab == .me)
+    #expect(appNav.me.detailPost?.id == "meroot")
+    #expect(appNav.me.detailPath.count == 1)
+    guard case .reddit(.post(let post)) = appNav.me.detailPath.first else {
+      Issue.record("expected nested post in Me detailPath")
+      return
+    }
+    #expect(post.id == "menested")
+  }
+
   @Test("Posts compact detail scrolled returns surface scroll detail")
   func postsCompactDetailScrolledReturnsScrollDetail() {
     let appNav = AppNav.shared
