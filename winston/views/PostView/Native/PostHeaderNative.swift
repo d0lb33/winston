@@ -411,50 +411,74 @@ struct PostActionBarNative: View {
   var body: some View {
     if let data = post.data {
       let permaURL = URL(string: "https://reddit.com\(data.permalink.escape.urlEncoded)")
-      HStack(spacing: 18) {
-        NativeVoteControl(
-          likes: data.likes,
-          score: data.ups,
-          prominent: true,
-          onUp: { _ = await post.vote(.up) },
-          onDown: { _ = await post.vote(.down) }
-        )
+      HStack(spacing: 10) {
+        HStack(spacing: 8) {
+          NativeVoteControl(
+            likes: data.likes,
+            score: data.ups,
+            prominent: true,
+            usesGlassSurface: false,
+            onUp: { _ = await post.vote(.up) },
+            onDown: { _ = await post.vote(.down) }
+          )
 
-        Label("\(data.num_comments)", systemImage: "bubble.left")
-          .foregroundStyle(.secondary)
-          .accessibilityLabel("\(data.num_comments) comments")
+          Capsule()
+            .fill(.secondary.opacity(0.22))
+            .frame(width: 1, height: 18)
+
+          Label(formatBigNumber(data.num_comments), systemImage: "bubble.left")
+            .foregroundStyle(.secondary)
+            .frame(minHeight: 34)
+            .accessibilityLabel("\(data.num_comments) comments")
+        }
+        .font(.subheadline)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .liquidGlassActionSurface()
 
         Spacer()
 
-        Button {
-          SaveChooserInstance.shared.enable(.post(post))
-        } label: {
-          Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
-            .foregroundStyle(data.saved ? .green : .secondary)
-        }
-        .accessibilityLabel(data.saved ? "Unsave" : "Save")
-
-        Button {
-          showReplyModal = true
-        } label: {
-          Image(systemName: "arrowshape.turn.up.left")
-            .foregroundStyle(.secondary)
-        }
-        .accessibilityLabel("Reply")
-
-        if let permaURL {
-          ShareLink(item: permaURL) {
-            Image(systemName: "square.and.arrow.up")
-              .foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+          Button {
+            SaveChooserInstance.shared.enable(.post(post))
+          } label: {
+            Image(systemName: data.saved ? "bookmark.fill" : "bookmark")
+              .foregroundStyle(data.saved ? .green : .secondary)
+              .frame(width: 34, height: 34)
+              .contentShape(Rectangle())
           }
-          .simultaneousGesture(TapGesture().onEnded {
-            Task { await post.markInteractedAsRead() }
-          })
-          .accessibilityLabel("Share")
+          .accessibilityLabel(data.saved ? "Unsave" : "Save")
+
+          Button {
+            showReplyModal = true
+          } label: {
+            Image(systemName: "arrowshape.turn.up.left")
+              .foregroundStyle(.secondary)
+              .frame(width: 34, height: 34)
+              .contentShape(Rectangle())
+          }
+          .accessibilityLabel("Reply")
+
+          if let permaURL {
+            ShareLink(item: permaURL) {
+              Image(systemName: "square.and.arrow.up")
+                .foregroundStyle(.secondary)
+                .frame(width: 34, height: 34)
+                .contentShape(Rectangle())
+            }
+            .simultaneousGesture(TapGesture().onEnded {
+              Task { await post.markInteractedAsRead() }
+            })
+            .accessibilityLabel("Share")
+          }
         }
+        .font(.subheadline)
+        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 4)
+        .liquidGlassActionSurface()
       }
-      .font(.subheadline)
-      .buttonStyle(.borderless)
       .padding(.vertical, 6)
       .sheet(isPresented: $showReplyModal) {
         ReplyModalPost(post: post, updateComments: updateComments)

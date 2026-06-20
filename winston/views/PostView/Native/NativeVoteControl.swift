@@ -16,6 +16,7 @@ struct NativeVoteControl: View {
   var scoreHidden: Bool = false
   /// Larger styling for the post action bar; compact for comment rows.
   var prominent: Bool = false
+  var usesGlassSurface: Bool = true
   let onUp: () async -> Void
   let onDown: () async -> Void
 
@@ -25,8 +26,21 @@ struct NativeVoteControl: View {
   }
   private var symbolFont: Font { prominent ? .body : .footnote }
   private var hitHeight: CGFloat { prominent ? 36 : 32 }
+  private var horizontalPadding: CGFloat { prominent ? 8 : 4 }
+  private var verticalPadding: CGFloat { prominent ? 4 : 2 }
 
-  var body: some View {
+  @ViewBuilder var body: some View {
+    if usesGlassSurface {
+      control
+        .padding(.horizontal, horizontalPadding)
+        .padding(.vertical, verticalPadding)
+        .liquidGlassActionSurface()
+    } else {
+      control
+    }
+  }
+
+  private var control: some View {
     HStack(spacing: 6) {
       Button {
         Task { await onUp() }
@@ -62,6 +76,6 @@ struct NativeVoteControl: View {
       .accessibilityLabel("Downvote")
       .accessibilityValue(likes == false ? "Downvoted" : "Not downvoted")
     }
-    .buttonStyle(.borderless)
+    .buttonStyle(.plain)
   }
 }

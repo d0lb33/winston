@@ -8,29 +8,48 @@
 import SwiftUI
 
 struct LightBoxButton: View {
-  @State private var pressed = false
   var icon: String
   var accessibilityLabel: LocalizedStringKey = "Media action"
   var action: (()->())?
   var disabled = false
-  var body: some View {
+  var usesGlassSurface = true
+
+  init(
+    icon: String,
+    accessibilityLabel: LocalizedStringKey = "Media action",
+    disabled: Bool = false,
+    usesGlassSurface: Bool = true,
+    action: (() -> ())? = nil
+  ) {
+    self.icon = icon
+    self.accessibilityLabel = accessibilityLabel
+    self.disabled = disabled
+    self.usesGlassSurface = usesGlassSurface
+    self.action = action
+  }
+
+  @ViewBuilder var body: some View {
+    if usesGlassSurface {
+      button
+        .liquidGlassActionSurface(.circle)
+    } else {
+      button
+    }
+  }
+
+  private var button: some View {
     Button {
       guard !disabled else { return }
-      withAnimation(.interpolatingSpring(stiffness: 250, damping: 15)) { pressed = true }
       action?()
-      doThisAfter(0.12) {
-        withAnimation(.interpolatingSpring(stiffness: 250, damping: 15)) { pressed = false }
-      }
     } label: {
       Image(systemName: icon)
-        .fontSize(20)
+        .font(.system(size: 20, weight: .semibold))
         .frame(width: 56, height: 56)
-        .background(Circle().fill(.secondary.opacity(pressed ? 0.15 : 0)))
         .contentShape(Circle())
-        .scaleEffect(pressed ? 0.95 : 1)
     }
     .buttonStyle(.plain)
     .disabled(disabled)
+    .opacity(disabled ? 0.55 : 1)
     .accessibilityLabel(accessibilityLabel)
     .transition(.scaleAndBlur)
     .id(icon)

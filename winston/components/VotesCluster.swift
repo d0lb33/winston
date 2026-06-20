@@ -75,13 +75,32 @@ struct VotesClusterHorizontal: View, Equatable {
   var showUpVoteRatio: Bool
   var body: some View {
     HStack(spacing: showUpVoteRatio ? 4 : 8) {
-      VoteButton(active: (likes ?? false), color: .orange, image: "arrow.up").equatable().onTapGesture(perform: upvote)
+      VoteButton(
+        active: likes == true,
+        color: .orange,
+        image: "arrow.up",
+        accessibilityLabel: "Upvote",
+        accessibilityValue: likes == true ? "Upvoted" : "Not upvoted",
+        action: upvote
+      )
+      .equatable()
       
       VotesClusterInfo(ups: ups, likes: likes, likeRatio: upvote_ratio, showUpVoteRatio: showUpVoteRatio, flyingNumber: FlyingNumberInfo(counter: 0, color: likes))
         .allowsHitTesting(false)
       
-      VoteButton(active: !(likes ?? true), color: .blue ,image: "arrow.down").equatable().onTapGesture(perform: downvote)
+      VoteButton(
+        active: likes == false,
+        color: .blue,
+        image: "arrow.down",
+        accessibilityLabel: "Downvote",
+        accessibilityValue: likes == false ? "Downvoted" : "Not downvoted",
+        action: downvote
+      )
+      .equatable()
     }
+    .padding(.horizontal, 8)
+    .padding(.vertical, 4)
+    .liquidGlassActionSurface()
     //    .drawingGroup()
   }
 }
@@ -97,9 +116,29 @@ struct VotesClusterVertical: View, Equatable {
   let downvote: () -> ()
   var body: some View {
     VStack(spacing: 12) {
-      VoteButton(active: (likes ?? false), color: .orange, image: "arrow.up").equatable().highPriorityGesture(TapGesture().onEnded(upvote))
-      
-      VoteButton(active: !(likes ?? true), color: .blue, image: "arrow.down").equatable().highPriorityGesture(TapGesture().onEnded(downvote))
+      VStack(spacing: 8) {
+        VoteButton(
+          active: likes == true,
+          color: .orange,
+          image: "arrow.up",
+          accessibilityLabel: "Upvote",
+          accessibilityValue: likes == true ? "Upvoted" : "Not upvoted",
+          action: upvote
+        )
+        .equatable()
+        
+        VoteButton(
+          active: likes == false,
+          color: .blue,
+          image: "arrow.down",
+          accessibilityLabel: "Downvote",
+          accessibilityValue: likes == false ? "Downvoted" : "Not downvoted",
+          action: downvote
+        )
+        .equatable()
+      }
+      .padding(.vertical, 5)
+      .liquidGlassActionSurface()
       
       Spacer().frame(maxHeight: .infinity)
     }

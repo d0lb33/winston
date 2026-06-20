@@ -7,6 +7,69 @@
 
 import SwiftUI
 
+enum LiquidGlassActionSurfaceShape {
+  case capsule
+  case circle
+}
+
+private struct LiquidGlassActionSurfaceModifier: ViewModifier {
+  let shape: LiquidGlassActionSurfaceShape
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    switch shape {
+    case .capsule:
+      if #available(iOS 26.0, *) {
+        content
+          .glassEffect(.regular.interactive(), in: Capsule(style: .continuous))
+          .contentShape(Capsule(style: .continuous))
+      } else {
+        content
+          .background(.ultraThinMaterial, in: Capsule(style: .continuous))
+          .contentShape(Capsule(style: .continuous))
+      }
+    case .circle:
+      if #available(iOS 26.0, *) {
+        content
+          .glassEffect(.regular.interactive(), in: Circle())
+          .contentShape(Circle())
+      } else {
+        content
+          .background(.ultraThinMaterial, in: Circle())
+          .contentShape(Circle())
+      }
+    }
+  }
+}
+
+extension View {
+  func liquidGlassActionSurface(_ shape: LiquidGlassActionSurfaceShape = .capsule) -> some View {
+    modifier(LiquidGlassActionSurfaceModifier(shape: shape))
+  }
+}
+
+struct LiquidGlassIconButton: View {
+  var icon: String
+  var accessibilityLabel: LocalizedStringKey
+  var color: Color = .secondary
+  var font: Font = .body
+  var size: CGFloat = 44
+  var action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: icon)
+        .font(font)
+        .foregroundStyle(color)
+        .frame(width: size, height: size)
+        .contentShape(Circle())
+    }
+    .buttonStyle(.plain)
+    .liquidGlassActionSurface(.circle)
+    .accessibilityLabel(accessibilityLabel)
+  }
+}
+
 @available(iOS 17.0, *)
 struct VoteButton: View, Equatable {
   static func == (lhs: VoteButton, rhs: VoteButton) -> Bool {
@@ -15,17 +78,23 @@ struct VoteButton: View, Equatable {
   
   var active: Bool
   var color: Color
-//  var voteAction: () -> ()
   var image: String
+  var accessibilityLabel: LocalizedStringKey
+  var accessibilityValue: LocalizedStringKey
+  var action: () -> Void
   
   var body: some View {
-    Image(systemName: image)
-      .symbolEffect(active ? .bounce.up : .bounce.down, options: .speed(2.75), value: active)
-      .frame(37)
-      .background(Color.clear)
-      .contentShape(Rectangle())
-      .frame(21)
-      .foregroundColor(active ? color : .gray)
+    Button(action: action) {
+      Image(systemName: image)
+        .symbolEffect(active ? .bounce.up : .bounce.down, options: .speed(2.75), value: active)
+        .font(.system(size: 17, weight: .semibold))
+        .frame(width: 34, height: 34)
+        .contentShape(Rectangle())
+        .foregroundStyle(active ? color : .gray)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(accessibilityLabel)
+    .accessibilityValue(accessibilityValue)
   }
 }
 
