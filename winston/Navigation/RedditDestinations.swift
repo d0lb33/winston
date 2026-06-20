@@ -106,7 +106,7 @@ struct RouterDestinationView: View {
         AuroraSubFeedScreen(subreddit: sub)
           .diagnosticScreen("reddit.subFeed.\(sub.id)")
       case .subInfo(let sub):
-        SubredditInfo(subreddit: sub)
+        AuroraSubredditAboutScreen(subreddit: sub)
           .diagnosticScreen("reddit.subInfo.\(sub.id)")
       case .multiFeed(let multi):
         MultiPostsView(multi: multi)

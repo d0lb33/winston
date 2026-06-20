@@ -35,6 +35,7 @@
 		0A5302722FDF2B2E00CAC6F2 /* AuroraTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */; };
 		0A5302742FDF34C600CAC6F2 /* AuroraFeedModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302732FDF34C600CAC6F2 /* AuroraFeedModel.swift */; };
 		0A5302762FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */; };
+		0AB17E012FE0000100CAC6F2 /* AuroraSubredditAboutScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0AB17E022FE0000100CAC6F2 /* AuroraSubredditAboutScreen.swift */; };
 		0A5302782FE05D1600CAC6F2 /* NativeSettingsComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302772FE05D1600CAC6F2 /* NativeSettingsComponents.swift */; };
 		0A5302782FE0638300CAC6F2 /* AppNav.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A5302772FE0638300CAC6F2 /* AppNav.swift */; };
 		0A9D268B2FE4248C00DB9657 /* BetaFeaturesDefSettings.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0A9D268A2FE4248C00DB9657 /* BetaFeaturesDefSettings.swift */; };
@@ -497,6 +498,7 @@
 		0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraTheme.swift; sourceTree = "<group>"; };
 		0A5302732FDF34C600CAC6F2 /* AuroraFeedModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraFeedModel.swift; sourceTree = "<group>"; };
 		0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraSubFeedScreen.swift; sourceTree = "<group>"; };
+		0AB17E022FE0000100CAC6F2 /* AuroraSubredditAboutScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuroraSubredditAboutScreen.swift; sourceTree = "<group>"; };
 		0A5302772FE05D1600CAC6F2 /* NativeSettingsComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeSettingsComponents.swift; sourceTree = "<group>"; };
 		0A5302772FE0638300CAC6F2 /* AppNav.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppNav.swift; sourceTree = "<group>"; };
 		0A9D268A2FE4248C00DB9657 /* BetaFeaturesDefSettings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BetaFeaturesDefSettings.swift; sourceTree = "<group>"; };
@@ -996,6 +998,7 @@
 				0A5302712FDF2B2E00CAC6F2 /* AuroraTheme.swift */,
 				0A5302732FDF34C600CAC6F2 /* AuroraFeedModel.swift */,
 				0A5302752FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift */,
+				0AB17E022FE0000100CAC6F2 /* AuroraSubredditAboutScreen.swift */,
 				C0A530280000000000000001 /* AuroraResults.swift */,
 				C0A531030000000000000001 /* AuroraSavedLists.swift */,
 			);
@@ -2442,6 +2445,7 @@
 				EC5A1E432B178FF800EBBE96 /* calculateDistance.swift in Sources */,
 				EC16852E2AEF4B18000DD701 /* GIFViewer.swift in Sources */,
 				0A5302762FDF36C400CAC6F2 /* AuroraSubFeedScreen.swift in Sources */,
+				0AB17E012FE0000100CAC6F2 /* AuroraSubredditAboutScreen.swift in Sources */,
 				ECAA8B872A76473A00D9D636 /* PreviewLinkContent.swift in Sources */,
 				ECF0B7E72A54357F002B9FAD /* StringToMD.swift in Sources */,
 				EC63735F2A7921C4000A03A3 /* dismissKeyboard.swift in Sources */,

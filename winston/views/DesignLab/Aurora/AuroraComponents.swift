@@ -481,7 +481,13 @@ struct AuroraLinkChip: View {
 
 struct AuroraCommunityHeader: View {
   @ObservedObject var sub: Subreddit
+  /// Forwarded from the feed so the About button routes through the same dispatch
+  /// the post cards use (compact → push on the active stack; wide → split origin).
+  var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.auroraTheme) private var theme
+  @Environment(\.horizontalSizeClass) private var hSize
+  @Environment(\.redditNavigationModel) private var redditNavigationModel
+  @Environment(\.redditNavigationOrigin) private var redditNavigationOrigin
 
   var body: some View {
     VStack(alignment: .leading, spacing: 10) {
@@ -495,6 +501,7 @@ struct AuroraCommunityHeader: View {
           }
         }
         Spacer()
+        aboutButton
         joinButton
       }
       if let about = sub.data?.public_description, !about.isEmpty {
@@ -517,6 +524,20 @@ struct AuroraCommunityHeader: View {
     }
   }
 
+  private var aboutButton: some View {
+    Button {
+      navigate(.reddit(.subInfo(sub)))
+    } label: {
+      Image(systemName: "info.circle")
+        .font(.title3.weight(.semibold))
+        .foregroundStyle(theme.accent)
+        .padding(8)
+        .background(theme.chipFill, in: .circle)
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("About r/\(sub.data?.display_name ?? sub.id)")
+  }
+
   private var joinButton: some View {
     let joined = sub.data?.user_is_subscriber ?? false
     return Button {
@@ -529,6 +550,16 @@ struct AuroraCommunityHeader: View {
         .background(joined ? theme.chipFill : theme.accent, in: .capsule)
     }
     .buttonStyle(.plain)
+  }
+
+  /// Mirrors `AuroraPostCardRow.navigate`: in compact use the feed's pushed-stack
+  /// closure; otherwise route through the split's reddit navigation env.
+  private func navigate(_ destination: NavDest) {
+    if hSize == .compact, let onCompactNavigate {
+      onCompactNavigate(destination)
+    } else {
+      navigateRedditDestination(destination, model: redditNavigationModel, origin: redditNavigationOrigin)
+    }
   }
 }
 

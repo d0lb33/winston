@@ -191,12 +191,13 @@ struct SavedListDetailScreen: View {
   @State private var items: [SavedListItemSummary] = []
   @State private var hydratedPosts: [String: Post] = [:]
   @State private var hydratingFullnames: Set<String> = []
+  // Width of the list column, formerly read from a `GeometryReader` that wrapped the `List`
+  // and stopped its content from scrolling under the iPad top tab bar. Measured passively now.
+  @State private var rowWidth: CGFloat = defaultContentWidth
 
   private let store = SavedListsStore.shared
 
   var body: some View {
-    GeometryReader { geometry in
-      let rowWidth = max(1, geometry.size.width)
       List {
         if items.isEmpty {
           Section {
@@ -228,13 +229,13 @@ struct SavedListDetailScreen: View {
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = max(1, $0) }
       .driveInlineVideoCoordinator(coordinateSpace: "savedListFeed", posts: hydratedPostsForInlineVideo)
       .overlay {
         if items.isEmpty {
           ContentUnavailableView("No saved items", systemImage: "bookmark")
         }
       }
-    }
     .navigationTitle(list?.name ?? "Saved List")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear { reload() }

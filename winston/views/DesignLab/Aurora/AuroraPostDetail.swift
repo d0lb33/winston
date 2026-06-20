@@ -48,6 +48,9 @@ struct AuroraPostDetail: View {
   @State private var lastContentOffsetY: CGFloat = 0
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
+  // Width of the detail column, formerly read from a `GeometryReader` that wrapped the `List`
+  // and stopped its content from scrolling under the iPad top tab bar. Measured passively now.
+  @State private var contentWidth: CGFloat = defaultContentWidth
 
   /// Capped inline-media height, read ONCE here (a codable Defaults value → each access
   /// JSON-decodes the whole struct) and threaded down.
@@ -82,9 +85,6 @@ struct AuroraPostDetail: View {
 
   var body: some View {
     ScrollViewReader { proxy in
-      GeometryReader { geometry in
-        let contentWidth = max(1, geometry.size.width)
-
         List {
           Color.clear
             .frame(height: 0)
@@ -156,6 +156,7 @@ struct AuroraPostDetail: View {
         // row height would otherwise leave a large gap under the nav bar).
         .environment(\.defaultMinListRowHeight, 1)
         .scrollContentBackground(.hidden)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = max(1, $0) }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { sortToolbar }
@@ -199,7 +200,6 @@ struct AuroraPostDetail: View {
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
         }
-      }
     }
   }
 

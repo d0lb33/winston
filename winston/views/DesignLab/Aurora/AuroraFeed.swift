@@ -79,7 +79,11 @@ private struct AuroraReadFrame: Equatable {
   }
 
   var isVisible: Bool {
-    maxY > 0 && minY < viewportHeight
+    // `viewportHeight` is now sourced asynchronously from scroll geometry, so it can be 0 on the
+    // first frame before that fires. Treat an unknown height as "tall" so rows below the top
+    // still count as visible until the real viewport height arrives.
+    let limit = viewportHeight > 0 ? viewportHeight : .greatestFiniteMagnitude
+    return maxY > 0 && minY < limit
   }
 }
 
@@ -182,6 +186,14 @@ struct AuroraFeed: View {
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
   @State private var handledInitialAppear = false
+  // Formerly read from a `GeometryReader` that wrapped the `List`. That wrapper pinned the list
+  // to the safe-area-inset frame, so on iPad its content couldn't scroll *under* the floating
+  // top tab bar (it hard-stopped at the bar's bottom edge). Source these passively instead — a
+  // non-constraining width read + the scroll viewport height — so the list underlaps the bars
+  // and picks up the iOS 27 scroll-edge glass effect. `rowWidth` is seeded so the first frame
+  // lays out at a sane width rather than 1.
+  @State private var rowWidth: CGFloat = defaultContentWidth
+  @State private var viewportHeight: CGFloat = 0
 
   init(
     model: AuroraFeedModel,
@@ -213,9 +225,6 @@ struct AuroraFeed: View {
     // value is threaded into each row via `settings:` → `.environment(\.auroraCardSettings)`.
     let cardSettings = AuroraCardSettings(postLinkDefSettings)
 
-    GeometryReader { geometry in
-      let rowWidth = max(1, geometry.size.width)
-
       ScrollViewReader { proxy in
         List(selection: $selectedPostID) {
           Color.clear
@@ -226,7 +235,7 @@ struct AuroraFeed: View {
             .listRowSeparator(.hidden)
             .accessibilityHidden(true)
           if let community {
-            AuroraCommunityHeader(sub: community)
+            AuroraCommunityHeader(sub: community, onCompactNavigate: onCompactNavigate)
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
               .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 2, trailing: 10))
@@ -244,7 +253,7 @@ struct AuroraFeed: View {
                     return AuroraReadFrame(
                       minY: frame.minY,
                       maxY: frame.maxY,
-                      viewportHeight: geometry.size.height
+                      viewportHeight: viewportHeight
                     )
                   } action: { frame in
                     visibleRows.update(frame, id: post.id)
@@ -348,11 +357,18 @@ struct AuroraFeed: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        // Width of the feed column itself (correct in both compact and the wide split). A passive
+        // read — unlike a wrapping GeometryReader it does not constrain the list's frame.
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = max(1, $0) }
+        // The scroll viewport height for the read-frame visibility math (formerly the wrapping
+        // GeometryReader's height).
+        .onScrollGeometryChange(for: CGFloat.self) { $0.containerSize.height } action: { _, height in
+          if height > 0 { viewportHeight = height }
+        }
         .driveInlineVideoCoordinator(coordinateSpace: "auroraFeed", posts: visiblePosts)
         .refreshable { await model.reload(sort: sort, contentWidth: contentWidth) }
         .overlay { if visiblePosts.isEmpty { emptyState(hasLoadedPosts: !model.posts.isEmpty) } }
       }
-    }
     .navigationTitle(title)
     .navigationBarTitleDisplayMode(.inline)
     .overlay(alignment: .bottomTrailing) {

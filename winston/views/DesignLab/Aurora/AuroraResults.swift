@@ -385,11 +385,11 @@ struct AuroraSavedScreen: View {
   @State private var model = AuroraSavedModel()
   @ObservedObject private var wire = RedditWire.shared
   @Environment(\.contentWidth) private var contentWidth
+  // Width of the results column, formerly read from a `GeometryReader` that wrapped the `List`
+  // and stopped its content from scrolling under the iPad top tab bar. Measured passively now.
+  @State private var rowWidth: CGFloat = defaultContentWidth
 
   var body: some View {
-    GeometryReader { geometry in
-      let rowWidth = max(1, geometry.size.width)
-
       List {
         if !model.posts.isEmpty {
           Section(header: AuroraResultSectionHeader(title: "Posts", count: model.posts.count)) {
@@ -437,10 +437,10 @@ struct AuroraSavedScreen: View {
       }
       .listStyle(.plain)
       .scrollContentBackground(.hidden)
+      .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = max(1, $0) }
       .driveInlineVideoCoordinator(coordinateSpace: "savedFeed", posts: model.posts)
       .refreshable { await model.reload(contentWidth: contentWidth) }
       .overlay { emptyState }
-    }
     .navigationTitle("Saved")
     .navigationBarTitleDisplayMode(.inline)
     .onAppear {
