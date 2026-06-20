@@ -1230,22 +1230,24 @@ private final class InlinePlaybackResourceController {
     configureLooping(player: player, key: key, enabled: loop)
 
     if autoplay {
+      if loop, restartLoopingPlaybackIfEnded(player) {
+        return
+      }
       player.play()
     } else {
       player.pause()
     }
   }
 
-  func detach(key: String? = nil, preserveForFullscreen: Bool = false) {
+  func detach(key: String? = nil, preservePlayback: Bool = false) {
     guard let key else {
       for key in Array(attachedVideos.keys) {
-        detach(key: key, preserveForFullscreen: preserveForFullscreen)
+        detach(key: key, preservePlayback: preservePlayback)
       }
       return
     }
     guard let video = attachedVideos[key] else { return }
-    if preserveForFullscreen {
-      removeLoopObserver(for: key)
+    if preservePlayback {
       return
     }
     if video.isPlayerLoaded {
@@ -1273,6 +1275,22 @@ private final class InlinePlaybackResourceController {
     if let loopObserver = loopObservers.removeValue(forKey: key) {
       NotificationCenter.default.removeObserver(loopObserver)
     }
+  }
+
+  private func restartLoopingPlaybackIfEnded(_ player: AVPlayer) -> Bool {
+    guard let item = player.currentItem else { return false }
+    let duration = CMTimeGetSeconds(item.duration)
+    let currentTime = CMTimeGetSeconds(player.currentTime())
+    guard duration.isFinite, currentTime.isFinite, duration > 0 else { return false }
+    guard currentTime >= duration - 0.08 else { return false }
+
+    player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero) { finished in
+      guard finished else { return }
+      DispatchQueue.main.async {
+        player.play()
+      }
+    }
+    return true
   }
 }
 
@@ -1398,7 +1416,7 @@ struct InlineRowPlaybackLayerHost: View {
     InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
     InlinePlaybackResourceController.shared.detach(
       key: attachedKey,
-      preserveForFullscreen: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
+      preservePlayback: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
     )
     self.attachedKey = nil
     player = nil
@@ -1588,7 +1606,7 @@ private struct InlinePlaybackLayerContainer: View {
     InlineVideoCoordinator.shared.setHostHasFrame(false, for: attachedKey)
     InlinePlaybackResourceController.shared.detach(
       key: attachedKey,
-      preserveForFullscreen: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
+      preservePlayback: InlineVideoCoordinator.shared.shouldPreservePlaybackOnLayerDetach(key: attachedKey)
     )
     self.attachedKey = nil
     player = nil
