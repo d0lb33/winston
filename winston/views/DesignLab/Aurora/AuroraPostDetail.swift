@@ -206,7 +206,9 @@ struct AuroraPostDetail: View {
         .onChange(of: model.rows.count) { _, _ in
           // Backstop for the fetch-driven jump: also fire when rows reshape (e.g. a
           // "load more" splice brings the target into view after the initial fetch).
-          jumpToHighlight()
+          if pendingHighlight != nil {
+            jumpToHighlight()
+          }
         }
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
@@ -215,6 +217,9 @@ struct AuroraPostDetail: View {
   }
 
   private func handleCommentCollapse(_ position: CommentScrollPosition) {
+    pendingHighlight = nil
+    highlightScrollTask?.cancel()
+    highlightScrollTask = nil
     let offsetBeforeToggle = lastContentOffsetY
     model.toggleCollapse(position.id)
     guard model.rows.contains(where: { $0.id == position.id }) else { return }
