@@ -1298,6 +1298,27 @@ struct AuroraFeedModelTests {
     #expect(!model.reachedEnd)
   }
 
+  @Test("loadMore returns appended count and dedupes existing posts")
+  func loadMoreReturnsAppendedCountAndDedupes() async {
+    let model = AuroraFeedModel(
+      subreddit: Subreddit(id: "swift"),
+      pageLoader: { _, _, cursor, _, _ in
+        if cursor == "next" {
+          return .success(posts: [Post(id: "p1"), Post(id: "p2")], after: nil)
+        }
+        return .success(posts: [Post(id: "p1")], after: "next")
+      }
+    )
+
+    await model.loadInitialIfNeeded(sort: .hot, contentWidth: 320)
+    let appended = await model.loadMore(sort: .hot, contentWidth: 320)
+
+    #expect(appended == 1)
+    #expect(model.posts.map(\.id) == ["p1", "p2"])
+    #expect(model.visiblePosts.map(\.id) == ["p1", "p2"])
+    #expect(model.reachedEnd)
+  }
+
   @Test("metadata refresh does not change stable feed identity")
   func metadataRefreshDoesNotChangeStableFeedIdentity() {
     let subreddit = Subreddit(id: "FacebookAIslop")
@@ -1312,6 +1333,27 @@ struct AuroraFeedModelTests {
 
     #expect(subreddit.id == "bm3ek2")
     #expect(model.feedIdentity == identity)
+  }
+}
+
+// MARK: - InlineVideoCoordinator
+
+@MainActor
+struct InlineVideoCoordinatorTests {
+  @Test("media return transition blocks briefly and releases automatically")
+  func mediaReturnTransitionReleases() async {
+    let coordinator = InlineVideoCoordinator.shared
+    coordinator.endReturnTransition()
+
+    coordinator.beginReturnTransition(sourceID: "post-1", duration: 0.1)
+
+    #expect(coordinator.isReturnTransitionActive)
+    #expect(coordinator.returnTransitionSourceID == "post-1")
+
+    try? await Task.sleep(nanoseconds: 180_000_000)
+
+    #expect(!coordinator.isReturnTransitionActive)
+    #expect(coordinator.returnTransitionSourceID == nil)
   }
 }
 

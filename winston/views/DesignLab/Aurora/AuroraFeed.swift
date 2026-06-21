@@ -186,6 +186,8 @@ struct AuroraFeed: View {
   @State private var readOnScrollTracker = AuroraReadOnScrollTracker()
   @State private var visibleRows = AuroraVisibleRowsBox()
   @State private var handledInitialAppear = false
+  @State private var loadMoreInProgress = false
+  @State private var suppressScrollPositionWrites = false
   // Formerly read from a `GeometryReader` that wrapped the `List`. That wrapper pinned the list
   // to the safe-area-inset frame, so on iPad its content couldn't scroll *under* the floating
   // top tab bar (it hard-stopped at the bar's bottom edge). Source these passively instead — a
@@ -279,15 +281,6 @@ struct AuroraFeed: View {
               }
               .onAppear {
                 ScrollPerfDiagnostics.bump("auroraFeed.rowAppear")
-                if post.id == visiblePosts.last?.id {
-                  ScrollPerfDiagnostics.event(
-                    "Aurora feed load-more triggered",
-                    metadata: ["post": post.id, "visiblePosts": "\(visiblePosts.count)", "sort": sort.rawVal.value]
-                  )
-                  Task { @MainActor in
-                    await model.loadMore(sort: sort, contentWidth: contentWidth)
-                  }
-                }
               }
               .onDisappear {
                 ScrollPerfDiagnostics.bump("auroraFeed.rowDisappear")
@@ -299,7 +292,15 @@ struct AuroraFeed: View {
           // Isolated so a pagination `loading` toggle re-renders ONLY this footer, not
           // the whole feed body (which reads model.visiblePosts and would otherwise
           // re-evaluate every ForEach row on each load — a per-page scroll hitch).
-          AuroraFeedLoadingFooter(model: model)
+          AuroraFeedLoadingFooter(
+            model: model,
+            canLoadMore: !model.reachedEnd && !visiblePosts.isEmpty,
+            requestLoadMore: {
+              Task { @MainActor in
+                await requestLoadMore(proxy: proxy, visiblePosts: visiblePosts)
+              }
+            }
+          )
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
         }
@@ -317,7 +318,10 @@ struct AuroraFeed: View {
           // genuinely scrolled down (> 8pt): rotation tears the List down by collapsing its
           // offset toward 0, and writing the top sentinel there would clobber the saved post.
           // The top sentinel is recorded only by the explicit scroll-to-top action below.
-          if offsetY > 8, let focusedPosition = visibleRows.focusedPosition(), focusedPosition != scrollState.position {
+          if !suppressScrollPositionWrites,
+             offsetY > 8,
+             let focusedPosition = visibleRows.focusedPosition(),
+             focusedPosition != scrollState.position {
             scrollState.updatePosition(focusedPosition)
           }
           ScrollPerfDiagnostics.measure("auroraFeed.offsetChange", slowThresholdMs: 3, slowMessage: "Aurora feed offset handling was slow", metadata: ["visiblePosts": "\(visiblePosts.count)", "readOnScroll": "\(cardSettings.readOnScroll)"]) {
@@ -410,6 +414,33 @@ struct AuroraFeed: View {
     .toolbar { sortToolbar }
   }
 
+  private func requestLoadMore(proxy: ScrollViewProxy, visiblePosts: [Post]) async {
+    guard !loadMoreInProgress, !model.loading, !model.reachedEnd, !visiblePosts.isEmpty else { return }
+    let anchor = visibleRows.focusedPosition()
+    loadMoreInProgress = true
+    suppressScrollPositionWrites = true
+    defer {
+      loadMoreInProgress = false
+      Task { @MainActor in
+        try? await Task.sleep(nanoseconds: 120_000_000)
+        suppressScrollPositionWrites = false
+      }
+    }
+
+    ScrollPerfDiagnostics.event(
+      "Aurora feed load-more triggered",
+      metadata: ["anchor": anchor?.id ?? "nil", "visiblePosts": "\(visiblePosts.count)", "sort": sort.rawVal.value]
+    )
+    let appended = await model.loadMore(sort: sort, contentWidth: contentWidth)
+    guard appended > 0, let anchor, model.visiblePosts.contains(where: { $0.id == anchor.id }) else { return }
+    var transaction = Transaction()
+    transaction.disablesAnimations = true
+    withTransaction(transaction) {
+      proxy.scrollTo(anchor.id, anchor: anchor.unitPoint)
+    }
+    scrollState.updatePosition(anchor)
+  }
+
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {
     if model.phase == .idle || model.loading {
       ProgressView()
@@ -440,11 +471,22 @@ struct AuroraFeed: View {
 /// not the feed's whole `ForEach` — which is what made each pagination load hitch.
 private struct AuroraFeedLoadingFooter: View {
   let model: AuroraFeedModel
+  let canLoadMore: Bool
+  let requestLoadMore: () -> Void
 
   var body: some View {
-    if model.loading && !model.visiblePosts.isEmpty {
-      HStack { Spacer(); ProgressView(); Spacer() }
-        .padding(.vertical, 16)
+    VStack(spacing: 0) {
+      if model.loading && !model.visiblePosts.isEmpty {
+        HStack { Spacer(); ProgressView(); Spacer() }
+          .padding(.vertical, 16)
+      }
+      Color.clear
+        .frame(height: 1)
+        .onAppear {
+          if canLoadMore {
+            requestLoadMore()
+          }
+        }
     }
   }
 }

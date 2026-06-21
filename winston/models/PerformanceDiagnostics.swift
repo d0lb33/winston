@@ -202,13 +202,6 @@ final class FrameHitchMonitor: ObservableObject {
     // Let the stall sampler know the main thread is alive (it samples when this
     // heartbeat goes stale, i.e. the main thread is blocked).
     MainThreadSampler.shared.heartbeat()
-    // Drain this frame's attribution. Accumulate it into the 1s window AND keep this
-    // frame's slice for a per-frame hitch record below.
-    let frameRaw = ScrollPerfProbe.shared.drainRaw()
-    if let frameRaw {
-      for (key, count) in frameRaw.counts { activityCounts[key, default: 0] += count }
-      for (key, ns) in frameRaw.nanos { activityNanos[key, default: 0] += ns }
-    }
     guard lastTimestamp > 0 else {
       lastActivityDump = link.timestamp
       return
@@ -224,7 +217,8 @@ final class FrameHitchMonitor: ObservableObject {
     if actual > link.duration * 2.5, actual < 2 {
       windowHitches += 1
       hitchTimestamps.append(link.timestamp)
-      var metadata = frameRaw.map { ScrollPerfProbe.format(counts: $0.counts, nanos: $0.nanos) } ?? [:]
+      let hitchRaw = ScrollPerfProbe.shared.snapshotRaw()
+      var metadata = hitchRaw.map { ScrollPerfProbe.format(counts: $0.counts, nanos: $0.nanos) } ?? [:]
       InlineVideoCoordinator.shared.diagnosticMetadata().forEach { key, value in
         metadata[key] = value
       }
@@ -261,6 +255,10 @@ final class FrameHitchMonitor: ObservableObject {
   /// main-thread stall stacks sampled during the window.
   private func emitScrollActivity(budget: CFTimeInterval) {
     defer { resetActivityWindow() }
+    if let raw = ScrollPerfProbe.shared.drainRaw() {
+      for (key, count) in raw.counts { activityCounts[key, default: 0] += count }
+      for (key, ns) in raw.nanos { activityNanos[key, default: 0] += ns }
+    }
     guard !activityCounts.isEmpty else { return }
     var metadata = ScrollPerfProbe.format(counts: activityCounts, nanos: activityNanos)
     metadata["windowFrames"] = "\(windowFrames)"
@@ -345,10 +343,26 @@ final class ScrollPerfProbe {
     return (counts, nanos)
   }
 
+  /// Snapshot the current window without clearing it. Used only when a hitch is observed,
+  /// so the display-link path avoids a lock+dictionary clear on every frame.
+  func snapshotRaw() -> (counts: [String: Int], nanos: [String: UInt64])? {
+    os_unfair_lock_lock(&lock)
+    defer { os_unfair_lock_unlock(&lock) }
+    guard !counts.isEmpty else { return nil }
+    return (counts, nanos)
+  }
+
   /// Render accumulated counts/nanos into "count×" / "count×/ms" strings.
   static func format(counts: [String: Int], nanos: [String: UInt64]) -> [String: String] {
     var result: [String: String] = [:]
-    for (key, count) in counts {
+    let topKeys = counts.keys.sorted {
+      let lhsNanos = nanos[$0] ?? 0
+      let rhsNanos = nanos[$1] ?? 0
+      if lhsNanos == rhsNanos { return counts[$0, default: 0] > counts[$1, default: 0] }
+      return lhsNanos > rhsNanos
+    }.prefix(16)
+    for key in topKeys {
+      let count = counts[key, default: 0]
       let ms = Double(nanos[key] ?? 0) / 1_000_000
       result[key] = ms >= 0.1 ? "\(count)x/\(String(format: "%.1f", ms))ms" : "\(count)x"
     }

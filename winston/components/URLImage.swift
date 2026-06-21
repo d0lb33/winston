@@ -41,6 +41,9 @@ struct URLImage: View, Equatable {
   @State private var liveTextReady = false
   @State private var liveTextGeneration = UUID()
   @State private var liveTextActivationScheduled = false
+  @State private var stallLoggedGeneration: UUID?
+  @State private var stallCallbackGeneration: UUID?
+  @State private var nextRetryAllowedAt: Date = .distantPast
 
   private var requestIdentity: String {
     [
@@ -129,6 +132,11 @@ struct URLImage: View, Equatable {
       .onAppear { beginImageLoad(source: "gif") }
       .onDisappear { endImageLoad() }
       .id("\(requestIdentity)-\(retryID)")
+      .onChange(of: requestIdentity) {
+        recordImageEvent(.debug, message: "Image request identity changed", source: "gif-change", phase: "identity-change")
+        resetRetryStateForRequestChange()
+        scheduleStallCheck(source: "gif-change")
+      }
       .diagnosticLayout("URLImage.gif", metadata: imageDiagnosticsMetadata(source: "gif-layout", error: nil))
 //      GIFImage(url: url)
 //        .scaledToFill()
@@ -209,10 +217,7 @@ struct URLImage: View, Equatable {
         .id("\(requestIdentity)-\(retryID)")
         .onChange(of: requestIdentity) {
           recordImageEvent(.debug, message: "Image request identity changed", source: "request-change", phase: "identity-change")
-          retryCount = 0
-          loadCompleted = false
-          resetLiveTextActivation()
-          retryID = UUID()
+          resetRetryStateForRequestChange()
           scheduleStallCheck(source: "request-change")
         }
         .onChange(of: liveTextActivationTrigger) { _, newValue in
@@ -278,10 +283,7 @@ struct URLImage: View, Equatable {
         .id("\(requestIdentity)-\(retryID)")
         .onChange(of: requestIdentity) {
           recordImageEvent(.debug, message: "Image request identity changed", source: "url-change", phase: "identity-change")
-          retryCount = 0
-          loadCompleted = false
-          resetLiveTextActivation()
-          retryID = UUID()
+          resetRetryStateForRequestChange()
           scheduleStallCheck(source: "url-change")
         }
         .onChange(of: liveTextActivationTrigger) { _, newValue in
@@ -310,6 +312,8 @@ struct URLImage: View, Equatable {
     ScrollPerfProbe.shared.bump("imageLoadAppear")
     isVisible = true
     loadStartedAt = Date()
+    stallLoggedGeneration = nil
+    stallCallbackGeneration = nil
     resetLiveTextActivation()
     recordImageEvent(.debug, message: "Image load appeared", source: source, phase: "appear")
     scheduleStallCheck(source: source)
@@ -322,6 +326,16 @@ struct URLImage: View, Equatable {
     isVisible = false
     loadCompleted = true
     cancelLiveTextActivation()
+  }
+
+  private func resetRetryStateForRequestChange() {
+    retryCount = 0
+    loadCompleted = false
+    stallLoggedGeneration = nil
+    stallCallbackGeneration = nil
+    nextRetryAllowedAt = .distantPast
+    resetLiveTextActivation()
+    retryID = UUID()
   }
 
   private func resetLiveTextActivation() {
@@ -381,23 +395,36 @@ struct URLImage: View, Equatable {
       return
     }
     ScrollPerfProbe.shared.bump("imageLoadStalled")
-    AppDiagnostics.asyncRecord(
-      .warning,
-      category: "ui.image",
-      message: "Image still loading after \(stallTimeout)s",
-      metadata: imageDiagnosticsMetadata(source: source, error: nil)
-    )
+    if stallLoggedGeneration != generation {
+      stallLoggedGeneration = generation
+      AppDiagnostics.asyncRecord(
+        .warning,
+        category: "ui.image",
+        message: "Image still loading after \(stallTimeout)s",
+        metadata: imageDiagnosticsMetadata(source: source, error: nil)
+      )
+    }
     guard retryCount >= 2 else {
       retryImageLoad(source: source)
       return
     }
-    onLoadStalled?()
+    if stallCallbackGeneration != generation {
+      stallCallbackGeneration = generation
+      onLoadStalled?()
+    }
     retryImageLoad(source: source)
   }
 
   private func retryImageLoad(source: String) {
     guard isVisible && retryCount < 2 else {
       recordImageEvent(.debug, message: "Image retry skipped", source: source, phase: "retry-skipped")
+      return
+    }
+    let now = Date()
+    guard now >= nextRetryAllowedAt else {
+      FeedScrollWorkCoordinator.shared.performWhenIdle(key: "image.retry.backoff.\(requestWorkKey)", delay: nextRetryAllowedAt.timeIntervalSince(now)) {
+        retryImageLoad(source: source)
+      }
       return
     }
     if shouldDeferFeedWork {
@@ -408,13 +435,15 @@ struct URLImage: View, Equatable {
     }
     ScrollPerfProbe.shared.bump("imageRetry")
     retryCount += 1
+    let refreshDelay = 0.35 * pow(2.0, Double(max(retryCount - 1, 0)))
+    nextRetryAllowedAt = Date().addingTimeInterval(refreshDelay + stallTimeout)
     AppDiagnostics.asyncRecord(
       .info,
       category: "ui.image",
       message: "Retrying stalled image load",
       metadata: imageDiagnosticsMetadata(source: "\(source)-retry", error: nil)
     )
-    DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+    DispatchQueue.main.asyncAfter(deadline: .now() + refreshDelay) {
       refreshRetryImageLoad(source: source)
     }
   }

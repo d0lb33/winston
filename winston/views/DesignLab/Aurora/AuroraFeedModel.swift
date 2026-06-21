@@ -125,9 +125,10 @@ final class AuroraFeedModel {
     await load(more: false, sort: sort, contentWidth: contentWidth)
   }
 
-  func loadMore(sort: SubListingSortOption, contentWidth: CGFloat) async {
-    guard !reachedEnd, !inFlight, !posts.isEmpty else { return }
-    await load(more: true, sort: sort, contentWidth: contentWidth)
+  @discardableResult
+  func loadMore(sort: SubListingSortOption, contentWidth: CGFloat) async -> Int {
+    guard !reachedEnd, !inFlight, !posts.isEmpty else { return 0 }
+    return await load(more: true, sort: sort, contentWidth: contentWidth)
   }
 
   func post(id: String) -> Post? { posts.first { $0.id == id } }

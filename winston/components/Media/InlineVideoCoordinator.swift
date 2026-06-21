@@ -28,6 +28,7 @@ final class FeedScrollWorkCoordinator {
   private let seenBatchMaxAge: TimeInterval = 1.0
   private(set) var isScrolling = false
   private(set) var isSettling = false
+  private(set) var isMediaReturnTransitionActive = false
 
   private var idleWorkItem: DispatchWorkItem?
   private var seenBatchWorkItem: DispatchWorkItem?
@@ -35,7 +36,7 @@ final class FeedScrollWorkCoordinator {
   private var pendingWork: [String: () -> Void] = [:]
   private var pendingSeenPosts: [String: Post] = [:]
 
-  var shouldDeferWork: Bool { isScrolling || isSettling }
+  var shouldDeferWork: Bool { isScrolling || isSettling || isMediaReturnTransitionActive }
 
   private init() {}
 
@@ -52,6 +53,23 @@ final class FeedScrollWorkCoordinator {
       isSettling = true
       scheduleIdleFlush()
     }
+  }
+
+  func beginMediaReturnTransition() {
+    isMediaReturnTransitionActive = true
+    idleWorkItem?.cancel()
+    idleWorkItem = nil
+    seenBatchWorkItem?.cancel()
+    seenBatchWorkItem = nil
+    cancelScheduledWorkItems()
+  }
+
+  func endMediaReturnTransition() {
+    guard isMediaReturnTransitionActive else { return }
+    isMediaReturnTransitionActive = false
+    isScrolling = false
+    isSettling = true
+    scheduleIdleFlush(delay: 0)
   }
 
   func performWhenIdle(key: String, delay: TimeInterval? = nil, _ work: @escaping () -> Void) {
@@ -423,6 +441,9 @@ final class InlineVideoCoordinator {
   private(set) var activeSurface: InlineVideoSurfaceSnapshot?
   /// Non-nil while fullscreen owns the active player's visual surface.
   private(set) var fullscreenVideoKey: String?
+  /// Non-nil while SwiftUI's zoom transition is returning fullscreen media to a feed source.
+  private(set) var returnTransitionSourceID: String?
+  private(set) var isReturnTransitionActive = false
   /// Bumped when passive row registrations change. The registrations dictionary is ignored
   /// for observation because it can hold player resources, so the host observes this token.
   private(set) var registrationGeneration = 0
@@ -456,6 +477,7 @@ final class InlineVideoCoordinator {
   @ObservationIgnored private var lastActiveChangeTime: CFTimeInterval = 0
   @ObservationIgnored private var registeredVideos: [String: InlineVideoRegistration] = [:]
   @ObservationIgnored private var navigationPreservedKeys: Set<String> = []
+  @ObservationIgnored private var returnTransitionTask: Task<Void, Never>?
 
   private let warmAheadCount = 1
   private let fastScrollVelocityThreshold: CGFloat = 2_200
@@ -521,6 +543,39 @@ final class InlineVideoCoordinator {
     fullscreenVideoKey = nextKey
   }
 
+  func beginReturnTransition(sourceID: String?, duration: TimeInterval = 0.6) {
+    guard let sourceID, !sourceID.isEmpty else { return }
+    returnTransitionTask?.cancel()
+    FeedScrollWorkCoordinator.shared.beginMediaReturnTransition()
+    isScrolling = false
+    isFastScrolling = false
+    returnTransitionSourceID = sourceID
+    isReturnTransitionActive = true
+    if fullscreenVideoKey == nil, registeredVideos[sourceID] != nil {
+      fullscreenVideoKey = sourceID
+    }
+    returnTransitionTask = Task { @MainActor [weak self] in
+      let nanos = UInt64(max(duration, 0.1) * 1_000_000_000)
+      try? await Task.sleep(nanoseconds: nanos)
+      self?.endReturnTransition(sourceID: sourceID)
+    }
+  }
+
+  func endReturnTransition(sourceID: String? = nil) {
+    if let sourceID, returnTransitionSourceID != sourceID { return }
+    returnTransitionTask?.cancel()
+    returnTransitionTask = nil
+    let endingSourceID = returnTransitionSourceID
+    returnTransitionSourceID = nil
+    isReturnTransitionActive = false
+    if fullscreenVideoKey == endingSourceID {
+      fullscreenVideoKey = nil
+    }
+    FeedScrollWorkCoordinator.shared.endMediaReturnTransition()
+    processLatestVisibilities()
+    updatePlaybackStates()
+  }
+
   func preservePlaybackForNonScrollDisappearance(key: String) {
     guard activeVideoKey == key, !isScrolling else { return }
     navigationPreservedKeys.insert(key)
@@ -532,6 +587,7 @@ final class InlineVideoCoordinator {
 
   func shouldPreservePlaybackOnLayerDetach(key: String) -> Bool {
     fullscreenVideoKey == key ||
+      returnTransitionSourceID == key ||
       consumeNavigationPreservation(for: key) ||
       (activeVideoKey == key && !isScrolling)
   }
@@ -567,6 +623,7 @@ final class InlineVideoCoordinator {
   }
 
   func setScrolling(_ scrolling: Bool) {
+    guard !isReturnTransitionActive else { return }
     guard scrolling != isScrolling else { return }
     ScrollPerfProbe.shared.bump(scrolling ? "scrollBegan" : "scrollEnded")
     isScrolling = scrolling
@@ -723,6 +780,7 @@ final class InlineVideoCoordinator {
   }
 
   func updateScrollOffset(_ offsetY: CGFloat) {
+    guard !isReturnTransitionActive else { return }
     let now = Date.timeIntervalSinceReferenceDate
     defer {
       lastScrollOffsetY = offsetY
@@ -747,6 +805,7 @@ final class InlineVideoCoordinator {
   private func processLatestVisibilities() -> [InlineVideoVisibility] {
     ScrollPerfProbe.shared.bump("inlineCenterUpdate")
     latestVisibilities = latestVisibilityByKey.values.sorted { $0.midY < $1.midY }
+    guard !isReturnTransitionActive else { return latestVisibilities }
     updateVisibleFractions()
     pauseActiveIfNeeded()
     updateActiveSurface()
@@ -851,6 +910,7 @@ final class InlineVideoCoordinator {
   }
 
   private func pauseActiveIfNeeded() {
+    guard !isReturnTransitionActive else { return }
     guard let activeVideoKey else { return }
     guard let visibility = latestVisibilities.first(where: { $0.key == activeVideoKey }) else {
       clearActiveVideo()
@@ -879,6 +939,7 @@ final class InlineVideoCoordinator {
   }
 
   private func updateActiveSurface() {
+    guard !isReturnTransitionActive else { return }
     guard let activeVideoKey,
           let visibility = latestVisibilityByKey[activeVideoKey],
           visibility.visibleFraction >= pauseVisibleThreshold else {
@@ -946,6 +1007,8 @@ final class InlineVideoCoordinator {
       "inlineVisibilities": "\(latestVisibilities.count)",
       "inlineScrolling": "\(isScrolling)",
       "inlineFastScrolling": "\(isFastScrolling)",
+      "inlineReturnActive": "\(isReturnTransitionActive)",
+      "inlineReturnSource": returnTransitionSourceID.map { "\($0.hashValue)" } ?? "nil",
       "inlineViewportHeight": String(format: "%.1f", viewportHeight),
       "inlineLastDeltaY": String(format: "%.1f", lastScrollDeltaY),
       "inlineDirection": movingTowardLaterPosts ? "down" : "up",
@@ -1135,6 +1198,8 @@ private struct FeedScrollCoordinatorDriver: ViewModifier {
       .environment(\.deferMediaWorkWhileScrolling, true)
       .environment(\.inlineVideoCoordinateSpace, coordinateSpace)
       .coordinateSpace(.named(coordinateSpace))
+      .scrollDisabled(InlineVideoCoordinator.shared.isReturnTransitionActive)
+      .allowsHitTesting(!InlineVideoCoordinator.shared.isReturnTransitionActive)
       .onGeometryChange(for: CGRect.self) { geometry in
         geometry.frame(in: .global)
       } action: { _, frame in

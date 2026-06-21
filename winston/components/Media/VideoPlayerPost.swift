@@ -276,9 +276,9 @@ struct VideoPlayerPost: View, Equatable {
         .fullScreenCover(isPresented: $fullscreen) {
           Group {
             if Defaults[.BetaFeaturesDefSettings].newMediaViewer {
-              AuroraMediaViewer(pages: [.video(sharedVideo)])
+              AuroraMediaViewer(pages: [.video(sharedVideo)], returnTransitionSourceID: feedItemKey)
             } else {
-              FullScreenVP(sharedVideo: sharedVideo)
+              FullScreenVP(sharedVideo: sharedVideo, returnTransitionSourceID: feedItemKey)
             }
           }
           .navigationTransition(.zoom(sourceID: "video", in: videoNS))
@@ -330,9 +330,9 @@ struct VideoPlayerPost: View, Equatable {
         .fullScreenCover(isPresented: $fullscreen) {
           Group {
             if Defaults[.BetaFeaturesDefSettings].newMediaViewer {
-              AuroraMediaViewer(pages: [.video(sharedVideo)])
+              AuroraMediaViewer(pages: [.video(sharedVideo)], returnTransitionSourceID: feedItemKey)
             } else {
-              FullScreenVP(sharedVideo: sharedVideo)
+              FullScreenVP(sharedVideo: sharedVideo, returnTransitionSourceID: feedItemKey)
             }
           }
           .navigationTransition(.zoom(sourceID: "video", in: videoNS))
@@ -835,10 +835,17 @@ struct VideoPlayerPost: View, Equatable {
       recordVideoEvent(.debug, message: "Fullscreen initial playback started", sharedVideo: sharedVideo)
     }
     if !val && !autoPlayVideos {
-      sharedVideo.player.seek(to: .zero)
-      sharedVideo.player.pause()
-      firstFullscreen = false
-      showInlinePoster = true
+      Task { @MainActor in
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        guard !fullscreen else { return }
+        await sharedVideo.player.seek(to: .zero)
+        sharedVideo.player.pause()
+        firstFullscreen = false
+        showInlinePoster = true
+        sharedVideo.player.volume = 0.0
+      }
+    } else {
+      sharedVideo.player.volume = val ? 1.0 : 0.0
     }
 
     if pauseBackgroundAudioOnFullscreen && sharedVideo.player.isMuted == false && hasAudio == true {
@@ -847,7 +854,6 @@ struct VideoPlayerPost: View, Equatable {
       }
     }
 
-    sharedVideo.player.volume = val ? 1.0 : 0.0
   }
   
   func addObserver() {
@@ -1149,6 +1155,7 @@ private struct InlineVideoCoordinatorObserver: View {
 struct FullScreenVP: View {
   var sharedVideo: SharedVideo
   var closeAction: (() -> Void)? = nil
+  var returnTransitionSourceID: String? = nil
   @Environment(\.dismiss) private var dismiss
   @Default(.VideoDefSettings) private var videoDefSettings
   @State private var cancelDrag: Bool?
@@ -1167,6 +1174,7 @@ struct FullScreenVP: View {
   @State private var isPlaying = false
   @State private var isMuted = false
   @State private var viewportWidth: CGFloat = 1
+  @State private var isClosing = false
 
   private enum Axis {
     case horizontal
@@ -1219,7 +1227,14 @@ struct FullScreenVP: View {
         installVideoTimeObserver()
       }
       .onDisappear {
-        removeVideoTimeObserver()
+        if isClosing {
+          Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            removeVideoTimeObserver()
+          }
+        } else {
+          removeVideoTimeObserver()
+        }
       }
   }
 
@@ -1277,6 +1292,9 @@ struct FullScreenVP: View {
   }
 
   private func closeViewer() {
+    guard !isClosing else { return }
+    isClosing = true
+    InlineVideoCoordinator.shared.beginReturnTransition(sourceID: returnTransitionSourceID)
     if let closeAction {
       closeAction()
     } else {

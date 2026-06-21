@@ -30,6 +30,16 @@ struct DiagnosticEntry: Identifiable, Codable, Hashable {
   let metadata: [String: String]
 }
 
+private struct DiagnosticsExportPayload: Sendable {
+  let exportDirectory: URL
+  let zipURL: URL
+  let currentLogURL: URL
+  let previousLogURL: URL
+  let diagnosticsDirectory: URL
+  let snapshotData: Data
+  let recentText: String
+}
+
 @MainActor
 final class AppDiagnostics: ObservableObject {
   static let shared = AppDiagnostics()
@@ -237,36 +247,27 @@ final class AppDiagnostics: ObservableObject {
     let exportID = UUID().uuidString
     let exportDirectory = FileManager.default.temporaryDirectory.appendingPathComponent("WinstonDiagnostics-\(exportID)", isDirectory: true)
     let zipURL = FileManager.default.temporaryDirectory.appendingPathComponent("WinstonDiagnostics-\(timestampForFilename()).zip")
+    let snapshot = await makeSnapshot()
 
     do {
-      try? FileManager.default.removeItem(at: exportDirectory)
-      try? FileManager.default.removeItem(at: zipURL)
-      try FileManager.default.createDirectory(at: exportDirectory, withIntermediateDirectories: true)
-
-      var files: [URL] = []
-      if FileManager.default.fileExists(atPath: currentLogURL.path) {
-        let dest = exportDirectory.appendingPathComponent(currentLogURL.lastPathComponent)
-        try FileManager.default.copyItem(at: currentLogURL, to: dest)
-        files.append(dest)
-      }
-      if FileManager.default.fileExists(atPath: previousLogURL.path) {
-        let dest = exportDirectory.appendingPathComponent(previousLogURL.lastPathComponent)
-        try FileManager.default.copyItem(at: previousLogURL, to: dest)
-        files.append(dest)
-      }
-
-      let snapshotURL = exportDirectory.appendingPathComponent("snapshot.json")
-      let snapshot = await makeSnapshot()
       let snapshotData = try JSONSerialization.data(withJSONObject: snapshot, options: [.prettyPrinted, .sortedKeys])
-      try snapshotData.write(to: snapshotURL)
-      files.append(snapshotURL)
-
-      let recentURL = exportDirectory.appendingPathComponent("recent-events.txt")
       let recentText = entries.suffix(100).map { entry in
         "[\(entry.timestamp)] [\(entry.level.rawValue)] [\(entry.category)] \(entry.message)"
       }.joined(separator: "\n")
-      try recentText.write(to: recentURL, atomically: true, encoding: .utf8)
-      files.append(recentURL)
+
+      let payload = DiagnosticsExportPayload(
+        exportDirectory: exportDirectory,
+        zipURL: zipURL,
+        currentLogURL: currentLogURL,
+        previousLogURL: previousLogURL,
+        diagnosticsDirectory: diagnosticsDirectory,
+        snapshotData: snapshotData,
+        recentText: recentText
+      )
+
+      var files = try await Task.detached(priority: .utility) {
+        try Self.prepareDetachedExportFiles(payload)
+      }.value
 
       // Pulse store (network console) — credentials are redacted at capture
       // time, so the archive is safe to share.
@@ -278,29 +279,59 @@ final class AppDiagnostics: ObservableObject {
         record(.warning, category: "diagnostics.export", message: "Pulse store export failed: \(error.localizedDescription)")
       }
 
-      // MetricKit payloads captured alongside the logs.
-      if let contents = try? FileManager.default.contentsOfDirectory(at: diagnosticsDirectory, includingPropertiesForKeys: nil) {
-        for url in contents where url.lastPathComponent.hasPrefix("metrickit-") {
-          let dest = exportDirectory.appendingPathComponent(url.lastPathComponent)
-          if (try? FileManager.default.copyItem(at: url, to: dest)) != nil {
-            files.append(dest)
-          }
-        }
-      }
-
       do {
         files.append(contentsOf: try RenderingReportStore.shared.exportReports(to: exportDirectory))
       } catch {
         record(.warning, category: "diagnostics.export", message: "Rendering report export failed: \(error.localizedDescription)")
       }
 
-      try Zip.zipFiles(paths: files, zipFilePath: zipURL, password: nil, progress: nil)
+      try await Task.detached(priority: .utility) {
+        try Zip.zipFiles(paths: files, zipFilePath: zipURL, password: nil, progress: nil)
+      }.value
       record(.info, category: "diagnostics", message: "Exported diagnostics bundle", metadata: ["file": zipURL.lastPathComponent])
       return zipURL
     } catch {
       record(.error, category: "diagnostics.export", message: error.localizedDescription)
       return nil
     }
+  }
+
+  nonisolated private static func prepareDetachedExportFiles(_ payload: DiagnosticsExportPayload) throws -> [URL] {
+    let fileManager = FileManager.default
+    try? fileManager.removeItem(at: payload.exportDirectory)
+    try? fileManager.removeItem(at: payload.zipURL)
+    try fileManager.createDirectory(at: payload.exportDirectory, withIntermediateDirectories: true)
+
+    var files: [URL] = []
+    if fileManager.fileExists(atPath: payload.currentLogURL.path) {
+      let dest = payload.exportDirectory.appendingPathComponent(payload.currentLogURL.lastPathComponent)
+      try fileManager.copyItem(at: payload.currentLogURL, to: dest)
+      files.append(dest)
+    }
+    if fileManager.fileExists(atPath: payload.previousLogURL.path) {
+      let dest = payload.exportDirectory.appendingPathComponent(payload.previousLogURL.lastPathComponent)
+      try fileManager.copyItem(at: payload.previousLogURL, to: dest)
+      files.append(dest)
+    }
+
+    let snapshotURL = payload.exportDirectory.appendingPathComponent("snapshot.json")
+    try payload.snapshotData.write(to: snapshotURL)
+    files.append(snapshotURL)
+
+    let recentURL = payload.exportDirectory.appendingPathComponent("recent-events.txt")
+    try payload.recentText.write(to: recentURL, atomically: true, encoding: .utf8)
+    files.append(recentURL)
+
+    if let contents = try? fileManager.contentsOfDirectory(at: payload.diagnosticsDirectory, includingPropertiesForKeys: nil) {
+      for url in contents where url.lastPathComponent.hasPrefix("metrickit-") {
+        let dest = payload.exportDirectory.appendingPathComponent(url.lastPathComponent)
+        if (try? fileManager.copyItem(at: url, to: dest)) != nil {
+          files.append(dest)
+        }
+      }
+    }
+
+    return files
   }
 
   func snapshotText() async -> String {

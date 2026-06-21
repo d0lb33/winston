@@ -85,7 +85,8 @@ struct ImageMediaPost: View, Equatable {
             startIndex: index,
             postTitle: postTitle,
             doLiveText: Defaults[.BehaviorDefSettings].doLiveText,
-            markAsSeen: markAsSeen
+            markAsSeen: markAsSeen,
+            returnTransitionSourceID: "image-\(images[index].id)"
           )
         } else {
           LightBoxImage(

@@ -14,6 +14,42 @@
 
 import SwiftUI
 
+struct CommentScrollPosition: Equatable {
+  let id: String
+  let anchorY: CGFloat
+
+  var unitPoint: UnitPoint {
+    UnitPoint(x: 0.5, y: min(1, max(0, anchorY)))
+  }
+}
+
+private struct CommentRowFrame: Equatable {
+  let minY: CGFloat
+  let maxY: CGFloat
+  let viewportHeight: CGFloat
+
+  var height: CGFloat { max(maxY - minY, 1) }
+  var isVisible: Bool {
+    let limit = viewportHeight > 0 ? viewportHeight : .greatestFiniteMagnitude
+    return maxY > 0 && minY < limit
+  }
+}
+
+@MainActor
+private final class CommentVisibleRowsBox {
+  private var frames: [String: CommentRowFrame] = [:]
+
+  func update(_ frame: CommentRowFrame, id: String) { frames[id] = frame }
+  func remove(_ id: String) { frames.removeValue(forKey: id) }
+
+  func position(for id: String) -> CommentScrollPosition? {
+    guard let frame = frames[id], frame.isVisible else { return nil }
+    let denominator = frame.viewportHeight - frame.height
+    let anchorY = abs(denominator) > 1 ? frame.minY / denominator : 0.5
+    return CommentScrollPosition(id: id, anchorY: min(1, max(0, anchorY)))
+  }
+}
+
 struct CommentsTreeView: View {
   let model: CommentTreeModel
   let loading: Bool
@@ -26,6 +62,10 @@ struct CommentsTreeView: View {
   let highlightedID: String?
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
+  let viewportHeight: CGFloat
+  let onToggleCollapse: ((CommentScrollPosition) -> Void)?
+
+  @State private var visibleRows = CommentVisibleRowsBox()
 
   init(
     model: CommentTreeModel,
@@ -37,7 +77,9 @@ struct CommentsTreeView: View {
     swipeActions: SwipeActionsSet,
     highlightedID: String? = nil,
     maxMediaHeightPct: CGFloat,
-    contentWidth: CGFloat = 0
+    contentWidth: CGFloat = 0,
+    viewportHeight: CGFloat = 0,
+    onToggleCollapse: ((CommentScrollPosition) -> Void)? = nil
   ) {
     self.model = model
     self.loading = loading
@@ -49,6 +91,8 @@ struct CommentsTreeView: View {
     self.highlightedID = highlightedID
     self.maxMediaHeightPct = maxMediaHeightPct
     self.contentWidth = contentWidth
+    self.viewportHeight = viewportHeight
+    self.onToggleCollapse = onToggleCollapse
   }
 
   var body: some View {
@@ -90,13 +134,31 @@ struct CommentsTreeView: View {
           swipeActions: swipeActions,
           highlightedID: highlightedID,
           maxMediaHeightPct: maxMediaHeightPct,
-          contentWidth: contentWidth
+          contentWidth: contentWidth,
+          onToggleCollapse: { id in
+            let position = visibleRows.position(for: id) ?? CommentScrollPosition(id: id, anchorY: 0.38)
+            if let onToggleCollapse {
+              onToggleCollapse(position)
+            } else {
+              model.toggleCollapse(id)
+            }
+          }
         )
+        .background {
+          Color.clear
+            .onGeometryChange(for: CommentRowFrame.self) { proxy in
+              let frame = proxy.frame(in: .named("auroraPostDetail"))
+              return CommentRowFrame(minY: frame.minY, maxY: frame.maxY, viewportHeight: viewportHeight)
+            } action: { frame in
+              visibleRows.update(frame, id: row.id)
+            }
+        }
         .onAppear {
           ScrollPerfDiagnostics.bump(row.kind.appearDiagnosticsCategory)
         }
         .onDisappear {
           ScrollPerfDiagnostics.bump(row.kind.disappearDiagnosticsCategory)
+          visibleRows.remove(row.id)
         }
       }
     }

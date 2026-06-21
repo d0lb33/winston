@@ -168,8 +168,15 @@ final class CommentTreeModel {
 
   private func setRowsWithCollapseAnimation(_ rows: [CommentRow]) {
     let oldCount = self.rows.count
+    let rowDelta = abs(rows.count - oldCount)
     let start = ScrollPerfDiagnostics.now()
-    withAnimation(.snappy(duration: 0.18)) {
+    var transaction = Transaction()
+    if rowDelta > 24 {
+      transaction.disablesAnimations = true
+    } else {
+      transaction.animation = .snappy(duration: 0.18)
+    }
+    withTransaction(transaction) {
       self.rows = rows
     }
     let elapsed = ScrollPerfDiagnostics.now() - start
@@ -179,7 +186,7 @@ final class CommentTreeModel {
       message: "Comment collapse row publish was slow",
       elapsedNanos: elapsed,
       thresholdMs: 8,
-      metadata: ["post": postID, "oldRows": "\(oldCount)", "newRows": "\(rows.count)"]
+      metadata: ["post": postID, "oldRows": "\(oldCount)", "newRows": "\(rows.count)", "rowDelta": "\(rowDelta)"]
     )
   }
 

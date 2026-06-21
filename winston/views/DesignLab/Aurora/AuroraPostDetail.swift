@@ -46,6 +46,7 @@ struct AuroraPostDetail: View {
   /// *change* handler and won't re-fire when this detail re-appears (e.g. popping back from
   /// a pushed link/profile) with its offset preserved.
   @State private var lastContentOffsetY: CGFloat = 0
+  @State private var viewportHeight: CGFloat = 0
   /// When viewing a single comment by id, the user can expand to the full post.
   @State private var showingAllComments = false
   // Width of the detail column, formerly read from a `GeometryReader` that wrapped the `List`
@@ -143,7 +144,11 @@ struct AuroraPostDetail: View {
               swipeActions: commentDefSettings.swipeActions,
               highlightedID: highlightedRowID,
               maxMediaHeightPct: maxMediaHeightPct,
-              contentWidth: contentWidth
+              contentWidth: contentWidth,
+              viewportHeight: viewportHeight,
+              onToggleCollapse: { position in
+                handleCommentCollapse(position)
+              }
             )
           }
           .listRowBackground(Color.clear)
@@ -155,8 +160,14 @@ struct AuroraPostDetail: View {
         // Collapse the zero-height top anchor row (SwiftUI's ~44pt default minimum
         // row height would otherwise leave a large gap under the nav bar).
         .environment(\.defaultMinListRowHeight, 1)
+        .coordinateSpace(.named("auroraPostDetail"))
         .scrollContentBackground(.hidden)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = max(1, $0) }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+          geometry.containerSize.height
+        } action: { _, height in
+          if height > 0 { viewportHeight = height }
+        }
         .navigationTitle(navTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { sortToolbar }
@@ -200,6 +211,20 @@ struct AuroraPostDetail: View {
         .onReceive(ReplyModalInstance.shared.$isShowing) { showing in
           if showing == .none { withAnimation { model.rebuild(invalidateCollapseMetrics: true) } }
         }
+    }
+  }
+
+  private func handleCommentCollapse(_ position: CommentScrollPosition) {
+    model.toggleCollapse(position.id)
+    guard model.rows.contains(where: { $0.id == position.id }) else { return }
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 20_000_000)
+      guard model.rows.contains(where: { $0.id == position.id }) else { return }
+      var transaction = Transaction()
+      transaction.disablesAnimations = true
+      withTransaction(transaction) {
+        scrollProxy?.scrollTo(position.id, anchor: position.unitPoint)
+      }
     }
   }
 

@@ -54,6 +54,7 @@ struct AuroraMediaViewer: View {
   var postTitle: String? = nil
   var doLiveText: Bool = false
   var markAsSeen: (() async -> ())? = nil
+  var returnTransitionSourceID: String? = nil
 
   @Environment(\.dismiss) private var dismiss
 
@@ -112,6 +113,7 @@ struct AuroraMediaViewer: View {
 
   // Unified-drag state machine (scrubbable pages)
   @State private var touchPhase: TouchPhase = .idle
+  @State private var isClosing = false
 
   // MARK: Derived
 
@@ -177,7 +179,11 @@ struct AuroraMediaViewer: View {
       xPos = -CGFloat(activeIndex) * (newSize.width + Self.pageSpacing)
     }
     .onChange(of: activeIndex) { handlePageChange() }
-    .onDisappear { cleanupMediaState() }
+    .onDisappear {
+      if !isClosing {
+        cleanupMediaState()
+      }
+    }
   }
 
   // MARK: Carousel
@@ -699,8 +705,14 @@ struct AuroraMediaViewer: View {
   }
 
   private func closeViewer() {
-    cleanupMediaState()
+    guard !isClosing else { return }
+    isClosing = true
+    InlineVideoCoordinator.shared.beginReturnTransition(sourceID: returnTransitionSourceID)
     dismiss()
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 450_000_000)
+      cleanupMediaState()
+    }
   }
 
   // MARK: Lifecycle

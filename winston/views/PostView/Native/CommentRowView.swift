@@ -25,6 +25,7 @@ struct CommentRowView: View {
   /// Already capped (read once upstream); never decode PostLinkDefSettings per-row.
   let maxMediaHeightPct: CGFloat
   let contentWidth: CGFloat
+  var onToggleCollapse: ((String) -> Void)? = nil
 
   @State private var swipePresented = false
   @State private var loadingMore = false
@@ -125,7 +126,11 @@ struct CommentRowView: View {
 
   private func toggleCollapse() {
     guard !swipePresented else { return }
-    model.toggleCollapse(row.id)
+    if let onToggleCollapse {
+      onToggleCollapse(row.id)
+    } else {
+      model.toggleCollapse(row.id)
+    }
   }
 
   private func handleRowTap(at location: CGPoint) {
@@ -133,7 +138,7 @@ struct CommentRowView: View {
     if profileAuthor != nil && isAuthorProfileTap(location) {
       openAuthorProfile()
     } else {
-      model.toggleCollapse(row.id)
+      toggleCollapse()
     }
   }
 
