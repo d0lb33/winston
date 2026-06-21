@@ -215,11 +215,13 @@ struct AuroraPostDetail: View {
   }
 
   private func handleCommentCollapse(_ position: CommentScrollPosition) {
+    let offsetBeforeToggle = lastContentOffsetY
     model.toggleCollapse(position.id)
     guard model.rows.contains(where: { $0.id == position.id }) else { return }
     Task { @MainActor in
-      try? await Task.sleep(nanoseconds: 20_000_000)
+      try? await Task.sleep(nanoseconds: 80_000_000)
       guard model.rows.contains(where: { $0.id == position.id }) else { return }
+      guard abs(lastContentOffsetY - offsetBeforeToggle) > 24 else { return }
       var transaction = Transaction()
       transaction.disablesAnimations = true
       withTransaction(transaction) {
