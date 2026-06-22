@@ -552,6 +552,9 @@
         }
       }
     },
+    "All Reddit" : {
+
+    },
     "Announcements" : {
       "localizations" : {
         "de" : {
@@ -2847,6 +2850,9 @@
         }
       }
     },
+    "No communities" : {
+
+    },
     "No description yet." : {
 
     },
@@ -3637,7 +3643,16 @@
         }
       }
     },
+    "Search %@" : {
+
+    },
     "Search all" : {
+
+    },
+    "Search communities" : {
+
+    },
+    "Search in" : {
 
     },
     "Search my subreddits" : {
@@ -3658,7 +3673,6 @@
       }
     },
     "Search r/%@" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3673,6 +3687,12 @@
           }
         }
       }
+    },
+    "Search target" : {
+
+    },
+    "Search Target" : {
+
     },
     "Secrets Unveiled" : {
       "localizations" : {

@@ -228,7 +228,8 @@ struct AuroraRoot: View {
                  selectedPostID: selectedPostID,
                  sort: $sort,
                  scrollToTopRequest: posts.contentScrollToTopRequest,
-                 onScrollStateChanged: { canScroll in posts.updateContentCanScrollToTop(canScroll) }) { destination in
+                 onScrollStateChanged: { canScroll in posts.updateContentCanScrollToTop(canScroll) },
+                 onSearchCommunity: openCommunitySearch) { destination in
         posts.navigate(destination, from: .content)
       }
     }
@@ -301,6 +302,11 @@ struct AuroraRoot: View {
   private func selectSavedComment(_ comment: Comment) {
     guard let data = comment.data, let linkID = data.link_id, let subID = data.subreddit else { return }
     posts.openPostInDetail(Post(id: linkID, subID: subID), highlightID: comment.id)
+  }
+
+  private func openCommunitySearch(_ subreddit: Subreddit) {
+    guard let target = SearchTarget.community(name: subreddit.feedName, displayName: subreddit.feedName) else { return }
+    AppNav.shared.openSearch(target: target)
   }
 
   // MARK: - Communities

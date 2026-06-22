@@ -481,6 +481,7 @@ struct AuroraLinkChip: View {
 
 struct AuroraCommunityHeader: View {
   @ObservedObject var sub: Subreddit
+  var onSearch: (() -> Void)? = nil
   /// Forwarded from the feed so the About button routes through the same dispatch
   /// the post cards use (compact → push on the active stack; wide → split origin).
   var onCompactNavigate: ((NavDest) -> Void)? = nil
@@ -509,6 +510,9 @@ struct AuroraCommunityHeader: View {
           .font(.subheadline).foregroundStyle(.secondary)
           .fixedSize(horizontal: false, vertical: true)
       }
+      if let onSearch {
+        AuroraCommunitySearchRow(displayName: displayName, action: onSearch)
+      }
     }
     .padding(16)
     .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
@@ -522,6 +526,10 @@ struct AuroraCommunityHeader: View {
         }
       }
     }
+  }
+
+  private var displayName: String {
+    sub.feedName
   }
 
   private var aboutButton: some View {
@@ -560,6 +568,36 @@ struct AuroraCommunityHeader: View {
     } else {
       navigateRedditDestination(destination, model: redditNavigationModel, origin: redditNavigationOrigin)
     }
+  }
+}
+
+private struct AuroraCommunitySearchRow: View {
+  let displayName: String
+  let action: () -> Void
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    Button(action: action) {
+      HStack(spacing: 10) {
+        Image(systemName: "magnifyingglass")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(theme.accent)
+          .frame(width: 28, height: 28)
+          .background(theme.chipFill, in: .circle)
+        Text("Search r/\(displayName)")
+          .font(.subheadline.weight(.semibold))
+          .foregroundStyle(.primary)
+          .lineLimit(1)
+        Spacer(minLength: 8)
+        Image(systemName: "chevron.right")
+          .font(.caption.weight(.bold))
+          .foregroundStyle(.tertiary)
+      }
+      .padding(.top, 2)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel("Search r/\(displayName)")
   }
 }
 

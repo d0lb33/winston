@@ -175,6 +175,142 @@ struct SearchRecentSectionHeader: View {
   }
 }
 
+struct SearchTargetSection: View {
+  let target: SearchTarget
+  let openPicker: () -> Void
+  @Environment(\.auroraTheme) private var theme
+
+  var body: some View {
+    Section {
+      Button(action: openPicker) {
+        HStack(spacing: 12) {
+          Image(systemName: target.isSubreddit ? "rectangle.stack" : "globe")
+            .font(.headline.weight(.semibold))
+            .foregroundStyle(theme.accent)
+            .frame(width: 32, height: 32)
+            .background(theme.chipFill, in: .circle)
+          VStack(alignment: .leading, spacing: 2) {
+            Text("Search in")
+              .font(.caption)
+              .foregroundStyle(.secondary)
+            Text(target.displayTitle)
+              .font(.subheadline.weight(.semibold))
+              .foregroundStyle(.primary)
+              .lineLimit(1)
+          }
+          Spacer(minLength: 8)
+          Image(systemName: "chevron.up.chevron.down")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.cardFill, in: RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous))
+        .overlay(
+          RoundedRectangle(cornerRadius: theme.cornerRadius, style: .continuous)
+            .stroke(theme.hairline, lineWidth: 0.7)
+        )
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+      .accessibilityLabel("Search target")
+      .accessibilityValue(target.displayTitle)
+    }
+  }
+}
+
+@MainActor
+private final class SearchTargetPickerModel: ObservableObject {
+  @Published private(set) var subreddits: [Subreddit] = []
+  @Published private(set) var loading = false
+
+  private var requestSerial = 0
+  private var searchTask: Task<Void, Never>?
+
+  func refresh(query: String) {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    requestSerial += 1
+    let requestID = requestSerial
+    searchTask?.cancel()
+
+    guard !trimmed.isEmpty else {
+      subreddits = []
+      loading = false
+      return
+    }
+
+    loading = true
+    searchTask = Task { @MainActor [weak self] in
+      guard let self else { return }
+      let page = await RedditWire.shared.searchCommunityTypeaheadPage(trimmed).mapItems(Subreddit.init(data:))
+      guard !Task.isCancelled, self.requestSerial == requestID else { return }
+      self.subreddits = page.items.deduped { $0.id }
+      self.loading = false
+    }
+  }
+
+  func cancel() {
+    searchTask?.cancel()
+  }
+}
+
+private struct SearchTargetPickerSheet: View {
+  let currentTarget: SearchTarget
+  let select: (SearchTarget) -> Void
+  @StateObject private var model = SearchTargetPickerModel()
+  @StateObject private var query = DebouncedText(delay: 0.25)
+  @Environment(\.dismiss) private var dismiss
+
+  var body: some View {
+    NavigationStack {
+      List {
+        Section {
+          Button {
+            select(.allReddit)
+            dismiss()
+          } label: {
+            Label("All Reddit", systemImage: "globe")
+          }
+        }
+
+        Section("Communities") {
+          if model.loading && model.subreddits.isEmpty {
+            AuroraLoadMoreFooter(loading: true)
+          } else if query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            ContentUnavailableView("Search communities", systemImage: "magnifyingglass")
+          } else if model.subreddits.isEmpty {
+            ContentUnavailableView("No communities", systemImage: "rectangle.stack")
+          } else {
+            ForEach(model.subreddits) { subreddit in
+              AuroraCommunityResultRow(subreddit: subreddit) { selectedSubreddit in
+                guard let target = SearchTarget.community(name: selectedSubreddit.feedName, displayName: selectedSubreddit.feedName) else { return }
+                select(target)
+                dismiss()
+              }
+            }
+          }
+        }
+      }
+      .navigationTitle("Search Target")
+      .navigationBarTitleDisplayMode(.inline)
+      .searchable(text: $query.text, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search communities")
+      .autocorrectionDisabled(true)
+      .textInputAutocapitalization(.none)
+      .onChange(of: query.debounced) { _, value in
+        model.refresh(query: value)
+      }
+      .toolbar {
+        ToolbarItem(placement: .cancellationAction) {
+          Button("Cancel") { dismiss() }
+        }
+      }
+      .onDisappear {
+        model.cancel()
+      }
+    }
+  }
+}
+
 @MainActor
 private final class SearchViewModel: ObservableObject {
   @Published private(set) var posts: [Post] = []
@@ -193,6 +329,7 @@ private final class SearchViewModel: ObservableObject {
 
   private var currentQuery = ""
   private var currentScope: SearchScope = .all
+  private var currentTarget: SearchTarget = .allReddit
   private var currentMode: SearchMode = .nullState
   private var cursors = SearchCursors.empty
   private var requestSerial = 0
@@ -201,6 +338,9 @@ private final class SearchViewModel: ObservableObject {
   private var hiddenPostIDs: Set<String> = []
 
   var canLoadMore: Bool {
+    if currentTarget.isSubreddit {
+      return cursors.posts != nil
+    }
     switch currentScope {
     case .all:
       return cursors.hasAny
@@ -275,13 +415,15 @@ private final class SearchViewModel: ObservableObject {
     }
   }
 
-  func refreshFullSearch(query: String, scope: SearchScope, contentWidth: CGFloat) {
+  func refreshFullSearch(query: String, scope: SearchScope, target: SearchTarget = .allReddit, contentWidth: CGFloat) {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    let effectiveScope = Self.effectiveScope(scope, target: target)
     requestSerial += 1
     let requestID = requestSerial
     searchTask?.cancel()
     currentQuery = trimmed
-    currentScope = scope
+    currentScope = effectiveScope
+    currentTarget = target
     currentMode = .full
 
     guard !trimmed.isEmpty else {
@@ -308,7 +450,7 @@ private final class SearchViewModel: ObservableObject {
     searchTask = Task { @MainActor [weak self] in
       guard let self else { return }
       let startedAt = Date()
-      let page = await self.fetchPage(query: trimmed, scope: scope, cursors: nil, contentWidth: contentWidth)
+      let page = await self.fetchPage(query: trimmed, scope: effectiveScope, cursors: nil, target: target, contentWidth: contentWidth)
       guard !Task.isCancelled, self.requestSerial == requestID else { return }
 
       AppDiagnostics.asyncRecord(
@@ -317,6 +459,7 @@ private final class SearchViewModel: ObservableObject {
         message: "Search full results",
         metadata: [
           "scope": scope.rawValue,
+          "target": target.displayTitle,
           "queryLength": "\(trimmed.count)",
           "elapsedMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
           "posts": "\(page.posts.items.count)",
@@ -341,12 +484,13 @@ private final class SearchViewModel: ObservableObject {
     let requestID = requestSerial
     let query = currentQuery
     let scope = currentScope
+    let target = currentTarget
     let cursorSnapshot = cursors
     loadingMore = true
 
     searchTask = Task { @MainActor [weak self] in
       guard let self else { return }
-      let page = await self.fetchPage(query: query, scope: scope, cursors: cursorSnapshot, contentWidth: contentWidth)
+      let page = await self.fetchPage(query: query, scope: scope, cursors: cursorSnapshot, target: target, contentWidth: contentWidth)
       guard !Task.isCancelled, self.requestSerial == requestID else { return }
 
       self.updateWithoutAnimation {
@@ -375,6 +519,7 @@ private final class SearchViewModel: ObservableObject {
     searchTask?.cancel()
     currentQuery = ""
     currentScope = .all
+    currentTarget = .allReddit
     currentMode = .nullState
     hidingReadPostsUntilUnread = false
     resetHiddenPosts()
@@ -511,7 +656,7 @@ private final class SearchViewModel: ObservableObject {
     let query = currentQuery
     let cursorSnapshot = cursors
     loadingMore = true
-    let page = await fetchPage(query: query, scope: .posts, cursors: cursorSnapshot, contentWidth: contentWidth)
+    let page = await fetchPage(query: query, scope: .posts, cursors: cursorSnapshot, target: currentTarget, contentWidth: contentWidth)
     guard !Task.isCancelled, requestSerial == requestID else { return }
 
     let appliedCount = updateWithoutAnimation {
@@ -544,7 +689,16 @@ private final class SearchViewModel: ObservableObject {
     }
   }
 
-  private func fetchPage(query: String, scope: SearchScope, cursors: SearchCursors?, contentWidth: CGFloat) async -> RedditSearchPageResults {
+  private static func effectiveScope(_ scope: SearchScope, target: SearchTarget) -> SearchScope {
+    target.isSubreddit ? .posts : scope
+  }
+
+  private func fetchPage(query: String, scope: SearchScope, cursors: SearchCursors?, target: SearchTarget, contentWidth: CGFloat) async -> RedditSearchPageResults {
+    if let subredditName = target.subredditName {
+      let page = await RedditWire.shared.searchSubredditPostsPage(query, subredditName: subredditName, after: cursors?.posts, contentWidth: contentWidth)
+      return RedditSearchPageResults(posts: page, subreddits: .empty, comments: .empty, users: .empty)
+    }
+
     switch scope {
     case .all:
       return await RedditWire.shared.searchAllPage(query, cursors: cursors, contentWidth: contentWidth)
@@ -617,6 +771,7 @@ private final class SearchViewModel: ObservableObject {
 private struct SearchListContent: View {
   @ObservedObject var model: SearchViewModel
   @Binding var searchScope: SearchScope
+  let searchTarget: SearchTarget
 
   let listWidth: CGFloat
   let activateSuggestion: (SearchSuggestion) -> Void
@@ -638,7 +793,7 @@ private struct SearchListContent: View {
         clearRecentSearches: model.clearRecentSearches
       )
     } else if model.showingFullSearch {
-      SearchScopePickerSection(searchScope: $searchScope)
+      SearchScopePickerSection(searchScope: $searchScope, searchTarget: searchTarget)
       SearchPostsSection(
         posts: model.visiblePosts,
         isVisible: shows(.posts),
@@ -650,13 +805,16 @@ private struct SearchListContent: View {
       SearchUsersSection(users: model.users, isVisible: shows(.users), select: selectUser)
       SearchLoadMoreSection(canLoadMore: model.canLoadMore, loading: model.loadingMore, loadMore: loadMore)
     } else {
-      SearchAllButtonSection(searchAll: searchAll)
+      SearchAllButtonSection(target: searchTarget, searchAll: searchAll)
       SearchCommunitiesSection(subreddits: model.subreddits, isVisible: shows(.subreddits), select: selectSubreddit)
     }
   }
 
   private func shows(_ scope: SearchScope) -> Bool {
-    searchScope == .all || searchScope == scope
+    if searchTarget.isSubreddit {
+      return scope == .posts
+    }
+    return searchScope == .all || searchScope == scope
   }
 }
 
@@ -691,12 +849,17 @@ private struct SearchNullStateContent: View {
 
 private struct SearchScopePickerSection: View {
   @Binding var searchScope: SearchScope
+  let searchTarget: SearchTarget
+
+  private var scopes: [SearchScope] {
+    searchTarget.isSubreddit ? [.posts] : SearchScope.allCases
+  }
 
   var body: some View {
     Section {
       ScrollView(.horizontal, showsIndicators: false) {
         HStack(spacing: 8) {
-          ForEach(SearchScope.allCases) { scope in
+          ForEach(scopes) { scope in
             SearchOption(
               activateScope: { searchScope = scope },
               active: searchScope == scope,
@@ -791,6 +954,7 @@ private struct SearchLoadMoreSection: View {
 }
 
 private struct SearchAllButtonSection: View {
+  let target: SearchTarget
   let searchAll: () -> Void
 
   @Environment(\.auroraTheme) private var auroraTheme
@@ -804,7 +968,7 @@ private struct SearchAllButtonSection: View {
             .foregroundStyle(auroraTheme.accent)
             .frame(width: 30, height: 30)
             .background(auroraTheme.chipFill, in: .circle)
-          Text("Search all")
+          Text(target.isSubreddit ? "Search \(target.displayTitle)" : "Search all")
             .font(.subheadline.weight(.semibold))
             .foregroundStyle(.primary)
           Spacer()
@@ -834,7 +998,9 @@ struct Search: View {
   @State private var searchViewLoaded: Bool = false
   @State private var listWidth: CGFloat = 0
   @State private var isSearchPresented = false
+  @State private var isTargetPickerPresented = false
   @State private var suppressEmptyQueryReload = false
+  @State private var handledSearchLaunchID = 0
   
   @Environment(\.auroraTheme) private var auroraTheme
   @Environment(\.contentWidth) private var contentWidth
@@ -848,9 +1014,17 @@ struct Search: View {
 
   private var searchRoot: some View {
     List {
+      SearchTargetSection(target: nav.searchTarget) {
+        isTargetPickerPresented = true
+      }
+      .listRowSeparator(.hidden)
+      .listRowBackground(Color.clear)
+      .listRowInsets(EdgeInsets(top: 7, leading: 14, bottom: 7, trailing: 14))
+
       SearchListContent(
         model: model,
         searchScope: $searchScope,
+        searchTarget: nav.searchTarget,
         listWidth: listWidth,
         activateSuggestion: activateSuggestion,
         selectPost: selectPost,
@@ -881,8 +1055,15 @@ struct Search: View {
     .loader(model.loadingInitial, model.showEmpty)
     .scrollDismissesKeyboard(.automatic)
     .searchable(text: $searchQuery.text, isPresented: $isSearchPresented, placement: .toolbar)
+    .sheet(isPresented: $isTargetPickerPresented) {
+      SearchTargetPickerSheet(currentTarget: nav.searchTarget, select: selectSearchTarget)
+    }
     .autocorrectionDisabled(true)
     .textInputAutocapitalization(.none)
+    .onChange(of: nav.searchLaunchRequest) { _, request in
+      guard let request else { return }
+      applySearchLaunch(request)
+    }
     .onChange(of: nav.searchFieldFocusRequest) { _, _ in
         // Reselecting the Search tab presents + focuses the field (opens the keyboard).
         // Already focused & typing → leave it alone. Presented but unfocused (keyboard
@@ -910,15 +1091,15 @@ struct Search: View {
         if searchQuery.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           model.loadNullState(force: true)
         } else if model.showingFullSearch {
-          model.refreshFullSearch(query: searchQuery.text, scope: searchScope, contentWidth: contentWidth)
+          model.refreshFullSearch(query: searchQuery.text, scope: searchScope, target: nav.searchTarget, contentWidth: contentWidth)
         } else {
-          model.refreshQuickCommunities(query: searchQuery.text)
+          refreshSearchForCurrentTarget(query: searchQuery.text)
         }
       }
       .onSubmit(of: .search) {
-        searchScope = .all
+        searchScope = nav.searchTarget.isSubreddit ? .posts : .all
         model.recordRecentSearch(searchQuery.text)
-        model.refreshFullSearch(query: searchQuery.text, scope: .all, contentWidth: contentWidth)
+        model.refreshFullSearch(query: searchQuery.text, scope: searchScope, target: nav.searchTarget, contentWidth: contentWidth)
       }
       .navigationTitle("Search")
       .navigationBarTitleDisplayMode(.inline)
@@ -936,14 +1117,18 @@ struct Search: View {
         }
       }
       .onChange(of: searchScope) { _, scope in
+        if nav.searchTarget.isSubreddit, scope != .posts {
+          searchScope = .posts
+          return
+        }
         if model.showingFullSearch {
-          model.refreshFullSearch(query: searchQuery.debounced, scope: scope, contentWidth: contentWidth)
+          model.refreshFullSearch(query: searchQuery.debounced, scope: scope, target: nav.searchTarget, contentWidth: contentWidth)
         }
       }
       .onChange(of: searchQuery.text) { _, val in
         if val.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
           guard !suppressEmptyQueryReload else { return }
-          searchScope = .all
+          searchScope = nav.searchTarget.isSubreddit ? .posts : .all
           model.loadNullState()
         }
       }
@@ -962,21 +1147,26 @@ struct Search: View {
             suppressEmptyQueryReload = false
             return
           }
-          searchScope = .all
+          searchScope = nav.searchTarget.isSubreddit ? .posts : .all
           model.loadNullState()
           return
         }
 
-        if model.showingFullSearch {
-          model.refreshFullSearch(query: trimmed, scope: searchScope, contentWidth: contentWidth)
-        } else {
-          model.refreshQuickCommunities(query: trimmed)
-        }
+        refreshSearchForCurrentTarget(query: trimmed)
       }
       .onAppear() {
         isSearchPresented = false
+        var handledLaunch = false
+        if let request = nav.searchLaunchRequest {
+          applySearchLaunch(request)
+          handledLaunch = request.id == handledSearchLaunchID
+        } else if nav.searchTarget.isSubreddit {
+          searchScope = .posts
+        }
         if !searchViewLoaded {
-          model.loadNullState()
+          if !handledLaunch {
+            model.loadNullState()
+          }
           searchViewLoaded = true
         }
       }
@@ -987,17 +1177,17 @@ struct Search: View {
 
   private func searchAll() {
     dismissSearchField()
-    searchScope = .all
+    searchScope = nav.searchTarget.isSubreddit ? .posts : .all
     model.recordRecentSearch(searchQuery.text)
-    model.refreshFullSearch(query: searchQuery.text, scope: .all, contentWidth: contentWidth)
+    model.refreshFullSearch(query: searchQuery.text, scope: searchScope, target: nav.searchTarget, contentWidth: contentWidth)
   }
 
   private func activateSuggestion(_ suggestion: SearchSuggestion) {
     dismissSearchField()
     searchQuery.text = suggestion.query
-    searchScope = .all
+    searchScope = nav.searchTarget.isSubreddit ? .posts : .all
     model.recordRecentSearch(suggestion.query)
-    model.refreshFullSearch(query: suggestion.query, scope: .all, contentWidth: contentWidth)
+    model.refreshFullSearch(query: suggestion.query, scope: searchScope, target: nav.searchTarget, contentWidth: contentWidth)
   }
 
   private func selectPost(_ post: Post) {
@@ -1025,8 +1215,71 @@ struct Search: View {
     isSearchPresented = false
   }
 
+  private func focusSearchField() {
+    guard !isSearching else { return }
+    if isSearchPresented {
+      isSearchPresented = false
+      DispatchQueue.main.async { isSearchPresented = true }
+    } else {
+      isSearchPresented = true
+    }
+  }
+
+  private func refreshSearchForCurrentTarget(query: String) {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else {
+      model.loadNullState()
+      return
+    }
+
+    if nav.searchTarget.isSubreddit {
+      searchScope = .posts
+      model.refreshFullSearch(query: trimmed, scope: .posts, target: nav.searchTarget, contentWidth: contentWidth)
+    } else if model.showingFullSearch {
+      model.refreshFullSearch(query: trimmed, scope: searchScope, target: nav.searchTarget, contentWidth: contentWidth)
+    } else {
+      model.refreshQuickCommunities(query: trimmed)
+    }
+  }
+
+  private func selectSearchTarget(_ target: SearchTarget) {
+    nav.resetContentAndDetail()
+    nav.searchTarget = target
+    searchScope = target.isSubreddit ? .posts : .all
+    if searchQuery.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+      model.loadNullState()
+    } else {
+      model.refreshFullSearch(query: searchQuery.text, scope: searchScope, target: target, contentWidth: contentWidth)
+    }
+  }
+
+  private func applySearchLaunch(_ request: SearchLaunchRequest) {
+    guard request.id != handledSearchLaunchID else { return }
+    handledSearchLaunchID = request.id
+    nav.searchTarget = request.target
+    searchScope = request.target.isSubreddit ? .posts : .all
+
+    if searchQuery.text != request.query {
+      suppressEmptyQueryReload = request.query.isEmpty
+      searchQuery.text = request.query
+    }
+
+    if request.query.isEmpty {
+      model.loadNullState()
+    } else {
+      model.refreshFullSearch(query: request.query, scope: searchScope, target: request.target, contentWidth: contentWidth)
+    }
+
+    if request.focus {
+      DispatchQueue.main.async {
+        focusSearchField()
+      }
+    }
+  }
+
   private func resetSearchHome() {
     dismissSearchField()
+    nav.searchTarget = .allReddit
     searchScope = .all
     if !searchQuery.text.isEmpty {
       suppressEmptyQueryReload = true

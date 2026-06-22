@@ -533,6 +533,30 @@ struct AppNavBridgeTests {
     #expect(appNav.search.preferredColumn == .sidebar)
   }
 
+  @Test("Open search selects Search tab, sets target, focuses field, and clears stale detail")
+  func openSearchLaunchesTargetedSearch() throws {
+    let appNav = AppNav.shared
+    appNav.resetAll()
+    appNav.selectedTab = .posts
+    appNav.search.contentPath = [.reddit(.user(User(id: "alice")))]
+    appNav.search.openPostInDetail(Post(id: "p1"), highlightID: "c1")
+    let focusBefore = appNav.search.searchFieldFocusRequest
+    let target = try #require(SearchTarget.community(name: "swift", displayName: "Swift"))
+
+    appNav.openSearch(target: target)
+
+    #expect(appNav.selectedTab == .search)
+    #expect(appNav.search.searchTarget == target)
+    #expect(appNav.search.searchLaunchRequest?.target == target)
+    #expect(appNav.search.searchLaunchRequest?.query == "")
+    #expect(appNav.search.searchLaunchRequest?.focus == true)
+    #expect(appNav.search.searchFieldFocusRequest == focusBefore + 1)
+    #expect(appNav.search.contentPath.isEmpty)
+    #expect(appNav.search.detailPath.isEmpty)
+    #expect(appNav.search.detailPost == nil)
+    #expect(appNav.search.detailHighlightID == nil)
+  }
+
   @Test("Inbox tab-root reset clears stack")
   func inboxTabRootClearsStack() {
     let appNav = AppNav.shared

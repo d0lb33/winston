@@ -179,6 +179,7 @@ struct AuroraFeed: View {
   @Binding private var sort: SubListingSortOption
   let scrollToTopRequest: Int
   let onScrollStateChanged: (Bool) -> Void
+  var onSearchCommunity: ((Subreddit) -> Void)? = nil
   var onCompactNavigate: ((NavDest) -> Void)? = nil
   @Environment(\.contentWidth) private var contentWidth
   @Environment(\.horizontalSizeClass) private var hSize
@@ -207,6 +208,7 @@ struct AuroraFeed: View {
     sort: Binding<SubListingSortOption>,
     scrollToTopRequest: Int = 0,
     onScrollStateChanged: @escaping (Bool) -> Void = { _ in },
+    onSearchCommunity: ((Subreddit) -> Void)? = nil,
     onCompactNavigate: ((NavDest) -> Void)? = nil
   ) {
     self.model = model
@@ -217,6 +219,7 @@ struct AuroraFeed: View {
     self._sort = sort
     self.scrollToTopRequest = scrollToTopRequest
     self.onScrollStateChanged = onScrollStateChanged
+    self.onSearchCommunity = onSearchCommunity
     self.onCompactNavigate = onCompactNavigate
   }
 
@@ -239,7 +242,11 @@ struct AuroraFeed: View {
             .listRowSeparator(.hidden)
             .accessibilityHidden(true)
           if let community {
-            AuroraCommunityHeader(sub: community, onCompactNavigate: onCompactNavigate)
+            AuroraCommunityHeader(
+              sub: community,
+              onSearch: { onSearchCommunity?(community) },
+              onCompactNavigate: onCompactNavigate
+            )
               .listRowBackground(Color.clear)
               .listRowSeparator(.hidden)
               .listRowInsets(EdgeInsets(top: 10, leading: 10, bottom: 2, trailing: 10))

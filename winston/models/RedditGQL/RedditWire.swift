@@ -1660,6 +1660,31 @@ final class RedditWire: ObservableObject {
     }
   }
 
+  func searchSubredditPostsPage(_ query: String, subredditName: String, after: String? = nil, contentWidth: CGFloat = defaultContentWidth) async -> SearchPage<Post> {
+    let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    var name = subredditName.trimmingCharacters(in: .whitespacesAndNewlines)
+    if name.range(of: "r/", options: [.anchored, .caseInsensitive]) != nil {
+      name.removeFirst(2)
+    }
+    guard !trimmed.isEmpty, !name.isEmpty else { return .empty }
+    do {
+      let resp = try await client.dynamicSearchSubredditResponse(trimmed, subredditName: name, pane: .posts, after: after)
+      guard let data = resp.data else {
+        status = "search posts in r/\(name) '\(trimmed)' → 0"
+        return .empty
+      }
+
+      let postDatas = data.posts.map { PostData(graphQL: $0) }.deduped { $0.id }
+      let posts = Post.initMultiple(datas: postDatas, sub: Subreddit(id: name), contentWidth: contentWidth)
+      let nextAfter = nextSearchCursor(from: data.pageInfo, currentAfter: after)
+      status = "search posts in r/\(name) '\(trimmed)' → \(posts.count), next=\(nextAfter == nil ? "nil" : "yes")"
+      return SearchPage(items: posts, nextAfter: nextAfter)
+    } catch {
+      status = "search posts in subreddit failed: \(describe(error))"
+      return .empty
+    }
+  }
+
   func searchPosts(_ query: String, contentWidth: CGFloat = defaultContentWidth, pageLimit: Int = 4) async -> [Post] {
     let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !trimmed.isEmpty else { return [] }

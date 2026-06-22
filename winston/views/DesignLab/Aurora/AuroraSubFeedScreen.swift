@@ -50,6 +50,7 @@ struct AuroraSubFeedScreen: View {
           scrollState: scrollState,
           selectedPostID: $selectedPostID,
           sort: $sort,
+          onSearchCommunity: openCommunitySearch,
           onCompactNavigate: navigateFromSubFeed
         )
       }
@@ -98,5 +99,10 @@ struct AuroraSubFeedScreen: View {
       ]
     )
     navigateRedditDestination(destination, model: redditNavigationModel, origin: redditNavigationOrigin)
+  }
+
+  private func openCommunitySearch(_ subreddit: Subreddit) {
+    guard let target = SearchTarget.community(name: subreddit.feedName, displayName: subreddit.feedName) else { return }
+    AppNav.shared.openSearch(target: target)
   }
 }

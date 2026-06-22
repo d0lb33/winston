@@ -79,6 +79,51 @@ enum FeedScope: Hashable, Codable {
   }
 }
 
+enum SearchTarget: Hashable, Codable {
+  case allReddit
+  case subreddit(name: String, displayName: String)
+
+  var subredditName: String? {
+    guard case .subreddit(let name, _) = self else { return nil }
+    return name
+  }
+
+  var isSubreddit: Bool {
+    subredditName != nil
+  }
+
+  var displayTitle: String {
+    switch self {
+    case .allReddit:
+      return "All Reddit"
+    case .subreddit(_, let displayName):
+      return "r/\(displayName)"
+    }
+  }
+
+  static func community(name rawName: String, displayName rawDisplayName: String? = nil) -> SearchTarget? {
+    let name = normalizedSubredditName(rawName)
+    guard !name.isEmpty else { return nil }
+    let displayName = normalizedSubredditName(rawDisplayName ?? name)
+    return .subreddit(name: name, displayName: displayName.isEmpty ? name : displayName)
+  }
+
+  private static func normalizedSubredditName(_ raw: String) -> String {
+    var value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    if value.range(of: "r/", options: [.anchored, .caseInsensitive]) != nil {
+      value.removeFirst(2)
+    }
+    return value
+  }
+}
+
+struct SearchLaunchRequest: Equatable, Codable {
+  let id: Int
+  let query: String
+  let target: SearchTarget
+  let focus: Bool
+}
+
 /// The compact Posts `NavigationStack` path vocabulary. The root is the scope LIST page; the
 /// feed is PUSHED (`.feed`) so it gets a back button, and posts/subs/users pushed on top of the
 /// feed travel as `.dest(NavDest)`. Local to the compact Posts shell — it deliberately does NOT
@@ -341,6 +386,11 @@ final class AppNav {
       settings.consumeDeepLink(path: [destination])
     }
     selectedTab = tab
+  }
+
+  func openSearch(query: String? = nil, target: SearchTarget = .allReddit, focus: Bool = true) {
+    search.launchSearch(query: query, target: target, focus: focus)
+    selectedTab = .search
   }
 
   func navigateRedditURLDestination(_ destination: NavDest) {
@@ -809,6 +859,9 @@ final class ColumnNav: RedditNavigator {
   /// Bumped on a Search-tab reselect so the Search surface presents + focuses its
   /// search field (opens the keyboard). Only the `search` instance consumes it.
   var searchFieldFocusRequest = 0
+  var searchTarget: SearchTarget = .allReddit
+  var searchLaunchRequest: SearchLaunchRequest?
+  private var searchLaunchSerial = 0
   /// Pushes that stay in the leading (source) column.
   var contentPath: [NavDest] = []
   /// The open post's detail navigation stack.
@@ -836,6 +889,21 @@ final class ColumnNav: RedditNavigator {
     detailHighlightID = highlightID
     detailPath = []
     preferredColumn = .detail
+  }
+
+  func launchSearch(query: String? = nil, target: SearchTarget, focus: Bool) {
+    resetContentAndDetail()
+    searchTarget = target
+    searchLaunchSerial += 1
+    searchLaunchRequest = SearchLaunchRequest(
+      id: searchLaunchSerial,
+      query: query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+      target: target,
+      focus: focus
+    )
+    if focus {
+      searchFieldFocusRequest += 1
+    }
   }
 
   func resetContentAndDetail() {
@@ -874,7 +942,11 @@ final class ColumnNav: RedditNavigator {
     return false
   }
 
-  func reset() { resetContentAndDetail() }
+  func reset() {
+    resetContentAndDetail()
+    searchTarget = .allReddit
+    searchLaunchRequest = nil
+  }
 
   var canResetToTabRoot: Bool {
     detailPost != nil ||
