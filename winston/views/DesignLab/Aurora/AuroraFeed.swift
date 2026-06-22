@@ -168,6 +168,7 @@ private final class AuroraVisibleRowsBox {
 
 struct AuroraFeed: View {
   private static let topID = AuroraFeedScrollPosition.topID
+  private static let loadMorePrefetchDistance = 12
 
   let model: AuroraFeedModel
   let title: String
@@ -222,6 +223,7 @@ struct AuroraFeed: View {
   var body: some View {
     let _ = ScrollPerfDiagnostics.bump("auroraFeed.body")
     let visiblePosts = model.visiblePosts
+    let loadMoreTriggerID = Self.loadMoreTriggerID(in: visiblePosts)
     // Decode the Codable PostLink settings ONCE per body eval (not per scroll frame in
     // onOffsetChange, nor per card in the ForEach background / card body). The plain
     // value is threaded into each row via `settings:` → `.environment(\.auroraCardSettings)`.
@@ -281,6 +283,11 @@ struct AuroraFeed: View {
               }
               .onAppear {
                 ScrollPerfDiagnostics.bump("auroraFeed.rowAppear")
+                if post.id == loadMoreTriggerID {
+                  Task { @MainActor in
+                    await requestLoadMore(visiblePosts: visiblePosts, source: "prefetch-row")
+                  }
+                }
               }
               .onDisappear {
                 ScrollPerfDiagnostics.bump("auroraFeed.rowDisappear")
@@ -297,7 +304,7 @@ struct AuroraFeed: View {
             canLoadMore: !model.reachedEnd && !visiblePosts.isEmpty,
             requestLoadMore: {
               Task { @MainActor in
-                await requestLoadMore(proxy: proxy, visiblePosts: visiblePosts)
+                await requestLoadMore(visiblePosts: visiblePosts, source: "footer")
               }
             }
           )
@@ -361,6 +368,7 @@ struct AuroraFeed: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .scrollIndicators(.hidden)
         // Width of the feed column itself (correct in both compact and the wide split). A passive
         // read — unlike a wrapping GeometryReader it does not constrain the list's frame.
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { rowWidth = max(1, $0) }
@@ -414,9 +422,15 @@ struct AuroraFeed: View {
     .toolbar { sortToolbar }
   }
 
-  private func requestLoadMore(proxy: ScrollViewProxy, visiblePosts: [Post]) async {
+  private static func loadMoreTriggerID(in posts: [Post]) -> String? {
+    guard !posts.isEmpty else { return nil }
+    return posts[max(posts.count - loadMorePrefetchDistance, 0)].id
+  }
+
+  private func requestLoadMore(visiblePosts: [Post], source: String) async {
     guard !loadMoreInProgress, !model.loading, !model.reachedEnd, !visiblePosts.isEmpty else { return }
     let anchor = visibleRows.focusedPosition()
+    let offsetBeforeLoad = scrollState.lastContentOffsetY
     loadMoreInProgress = true
     suppressScrollPositionWrites = true
     defer {
@@ -429,16 +443,33 @@ struct AuroraFeed: View {
 
     ScrollPerfDiagnostics.event(
       "Aurora feed load-more triggered",
-      metadata: ["anchor": anchor?.id ?? "nil", "visiblePosts": "\(visiblePosts.count)", "sort": sort.rawVal.value]
+      metadata: [
+        "source": source,
+        "anchor": anchor?.id ?? "nil",
+        "visiblePosts": "\(visiblePosts.count)",
+        "offsetBefore": String(format: "%.1f", offsetBeforeLoad),
+        "sort": sort.rawVal.value
+      ]
     )
     let appended = await model.loadMore(sort: sort, contentWidth: contentWidth)
     guard appended > 0, let anchor, model.visiblePosts.contains(where: { $0.id == anchor.id }) else { return }
-    var transaction = Transaction()
-    transaction.disablesAnimations = true
-    withTransaction(transaction) {
-      proxy.scrollTo(anchor.id, anchor: anchor.unitPoint)
-    }
-    scrollState.updatePosition(anchor)
+    try? await Task.sleep(nanoseconds: 120_000_000)
+    let offsetAfterLoad = scrollState.lastContentOffsetY
+    let offsetDelta = offsetAfterLoad - offsetBeforeLoad
+    let shiftedWhileIdle = !FeedScrollWorkCoordinator.shared.isScrolling && abs(offsetDelta) > 48
+    ScrollPerfDiagnostics.event(
+      "Aurora feed load-more applied",
+      metadata: [
+        "source": source,
+        "anchor": anchor.id,
+        "appended": "\(appended)",
+        "total": "\(model.visiblePosts.count)",
+        "offsetBefore": String(format: "%.1f", offsetBeforeLoad),
+        "offsetAfter": String(format: "%.1f", offsetAfterLoad),
+        "offsetDelta": String(format: "%.1f", offsetDelta),
+        "shiftedWhileIdle": "\(shiftedWhileIdle)"
+      ]
+    )
   }
 
   @ViewBuilder private func emptyState(hasLoadedPosts: Bool) -> some View {
@@ -473,10 +504,11 @@ private struct AuroraFeedLoadingFooter: View {
   let model: AuroraFeedModel
   let canLoadMore: Bool
   let requestLoadMore: () -> Void
+  @State private var showSlowLoadIndicator = false
 
   var body: some View {
     VStack(spacing: 0) {
-      if model.loading && !model.visiblePosts.isEmpty {
+      if model.loading && !model.visiblePosts.isEmpty && showSlowLoadIndicator {
         HStack { Spacer(); ProgressView(); Spacer() }
           .padding(.vertical, 16)
       }
@@ -487,6 +519,16 @@ private struct AuroraFeedLoadingFooter: View {
             requestLoadMore()
           }
         }
+    }
+    .task(id: model.loading) {
+      guard model.loading && !model.visiblePosts.isEmpty else {
+        showSlowLoadIndicator = false
+        return
+      }
+      try? await Task.sleep(nanoseconds: 700_000_000)
+      if model.loading && !model.visiblePosts.isEmpty {
+        showSlowLoadIndicator = true
+      }
     }
   }
 }

@@ -17,6 +17,10 @@ import SwiftUI
 struct CommentScrollPosition: Equatable {
   let id: String
   let anchorY: CGFloat
+  let minY: CGFloat
+  let maxY: CGFloat
+  let height: CGFloat
+  let viewportHeight: CGFloat
 
   var unitPoint: UnitPoint {
     UnitPoint(x: 0.5, y: min(1, max(0, anchorY)))
@@ -46,7 +50,14 @@ private final class CommentVisibleRowsBox {
     guard let frame = frames[id], frame.isVisible else { return nil }
     let denominator = frame.viewportHeight - frame.height
     let anchorY = abs(denominator) > 1 ? frame.minY / denominator : 0.5
-    return CommentScrollPosition(id: id, anchorY: min(1, max(0, anchorY)))
+    return CommentScrollPosition(
+      id: id,
+      anchorY: min(1, max(0, anchorY)),
+      minY: frame.minY,
+      maxY: frame.maxY,
+      height: frame.height,
+      viewportHeight: frame.viewportHeight
+    )
   }
 }
 
@@ -136,7 +147,7 @@ struct CommentsTreeView: View {
           maxMediaHeightPct: maxMediaHeightPct,
           contentWidth: contentWidth,
           onToggleCollapse: { id in
-            let position = visibleRows.position(for: id) ?? CommentScrollPosition(id: id, anchorY: 0.38)
+            let position = visibleRows.position(for: id) ?? CommentScrollPosition(id: id, anchorY: 0.38, minY: .nan, maxY: .nan, height: .nan, viewportHeight: viewportHeight)
             if let onToggleCollapse {
               onToggleCollapse(position)
             } else {

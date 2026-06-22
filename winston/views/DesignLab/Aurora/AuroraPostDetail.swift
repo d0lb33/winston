@@ -16,6 +16,7 @@
 import SwiftUI
 import Defaults
 import MarkdownUI
+import UIKit
 
 struct AuroraPostDetail: View {
   private static let topID = "aurora-post-detail-top"
@@ -41,6 +42,7 @@ struct AuroraPostDetail: View {
   /// hand there) instead of depending on `onChange` timing, which races on cached
   /// reopens where comments arrive before the List has laid out.
   @State private var scrollProxy: ScrollViewProxy? = nil
+  @State private var commentScrollView: UIScrollView? = nil
   /// Last observed content offset, mirrored from the live scroll geometry so reselect's
   /// "can scroll to top" can be re-derived on appearance — `onScrollGeometryChange` is a
   /// *change* handler and won't re-fire when this detail re-appears (e.g. popping back from
@@ -162,6 +164,14 @@ struct AuroraPostDetail: View {
         .environment(\.defaultMinListRowHeight, 1)
         .coordinateSpace(.named("auroraPostDetail"))
         .scrollContentBackground(.hidden)
+        .scrollIndicators(.hidden)
+        .background {
+          CommentScrollViewResolver { scrollView in
+            if commentScrollView !== scrollView {
+              commentScrollView = scrollView
+            }
+          }
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = max(1, $0) }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
           geometry.containerSize.height
@@ -217,22 +227,112 @@ struct AuroraPostDetail: View {
   }
 
   private func handleCommentCollapse(_ position: CommentScrollPosition) {
+    let hadPendingHighlight = pendingHighlight != nil
+    let hadHighlightScrollTask = highlightScrollTask != nil
     pendingHighlight = nil
     highlightScrollTask?.cancel()
     highlightScrollTask = nil
-    let offsetBeforeToggle = lastContentOffsetY
+    let offsetBeforeToggle = commentScrollView?.contentOffset.y ?? lastContentOffsetY
+    lastContentOffsetY = offsetBeforeToggle
+    let rowsBeforeToggle = model.rows.count
+    let rowIndexBeforeToggle = model.rows.firstIndex { $0.id == position.id }
+    let wasCollapsed = rowIndexBeforeToggle.map { model.rows[$0].isCollapsed }
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.comments.scroll",
+      message: "Comment collapse toggled",
+      metadata: [
+        "comment": position.id,
+        "anchorY": String(format: "%.3f", position.anchorY),
+        "offsetBefore": String(format: "%.1f", offsetBeforeToggle),
+        "rowsBefore": "\(rowsBeforeToggle)",
+        "rowIndexBefore": rowIndexBeforeToggle.map { "\($0)" } ?? "nil",
+        "wasCollapsed": wasCollapsed.map { "\($0)" } ?? "nil",
+        "rowMinY": String(format: "%.1f", position.minY),
+        "rowMaxY": String(format: "%.1f", position.maxY),
+        "rowHeight": String(format: "%.1f", position.height),
+        "viewportHeight": String(format: "%.1f", position.viewportHeight),
+        "pendingHighlight": "\(hadPendingHighlight)",
+        "highlightScrollActive": "\(hadHighlightScrollTask)"
+      ]
+    )
     model.toggleCollapse(position.id)
+    let rowsAfterToggle = model.rows.count
+    let rowIndexAfterToggle = model.rows.firstIndex { $0.id == position.id }
     guard model.rows.contains(where: { $0.id == position.id }) else { return }
     Task { @MainActor in
+      await Task.yield()
+      let correctedImmediately = restoreCommentScrollOffsetIfNeeded(
+        offsetBeforeToggle,
+        commentID: position.id,
+        stage: "post-layout"
+      )
       try? await Task.sleep(nanoseconds: 80_000_000)
       guard model.rows.contains(where: { $0.id == position.id }) else { return }
-      guard abs(lastContentOffsetY - offsetBeforeToggle) > 24 else { return }
-      var transaction = Transaction()
-      transaction.disablesAnimations = true
-      withTransaction(transaction) {
-        scrollProxy?.scrollTo(position.id, anchor: position.unitPoint)
-      }
+      let offsetAfterToggle = lastContentOffsetY
+      let offsetDelta = offsetAfterToggle - offsetBeforeToggle
+      let didShift = abs(offsetDelta) > 24
+      let correctedAfterDelay = restoreCommentScrollOffsetIfNeeded(
+        offsetBeforeToggle,
+        commentID: position.id,
+        stage: "settled"
+      )
+      AppDiagnostics.asyncRecord(
+        didShift ? .warning : .info,
+        category: "ui.comments.scroll",
+        message: didShift ? "Comment collapse shifted scroll offset" : "Comment collapse kept scroll offset stable",
+        metadata: [
+          "comment": position.id,
+          "anchorY": String(format: "%.3f", position.anchorY),
+          "offsetBefore": String(format: "%.1f", offsetBeforeToggle),
+          "offsetAfter": String(format: "%.1f", offsetAfterToggle),
+          "offsetDelta": String(format: "%.1f", offsetDelta),
+          "rowsBefore": "\(rowsBeforeToggle)",
+          "rowsAfter": "\(rowsAfterToggle)",
+          "rowIndexBefore": rowIndexBeforeToggle.map { "\($0)" } ?? "nil",
+          "rowIndexAfter": rowIndexAfterToggle.map { "\($0)" } ?? "nil",
+          "rowDelta": "\(rowsAfterToggle - rowsBeforeToggle)",
+          "rowMinY": String(format: "%.1f", position.minY),
+          "rowMaxY": String(format: "%.1f", position.maxY),
+          "rowHeight": String(format: "%.1f", position.height),
+          "correctedImmediately": "\(correctedImmediately)",
+          "correctedAfterDelay": "\(correctedAfterDelay)"
+        ]
+      )
     }
+  }
+
+  @MainActor
+  private func restoreCommentScrollOffsetIfNeeded(_ offsetBeforeToggle: CGFloat, commentID: String, stage: String) -> Bool {
+    guard let scrollView = commentScrollView else { return false }
+    guard !scrollView.isTracking, !scrollView.isDragging, !scrollView.isDecelerating else { return false }
+    let currentOffset = scrollView.contentOffset.y
+    let delta = currentOffset - offsetBeforeToggle
+    guard abs(delta) > 1 else { return false }
+
+    let minOffset = -scrollView.adjustedContentInset.top
+    let maxOffset = max(minOffset, scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+    let targetOffset = min(max(offsetBeforeToggle, minOffset), maxOffset)
+    guard abs(currentOffset - targetOffset) > 1 else { return false }
+
+    scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: targetOffset), animated: false)
+    lastContentOffsetY = targetOffset
+    AppDiagnostics.asyncRecord(
+      .info,
+      category: "ui.comments.scroll",
+      message: "Restored comment collapse content offset",
+      metadata: [
+        "comment": commentID,
+        "stage": stage,
+        "offsetBefore": String(format: "%.1f", offsetBeforeToggle),
+        "offsetCurrent": String(format: "%.1f", currentOffset),
+        "offsetTarget": String(format: "%.1f", targetOffset),
+        "offsetDelta": String(format: "%.1f", delta),
+        "contentHeight": String(format: "%.1f", scrollView.contentSize.height),
+        "boundsHeight": String(format: "%.1f", scrollView.bounds.height)
+      ]
+    )
+    return true
   }
 
   private var commentsHeaderTitle: String {
@@ -458,5 +558,36 @@ private struct AuroraPostHeader: View {
     }
     .selectableTextSheet(isPresented: $showingSelectText, markdown: data.selftext, title: post.data?.title ?? "Select Text")
     .onAppear { Task { await post.toggleSeen(true) } }
+  }
+}
+
+private struct CommentScrollViewResolver: UIViewRepresentable {
+  let onResolve: (UIScrollView) -> Void
+
+  func makeUIView(context: Context) -> UIView {
+    let view = UIView(frame: .zero)
+    view.isUserInteractionEnabled = false
+    return view
+  }
+
+  func updateUIView(_ uiView: UIView, context: Context) {
+    DispatchQueue.main.async {
+      if let scrollView = uiView.enclosingScrollView {
+        onResolve(scrollView)
+      }
+    }
+  }
+}
+
+private extension UIView {
+  var enclosingScrollView: UIScrollView? {
+    var view = superview
+    while let current = view {
+      if let scrollView = current as? UIScrollView {
+        return scrollView
+      }
+      view = current.superview
+    }
+    return nil
   }
 }
