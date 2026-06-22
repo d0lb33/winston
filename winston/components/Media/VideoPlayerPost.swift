@@ -259,6 +259,7 @@ struct VideoPlayerPost: View, Equatable {
             .id(inlineVideoRefreshID)
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
+          inlineVideoPlaybackOverlay(sharedVideo: sharedVideo)
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
@@ -313,6 +314,7 @@ struct VideoPlayerPost: View, Equatable {
 
           videoPoster(sharedVideo: sharedVideo, size: videoSize)
           playOverlay()
+          inlineVideoPlaybackOverlay(sharedVideo: sharedVideo)
         }
         .frame(width: videoSize.width, height: videoSize.height)
         .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
@@ -417,6 +419,39 @@ struct VideoPlayerPost: View, Equatable {
     .fixedSize()
     .clipShape(RoundedRectangle(cornerRadius: inlineCornerRadius, style: .continuous))
     .allowsHitTesting(false)
+  }
+
+  @ViewBuilder
+  func inlineVideoPlaybackOverlay(sharedVideo: SharedVideo) -> some View {
+    InlineVideoPlaybackOverlay(
+      player: inlineOverlayPlayer(sharedVideo),
+      isMuted: muteVideos,
+      toggleMute: { toggleInlineMute(sharedVideo) }
+    )
+  }
+
+  private func inlineOverlayPlayer(_ sharedVideo: SharedVideo) -> AVPlayer? {
+    guard sharedVideo.isPlayerLoaded, !fullscreen else { return nil }
+    if usesCoordinatedInlinePlayback {
+      guard mountPlayer || hostHasFrame else { return nil }
+    } else {
+      guard mountPlayer || hasRenderedInlineFrame else { return nil }
+    }
+    return sharedVideo.player
+  }
+
+  private func toggleInlineMute(_ sharedVideo: SharedVideo) {
+    var settings = Defaults[.VideoDefSettings]
+    settings.mute.toggle()
+    Defaults[.VideoDefSettings] = settings
+
+    guard sharedVideo.isPlayerLoaded else { return }
+    applyInlineMuteSetting(settings.mute, to: sharedVideo.player)
+  }
+
+  private func applyInlineMuteSetting(_ muted: Bool, to player: AVPlayer) {
+    player.isMuted = muted
+    player.volume = muted ? 0.0 : 1.0
   }
 
   /// Neutral backdrop shown until the live layer has a real frame. It sits at the BACK of the
@@ -568,7 +603,7 @@ struct VideoPlayerPost: View, Equatable {
     // video — active inline or fullscreen — sets up playback.
     guard shouldMountPlayer else { return }
 
-    sharedVideo.player.isMuted = muteVideos
+    applyInlineMuteSetting(muteVideos, to: sharedVideo.player)
     if loopVideos {
       addObserver()
     }
@@ -608,7 +643,7 @@ struct VideoPlayerPost: View, Equatable {
     }
 
     if shouldPlayInline {
-      sharedVideo.player.isMuted = muteVideos
+      applyInlineMuteSetting(muteVideos, to: sharedVideo.player)
       sharedVideo.player.currentItem?.preferredForwardBufferDuration = 2
       startInlinePlaybackIfNeeded(sharedVideo, reason: "play-state-active")
       if inlineVideoIsRenderable(sharedVideo) {
@@ -617,7 +652,7 @@ struct VideoPlayerPost: View, Equatable {
         }
       }
     } else {
-      sharedVideo.player.isMuted = muteVideos
+      applyInlineMuteSetting(muteVideos, to: sharedVideo.player)
       sharedVideo.player.currentItem?.preferredForwardBufferDuration = 1
       sharedVideo.player.pause()
       if inlineVideoIsRenderable(sharedVideo), showInlinePoster {
@@ -643,7 +678,7 @@ struct VideoPlayerPost: View, Equatable {
 
   func startInlinePlaybackIfNeeded(_ sharedVideo: SharedVideo, reason: String) {
     guard !fullscreen, shouldPlayInline, sharedVideo.isPlayerLoaded else { return }
-    sharedVideo.player.isMuted = muteVideos
+    applyInlineMuteSetting(muteVideos, to: sharedVideo.player)
     sharedVideo.player.play()
     recordVideoEvent(.debug, message: "Inline playback started", sharedVideo: sharedVideo, extra: ["reason": reason])
   }
@@ -845,7 +880,7 @@ struct VideoPlayerPost: View, Equatable {
         sharedVideo.player.volume = 0.0
       }
     } else {
-      sharedVideo.player.volume = val ? 1.0 : 0.0
+      sharedVideo.player.volume = val ? 1.0 : (sharedVideo.player.isMuted ? 0.0 : 1.0)
     }
 
     if pauseBackgroundAudioOnFullscreen && sharedVideo.player.isMuted == false && hasAudio == true {
@@ -1399,6 +1434,156 @@ struct FullScreenVP: View {
       sharedVideo.player.removeTimeObserver(timeObserver)
       self.timeObserver = nil
     }
+  }
+}
+
+private struct InlineVideoPlaybackOverlay: View {
+  let player: AVPlayer?
+  let isMuted: Bool
+  let toggleMute: () -> Void
+
+  @State private var observedPlayer: AVPlayer?
+  @State private var timeObserver: Any?
+  @State private var progress: Double = 0
+  @State private var hasPlayableDuration = false
+  @State private var hasAudio = false
+
+  private var playerID: ObjectIdentifier? {
+    player.map { ObjectIdentifier($0) }
+  }
+
+  var body: some View {
+    ZStack(alignment: .bottomTrailing) {
+      if hasPlayableDuration {
+        InlineVideoProgressRail(progress: progress)
+          .padding(.horizontal, 6)
+          .padding(.bottom, 4)
+          .allowsHitTesting(false)
+      }
+
+      if hasAudio {
+        Button(action: toggleMute) {
+          Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.white)
+            .frame(width: 34, height: 34)
+            .contentShape(Circle())
+            .inlineVideoGlass(Circle())
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 8)
+        .padding(.bottom, hasPlayableDuration ? 14 : 8)
+        .accessibilityLabel(isMuted ? "Unmute video" : "Mute video")
+      }
+    }
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+    .onAppear { syncObservedPlayer(player) }
+    .onChange(of: playerID) { _, _ in syncObservedPlayer(player) }
+    .onDisappear { removeTimeObserver() }
+  }
+
+  private func syncObservedPlayer(_ nextPlayer: AVPlayer?) {
+    if let observedPlayer, let nextPlayer, observedPlayer === nextPlayer {
+      refreshPlaybackState(nextPlayer)
+      return
+    }
+
+    removeTimeObserver()
+    progress = 0
+    hasPlayableDuration = false
+    hasAudio = false
+
+    guard let nextPlayer else { return }
+    observedPlayer = nextPlayer
+    refreshPlaybackState(nextPlayer)
+    timeObserver = nextPlayer.addPeriodicTimeObserver(
+      forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
+      queue: .main
+    ) { _ in
+      refreshPlaybackState(nextPlayer)
+    }
+  }
+
+  private func refreshPlaybackState(_ player: AVPlayer) {
+    let duration = playerDuration(player)
+    let nextHasPlayableDuration = duration > 0
+    if hasPlayableDuration != nextHasPlayableDuration {
+      hasPlayableDuration = nextHasPlayableDuration
+    }
+
+    let nextProgress = nextHasPlayableDuration ? currentProgress(player, duration: duration) : 0
+    if abs(progress - nextProgress) > 0.0005 {
+      progress = nextProgress
+    }
+
+    let nextHasAudio = player.currentItem?.tracks.contains(where: { $0.assetTrack?.mediaType == AVMediaType.audio }) == true
+    if hasAudio != nextHasAudio {
+      hasAudio = nextHasAudio
+    }
+  }
+
+  private func playerDuration(_ player: AVPlayer) -> TimeInterval {
+    guard let duration = player.currentItem?.duration.seconds, duration.isFinite, duration > 0 else {
+      return 0
+    }
+    return duration
+  }
+
+  private func currentProgress(_ player: AVPlayer, duration: TimeInterval) -> Double {
+    let seconds = player.currentTime().seconds
+    guard seconds.isFinite, duration > 0 else { return 0 }
+    return min(max(seconds / duration, 0), 1)
+  }
+
+  private func removeTimeObserver() {
+    if let timeObserver, let observedPlayer {
+      observedPlayer.removeTimeObserver(timeObserver)
+    }
+    timeObserver = nil
+    observedPlayer = nil
+  }
+}
+
+private struct InlineVideoProgressRail: View {
+  let progress: Double
+
+  var body: some View {
+    GeometryReader { proxy in
+      let width = max(proxy.size.width, 1)
+      let clamped = min(max(progress, 0), 1)
+      ZStack(alignment: .leading) {
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.16))
+          .inlineVideoGlass(Capsule(style: .continuous))
+
+        Capsule(style: .continuous)
+          .fill(.white.opacity(0.92))
+          .frame(width: max(3, width * clamped), height: 4)
+      }
+    }
+    .frame(height: 4)
+    .shadow(color: .black.opacity(0.28), radius: 4, y: 1)
+  }
+}
+
+private struct InlineVideoGlassModifier<S: Shape>: ViewModifier {
+  let shape: S
+
+  @ViewBuilder
+  func body(content: Content) -> some View {
+    if #available(iOS 26.0, *) {
+      content.glassEffect(.regular, in: shape)
+    } else {
+      content
+        .background { shape.fill(.ultraThinMaterial) }
+        .overlay { shape.stroke(.white.opacity(0.18), lineWidth: 1) }
+    }
+  }
+}
+
+private extension View {
+  func inlineVideoGlass<S: Shape>(_ shape: S) -> some View {
+    modifier(InlineVideoGlassModifier(shape: shape))
   }
 }
 
